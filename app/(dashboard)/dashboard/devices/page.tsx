@@ -14,6 +14,8 @@ const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 import 'react-quill/dist/quill.snow.css';
 
 export default function DevicesPage() {
+  // Control mobile filter visibility
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [devices, setDevices] = useState<DeviceVM[]>([]);
   const [allDevices, setAllDevices] = useState<DeviceVM[]>([]); // Store all devices from API
   const [categories, setCategories] = useState<DeviceCategory[]>([]);
@@ -580,34 +582,101 @@ export default function DevicesPage() {
     setSortDirection('asc');
   }, [selectedCategory]);
 
+  // Handle table scroll for visual indicators
+  useEffect(() => {
+    const tableContainer = document.getElementById('devices-table-responsive');
+    const scrollHint = document.querySelector('.table-scroll-hint');
+    if (!tableContainer) return;
+
+    const handleScroll = () => {
+      const { scrollLeft, scrollWidth, clientWidth } = tableContainer;
+      const isAtStart = scrollLeft === 0;
+      const isAtEnd = scrollLeft + clientWidth >= scrollWidth - 1;
+      const hasScrolled = scrollLeft > 0;
+
+      // Update classes for visual indicators
+      tableContainer.classList.toggle('scrolled', hasScrolled);
+      tableContainer.classList.toggle('scrolled-to-end', isAtEnd);
+      tableContainer.classList.toggle('has-scrolled', hasScrolled);
+
+      // Hide scroll hint after first scroll
+      if (scrollHint && hasScrolled) {
+        (scrollHint as HTMLElement).style.display = 'none';
+      }
+    };
+
+    // Check initial state
+    handleScroll();
+
+    tableContainer.addEventListener('scroll', handleScroll);
+    // Also check on resize
+    window.addEventListener('resize', handleScroll);
+
+    return () => {
+      tableContainer.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, [currentDevices]); // Re-run when table content changes
+
   if (loading) {
     return <div className="text-center">Đang tải...</div>;
   }
 
   return (
-    <div className="container-fluid">
+    <div className="container-fluid" style={{ marginLeft: 0, marginRight: 0, paddingLeft: 0, paddingRight: 0 }}>
       <div className="card">
         <div className="card-header">
-          <div className="d-flex justify-content-between align-items-center mb-3">
-            <h4 className="mb-0">THIẾT BỊ</h4>
-            <div className="d-flex gap-2">
-              <button className="btn btn-primary btn-sm" onClick={handleNew}>
-                <i className="fas fa-plus"></i> Thêm mới
+          <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+            <h4 className="mb-0 mb-2 mb-md-0">THIẾT BỊ</h4>
+            <div className="d-flex gap-1 align-items-center" style={{ flexWrap: 'nowrap' }}>
+              {/* Mobile-only filter toggle */}
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm d-md-none"
+                onClick={() => setFiltersOpen((s) => !s)}
+                aria-pressed={!filtersOpen}
+                aria-label={filtersOpen ? 'Ẩn bộ lọc' : 'Hiện bộ lọc'}
+                title={filtersOpen ? 'Ẩn bộ lọc' : 'Hiện bộ lọc'}
+              >
+                <i className={`fas ${filtersOpen ? 'fa-chevron-up' : 'fa-filter'}`}></i>
               </button>
-              <button className="btn btn-success btn-sm" onClick={handleEdit}>
-                <i className="fas fa-edit"></i> Sửa
+              <button 
+                className="btn btn-primary btn-sm" 
+                onClick={handleNew}
+                title="Thêm mới"
+                aria-label="Thêm mới"
+              >
+                <i className="fas fa-plus"></i>
               </button>
-              <button className="btn btn-danger btn-sm" onClick={handleDelete}>
-                <i className="fas fa-trash"></i> Xóa
+              <button 
+                className="btn btn-success btn-sm" 
+                onClick={handleEdit}
+                title="Sửa"
+                aria-label="Sửa"
+              >
+                <i className="fas fa-edit"></i>
               </button>
-              <button className="btn btn-dark btn-sm" onClick={loadData}>
-                <i className="fas fa-circle-notch"></i> Tải lại
+              <button 
+                className="btn btn-danger btn-sm" 
+                onClick={handleDelete}
+                title="Xóa"
+                aria-label="Xóa"
+              >
+                <i className="fas fa-trash"></i>
+              </button>
+              <button 
+                className="btn btn-dark btn-sm" 
+                onClick={loadData}
+                title="Tải lại"
+                aria-label="Tải lại"
+              >
+                <i className="fas fa-circle-notch"></i>
               </button>
             </div>
           </div>
           
           {/* Filter Section */}
-          <div className="card mb-3" style={{ backgroundColor: '#f8f9fa' }}>
+          <div className={`card mb-3 filter-card ${filtersOpen ? 'filter-open' : 'filter-collapsed'}`} style={{ backgroundColor: '#f8f9fa' }}>
             <div className="card-body py-2">
               <div className="row g-2 align-items-end">
                 <div className="col-md-3">
@@ -694,12 +763,13 @@ export default function DevicesPage() {
               </div>
             </div>
           </div>
-          <div className="d-flex justify-content-between align-items-center">
-            <div className="d-flex align-items-center gap-2">
-              <span>Hiển thị:</span>
+          <div className="d-flex justify-content-between align-items-center" style={{ flexWrap: 'nowrap', gap: '0.5rem' }}>
+            <div className="d-flex align-items-center gap-1" style={{ flexWrap: 'nowrap', flexShrink: 0 }}>
+              <span className="d-none d-sm-inline" style={{ whiteSpace: 'nowrap' }}>Hiển thị:</span>
+              <span className="d-sm-none" style={{ whiteSpace: 'nowrap' }}>Hiện:</span>
               <select
                 className="form-control form-control-sm"
-                style={{ width: '80px' }}
+                style={{ width: '60px', padding: '0.25rem 0.5rem' }}
                 value={itemsPerPage}
                 onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
               >
@@ -708,16 +778,16 @@ export default function DevicesPage() {
                 <option value="50">50</option>
                 <option value="100">100</option>
               </select>
-              <span>dòng/trang</span>
+              <span className="d-none d-sm-inline" style={{ whiteSpace: 'nowrap' }}>dòng/trang</span>
             </div>
-            <div>
-              <span>
+            <div style={{ flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <span style={{ fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
                 Hiển thị {sortedDevices.length > 0 ? startIndex + 1 : 0}-{Math.min(endIndex, sortedDevices.length)} của {sortedDevices.length} thiết bị
                 {(selectedCategory > 0 || selectedDepartment > 0 || selectedStatus > 0 || searchKeyword.trim()) && (
                   <span className="text-muted"> (đã lọc)</span>
                 )}
                 {sortField && (
-                  <span className="text-muted ms-2">
+                  <span className="text-muted ms-2 d-none d-lg-inline">
                     <i className="fas fa-sort"></i> Sắp xếp: {getSortFieldLabel(sortField)} ({sortDirection === 'asc' ? 'Tăng dần' : 'Giảm dần'})
                   </span>
                 )}
@@ -725,9 +795,37 @@ export default function DevicesPage() {
             </div>
           </div>
         </div>
-        <div className="card-body">
-          <div className="table-responsive">
-            <table className="table table-striped table-hover">
+        <div className="card-body p-0 p-md-3" style={{ padding: 0 }}>
+          {/* Scroll hint for mobile */}
+          <div className="table-scroll-hint d-block d-sm-none text-center text-muted" style={{ fontSize: '0.75rem', padding: '0.25rem 0', marginBottom: '0.5rem' }}>
+            ← Cuộn để xem thêm →
+          </div>
+          <div 
+            className="table-responsive" 
+            id="devices-table-responsive"
+            style={{
+              overflowX: 'auto',
+              overflowY: 'visible',
+              WebkitOverflowScrolling: 'touch',
+              position: 'relative',
+              width: '100%',
+              display: 'block',
+              scrollBehavior: 'smooth',
+              touchAction: 'pan-x',
+              minHeight: '0',
+              maxWidth: '100%'
+            }}
+          >
+            <table 
+              className="table table-striped table-hover mb-0" 
+              style={{ 
+                tableLayout: 'auto',
+                marginBottom: 0,
+                display: 'table',
+                width: 'max-content',
+                minWidth: 'max-content'
+              }}
+            >
               <thead>
                 <tr>
                   <th style={{ width: '50px' }}>
@@ -844,44 +942,68 @@ export default function DevicesPage() {
           {/* Pagination */}
           {totalPages > 1 && (
             <nav aria-label="Page navigation" className="mt-3">
-              <ul className="pagination justify-content-end">
+              <ul className="pagination justify-content-center">
                 <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
                   <button
                     className="page-link"
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage === 1}
+                    title="Trang trước"
+                    aria-label="Trang trước"
                   >
-                    <i className="fas fa-angle-left"></i> Trước
+                    <i className="fas fa-angle-left"></i>
                   </button>
                 </li>
                 
-                {/* First page */}
-                {currentPage > 3 && (
-                  <>
-                    <li className="page-item">
-                      <button className="page-link" onClick={() => handlePageChange(1)}>
-                        1
-                      </button>
-                    </li>
-                    {currentPage > 4 && (
-                      <li className="page-item disabled">
-                        <span className="page-link">...</span>
-                      </li>
-                    )}
-                  </>
-                )}
-                
-                {/* Page numbers around current page */}
-                {Array.from({ length: totalPages }, (_, i) => i + 1)
-                  .filter(
-                    (page) =>
-                      page === 1 ||
-                      page === totalPages ||
-                      (page >= currentPage - 2 && page <= currentPage + 2)
-                  )
-                  .map((page, index, array) => {
-                    // Add ellipsis if there's a gap
-                    const showEllipsisBefore = index > 0 && array[index - 1] < page - 1;
+                {/* Page numbers */}
+                {(() => {
+                  const pages: number[] = [];
+                  
+                  if (totalPages <= 7) {
+                    // Show all pages if 7 or fewer
+                    for (let i = 1; i <= totalPages; i++) {
+                      pages.push(i);
+                    }
+                  } else {
+                    // Always show first page
+                    pages.push(1);
+                    
+                    // Calculate pages to show around current
+                    let startPage = Math.max(2, currentPage - 1);
+                    let endPage = Math.min(totalPages - 1, currentPage + 1);
+                    
+                    // Adjust if near the beginning
+                    if (currentPage <= 3) {
+                      startPage = 2;
+                      endPage = 4;
+                    }
+                    
+                    // Adjust if near the end
+                    if (currentPage >= totalPages - 2) {
+                      startPage = totalPages - 4;
+                      endPage = totalPages - 1;
+                    }
+                    
+                    // Add middle pages (avoid duplicates)
+                    for (let i = startPage; i <= endPage; i++) {
+                      if (i > 1 && i < totalPages && !pages.includes(i)) {
+                        pages.push(i);
+                      }
+                    }
+                    
+                    // Always show last page
+                    if (!pages.includes(totalPages)) {
+                      pages.push(totalPages);
+                    }
+                  }
+                  
+                  // Sort and remove duplicates
+                  const uniquePages = Array.from(new Set(pages)).sort((a, b) => a - b);
+                  
+                  return uniquePages.map((page, index) => {
+                    const prevPage = index > 0 ? uniquePages[index - 1] : 0;
+                    const showEllipsisBefore = prevPage > 0 && page - prevPage > 1;
+                    
                     return (
                       <React.Fragment key={page}>
                         {showEllipsisBefore && (
@@ -899,34 +1021,18 @@ export default function DevicesPage() {
                         </li>
                       </React.Fragment>
                     );
-                  })}
-                
-                {/* Last page */}
-                {currentPage < totalPages - 2 && (
-                  <>
-                    {currentPage < totalPages - 3 && (
-                      <li className="page-item disabled">
-                        <span className="page-link">...</span>
-                      </li>
-                    )}
-                    <li className="page-item">
-                      <button
-                        className="page-link"
-                        onClick={() => handlePageChange(totalPages)}
-                      >
-                        {totalPages}
-                      </button>
-                    </li>
-                  </>
-                )}
+                  });
+                })()}
                 
                 <li className={`page-item ${currentPage === totalPages ? 'disabled' : ''}`}>
                   <button
                     className="page-link"
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
+                    title="Trang sau"
+                    aria-label="Trang sau"
                   >
-                    Sau <i className="fas fa-angle-right"></i>
+                    <i className="fas fa-angle-right"></i>
                   </button>
                 </li>
               </ul>
@@ -942,7 +1048,7 @@ export default function DevicesPage() {
           tabIndex={-1}
           style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }}
         >
-          <div className="modal-dialog modal-lg">
+          <div className="modal-dialog modal-lg modal-dialog-scrollable">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">
@@ -956,7 +1062,7 @@ export default function DevicesPage() {
               </div>
               <div className="modal-body">
                 <div className="row">
-                  <div className="col-6">
+                  <div className="col-12 col-md-6">
                     <div className="form-group mb-3">
                       <label>Danh mục</label>
                       <select
@@ -1137,7 +1243,7 @@ export default function DevicesPage() {
                       </select>
                     </div>
                   </div>
-                  <div className="col-6">
+                  <div className="col-12 col-md-6">
                     <div className="form-group mb-3">
                       <div className="d-flex justify-content-between align-items-center mb-2">
                         <label>Mô tả</label>
@@ -1210,20 +1316,20 @@ export default function DevicesPage() {
                   </div>
                 </div>
               </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleSave}
-                >
-                  Lưu
-                </button>
+              <div className="modal-footer d-flex justify-content-end gap-2">
                 <button
                   type="button"
                   className="btn btn-secondary"
                   onClick={() => setShowModal(false)}
                 >
                   Đóng
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleSave}
+                >
+                  Lưu
                 </button>
               </div>
             </div>

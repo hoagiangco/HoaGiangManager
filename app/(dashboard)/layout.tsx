@@ -125,16 +125,24 @@ export default function DashboardLayout({
         {/* Top Navbar */}
         <nav className="top-navbar">
           <div className="top-navbar-content">
-            <button className="sidebar-toggle-mobile" onClick={toggleSidebar}>
-              <i className="fas fa-bars"></i>
-            </button>
-            <div className="top-navbar-right">
-              <span className="top-navbar-user">
+            <div className="top-navbar-left">
+              <button className="sidebar-toggle-mobile" onClick={toggleSidebar}>
+                <i className="fas fa-bars"></i>
+              </button>
+              <span 
+                className="top-navbar-user"
+                title={user?.fullName || user?.email}
+                aria-label={user?.fullName || user?.email}
+              >
                 <i className="fas fa-user-circle"></i>
-                {user?.fullName || user?.email}
               </span>
-              <button className="btn btn-outline-primary btn-sm" onClick={handleLogout}>
-                <i className="fas fa-sign-out-alt"></i> Đăng xuất
+              <button 
+                className="btn btn-outline-primary btn-sm" 
+                onClick={handleLogout}
+                title="Đăng xuất"
+                aria-label="Đăng xuất"
+              >
+                <i className="fas fa-sign-out-alt"></i>
               </button>
             </div>
           </div>
