@@ -158,8 +158,27 @@ async function migrate() {
         "Gender" BOOLEAN,
         "Birthday" DATE,
         "DepartmentID" SMALLINT,
-        FOREIGN KEY ("DepartmentID") REFERENCES "Department"("ID")
+        "UserId" TEXT,
+        FOREIGN KEY ("DepartmentID") REFERENCES "Department"("ID"),
+        FOREIGN KEY ("UserId") REFERENCES "AspNetUsers"("Id") ON DELETE SET NULL,
+        UNIQUE("UserId")
       )
+    `);
+    
+    // Add UserId column if it doesn't exist (for existing databases)
+    await client.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'Staff' AND column_name = 'UserId'
+        ) THEN
+          ALTER TABLE "Staff" ADD COLUMN "UserId" TEXT;
+          ALTER TABLE "Staff" ADD CONSTRAINT "Staff_UserId_fkey" 
+            FOREIGN KEY ("UserId") REFERENCES "AspNetUsers"("Id") ON DELETE SET NULL;
+          ALTER TABLE "Staff" ADD CONSTRAINT "Staff_UserId_unique" UNIQUE("UserId");
+        END IF;
+      END $$;
     `);
 
     // Create EventType table
@@ -190,6 +209,78 @@ async function migrate() {
       )
     `);
 
+    // Create DamageReportStatus enum
+    await client.query(`
+      DO $$ BEGIN
+        CREATE TYPE damage_report_status AS ENUM ('1', '2', '3', '4', '5', '6');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // Create DamageReportPriority enum
+    await client.query(`
+      DO $$ BEGIN
+        CREATE TYPE damage_report_priority AS ENUM ('1', '2', '3', '4');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
+    // Create DamageReport table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "DamageReport" (
+        "ID" SERIAL PRIMARY KEY,
+        "DeviceID" INTEGER,
+        "DamageLocation" VARCHAR(200),
+        "ReporterID" SMALLINT NOT NULL,
+        "ReportingDepartmentID" SMALLINT NOT NULL,
+        "HandlerID" SMALLINT,
+        "AssignedDate" DATE,
+        "ReportDate" DATE NOT NULL DEFAULT CURRENT_DATE,
+        "HandlingDate" DATE,
+        "CompletedDate" DATE,
+        "EstimatedCompletionDate" DATE,
+        "DamageContent" TEXT NOT NULL,
+        "Images" JSONB,
+        "Status" damage_report_status NOT NULL DEFAULT '1',
+        "Priority" damage_report_priority NOT NULL DEFAULT '2',
+        "Notes" TEXT,
+        "HandlerNotes" TEXT,
+        "RejectionReason" TEXT,
+        "CreatedBy" TEXT,
+        "UpdatedBy" TEXT,
+        "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        "UpdatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY ("DeviceID") REFERENCES "Device"("ID") ON DELETE SET NULL,
+        FOREIGN KEY ("ReporterID") REFERENCES "Staff"("ID"),
+        FOREIGN KEY ("ReportingDepartmentID") REFERENCES "Department"("ID"),
+        FOREIGN KEY ("HandlerID") REFERENCES "Staff"("ID"),
+        CHECK ("ReportDate" <= COALESCE("HandlingDate", CURRENT_DATE)),
+        CHECK ("HandlingDate" IS NULL OR "HandlingDate" <= COALESCE("CompletedDate", CURRENT_DATE)),
+        CHECK (("DeviceID" IS NOT NULL) OR ("DamageLocation" IS NOT NULL AND "DamageLocation" != ''))
+      )
+    `);
+
+    // Create DamageReportHistory table for tracking changes
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "DamageReportHistory" (
+        "ID" SERIAL PRIMARY KEY,
+        "DamageReportID" INTEGER NOT NULL,
+        "FieldName" VARCHAR(50) NOT NULL,
+        "OldValue" TEXT,
+        "NewValue" TEXT,
+        "ChangedBy" TEXT NOT NULL,
+        "ChangedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY ("DamageReportID") REFERENCES "DamageReport"("ID") ON DELETE CASCADE
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_damage_report_history_report ON "DamageReportHistory"("DamageReportID");
+      CREATE INDEX IF NOT EXISTS idx_damage_report_history_date ON "DamageReportHistory"("ChangedAt");
+    `);
+
     // Create indexes for better performance
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_aspnet_users_email ON "AspNetUsers"("NormalizedEmail");
@@ -198,6 +289,12 @@ async function migrate() {
       CREATE INDEX IF NOT EXISTS idx_device_department ON "Device"("DepartmentID");
       CREATE INDEX IF NOT EXISTS idx_event_device ON "Event"("DeviceID");
       CREATE INDEX IF NOT EXISTS idx_staff_department ON "Staff"("DepartmentID");
+      CREATE INDEX IF NOT EXISTS idx_damage_report_device ON "DamageReport"("DeviceID");
+      CREATE INDEX IF NOT EXISTS idx_damage_report_reporter ON "DamageReport"("ReporterID");
+      CREATE INDEX IF NOT EXISTS idx_damage_report_handler ON "DamageReport"("HandlerID");
+      CREATE INDEX IF NOT EXISTS idx_damage_report_status ON "DamageReport"("Status");
+      CREATE INDEX IF NOT EXISTS idx_damage_report_date ON "DamageReport"("ReportDate");
+      CREATE INDEX IF NOT EXISTS idx_damage_report_department ON "DamageReport"("ReportingDepartmentID");
     `);
 
     await client.query('COMMIT');

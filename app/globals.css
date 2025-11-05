@@ -93,6 +93,21 @@ a {
   color: #212529;
 }
 
+.bg-info {
+  background-color: #17a2b8 !important;
+  color: white;
+}
+
+.bg-primary {
+  background-color: #007bff !important;
+  color: white;
+}
+
+.bg-pink {
+  background-color: #e91e63 !important;
+  color: white;
+}
+
 /* Pagination styles */
 .pagination {
   margin-bottom: 0;
@@ -109,8 +124,8 @@ a {
   justify-content: center;
   min-width: 3rem;
   width: 3rem;
-  min-height: 2.75rem;
-  height: 2.75rem;
+  min-height: 2.25rem;
+  height: 2.25rem;
   box-sizing: border-box;
   white-space: nowrap;
   overflow: hidden;
@@ -124,8 +139,8 @@ a {
   padding: 0.5rem 0.375rem;
   min-width: 3rem;
   width: 3rem;
-  min-height: 2.75rem;
-  height: 2.75rem;
+  min-height: 2.25rem;
+  height: 2.25rem;
 }
 
 /* Ensure icons in prev/next buttons don't make buttons bigger */
@@ -1065,8 +1080,8 @@ a {
     font-size: 0.875rem;
     width: 3rem;
     min-width: 3rem;
-    min-height: 2.75rem;
-    height: 2.75rem;
+    min-height: 2.25rem;
+    height: 2.25rem;
     box-sizing: border-box;
     white-space: nowrap;
     overflow: hidden;
@@ -1131,6 +1146,150 @@ a {
     margin: 0 !important;
   }
   
+/* Damage Report Status and Priority Colors - Compact Label Style */
+.damage-report-status-select,
+.damage-report-priority-select {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.25rem center;
+  background-size: 0.75rem;
+  padding-right: 1.5rem !important;
+}
+
+.damage-report-status-select:hover,
+.damage-report-priority-select:hover {
+  opacity: 0.85;
+  transform: scale(1.01);
+}
+
+.damage-report-status-select:focus,
+.damage-report-priority-select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+}
+
+.damage-report-status-select option,
+.damage-report-priority-select option {
+  padding: 0.375rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.damage-report-status-select option[value="1"] {
+  background-color: #f8f9fa !important;
+  color: #6c757d !important;
+}
+
+.damage-report-status-select option[value="2"] {
+  background-color: #cff4fc !important;
+  color: #0a58ca !important;
+}
+
+.damage-report-status-select option[value="3"] {
+  background-color: #fff3cd !important;
+  color: #664d03 !important;
+}
+
+.damage-report-status-select option[value="4"] {
+  background-color: #d1e7dd !important;
+  color: #0f5132 !important;
+}
+
+.damage-report-status-select option[value="5"] {
+  background-color: #e9ecef !important;
+  color: #212529 !important;
+}
+
+.damage-report-status-select option[value="6"] {
+  background-color: #f8d7da !important;
+  color: #842029 !important;
+}
+
+.damage-report-priority-select option {
+  padding: 0.5rem;
+}
+
+.damage-report-priority-select option[value="1"] {
+  background-color: #f8f9fa !important;
+  color: #6c757d !important;
+}
+
+.damage-report-priority-select option[value="2"] {
+  background-color: #cfe2ff !important;
+  color: #0a58ca !important;
+}
+
+.damage-report-priority-select option[value="3"] {
+  background-color: #fff3cd !important;
+  color: #664d03 !important;
+}
+
+.damage-report-priority-select option[value="4"] {
+  background-color: #f8d7da !important;
+  color: #842029 !important;
+}
+
+/* Card View Styles for Damage Reports */
+.damage-report-card {
+  transition: all 0.3s ease;
+  border: 1px solid #e9ecef;
+}
+
+.damage-report-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15) !important;
+  border-color: #dee2e6;
+}
+
+.damage-report-card .card-header {
+  transition: background-color 0.2s ease;
+}
+
+.damage-report-card:hover .card-header {
+  background-color: #f1f3f5 !important;
+}
+
+.damage-report-card .card-body {
+  background-color: #ffffff;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .damage-report-card {
+    margin-bottom: 1rem;
+  }
+  
+  .damage-report-card .card-header {
+    padding: 0.75rem !important;
+  }
+  
+  .damage-report-card .card-body {
+    padding: 0.75rem !important;
+  }
+}
+
+/* Card content spacing */
+.damage-report-card .row {
+  margin-left: -0.5rem;
+  margin-right: -0.5rem;
+}
+
+.damage-report-card .row > * {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+/* Select box hover and focus states */
+select.form-control-sm:focus {
+  border-color: #86b7fe;
+  outline: 0;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
   .table thead th,
   .table tbody td {
     padding-left: 0.25rem !important;

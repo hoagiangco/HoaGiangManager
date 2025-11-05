@@ -86,21 +86,27 @@ export default function FileManager({
         maxWidthOrHeight: 1920, // Maximum width or height
         useWebWorker: true,
         fileType: file.type,
-      };
+      } as any;
 
-      const compressedFile = await imageCompression(file, options);
-      
-      // Ensure the compressed file has the original name
-      if (compressedFile.name !== file.name) {
-        // Create a new File with the original name
-        const renamedFile = new File([compressedFile], file.name, {
-          type: compressedFile.type,
-          lastModified: compressedFile.lastModified,
+      const compressed = await imageCompression(file, options);
+
+      // imageCompression may return a Blob; always convert to File and preserve original filename
+      const resultFile = compressed instanceof File
+        ? compressed
+        : new File([compressed], file.name, {
+            type: compressed.type || file.type || 'image/jpeg',
+            lastModified: (compressed as any).lastModified || Date.now(),
+          });
+
+      // Ensure the name stays the original
+      if (resultFile.name !== file.name) {
+        return new File([resultFile], file.name, {
+          type: resultFile.type,
+          lastModified: resultFile.lastModified,
         });
-        return renamedFile;
       }
-      
-      return compressedFile;
+
+      return resultFile;
     } catch (error) {
       console.error('Image compression error:', error);
       // Return original if compression fails

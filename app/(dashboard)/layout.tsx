@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { AuthProvider } from '@/lib/contexts/AuthContext';
 
 export default function DashboardLayout({
   children,
@@ -55,22 +56,35 @@ export default function DashboardLayout({
     }
   };
 
-  const menuItems = [
-    { href: '/dashboard', label: 'Trang chủ', icon: 'fas fa-home' },
-    { href: '/dashboard/devices', label: 'Thiết bị', icon: 'fas fa-laptop' },
-    { href: '/dashboard/departments', label: 'Phòng ban', icon: 'fas fa-building' },
-    { href: '/dashboard/device-categories', label: 'Danh mục thiết bị', icon: 'fas fa-box' },
-    { href: '/dashboard/staff', label: 'Nhân viên', icon: 'fas fa-users' },
-    { href: '/dashboard/events', label: 'Sự kiện', icon: 'fas fa-calendar' },
-    { href: '/dashboard/event-types', label: 'Loại sự kiện', icon: 'fas fa-tags' },
-  ];
-
-  if (user?.roles?.includes('Admin')) {
-    menuItems.push({ href: '/dashboard/admin', label: 'Quản trị', icon: 'fas fa-cog' });
+  // Menu items based on role
+  const isAdmin = user?.roles?.includes('Admin');
+  
+  const menuItems = [];
+  
+  if (isAdmin) {
+    // Admin sees all menu items
+    menuItems.push(
+      { href: '/dashboard', label: 'Trang chủ', icon: 'fas fa-home' },
+      { href: '/dashboard/devices', label: 'Thiết bị', icon: 'fas fa-laptop' },
+      { href: '/dashboard/departments', label: 'Phòng ban', icon: 'fas fa-building' },
+      { href: '/dashboard/device-categories', label: 'Danh mục thiết bị', icon: 'fas fa-box' },
+      { href: '/dashboard/staff', label: 'Nhân viên', icon: 'fas fa-users' },
+      { href: '/dashboard/events', label: 'Sự kiện', icon: 'fas fa-calendar' },
+      { href: '/dashboard/event-types', label: 'Loại sự kiện', icon: 'fas fa-tags' },
+      { href: '/dashboard/damage-reports', label: 'Báo cáo hư hỏng', icon: 'fas fa-exclamation-triangle' },
+      { href: '/dashboard/admin', label: 'Quản trị', icon: 'fas fa-cog' }
+    );
+  } else {
+    // User only sees damage reports
+    menuItems.push(
+      { href: '/dashboard', label: 'Trang chủ', icon: 'fas fa-home' },
+      { href: '/dashboard/damage-reports', label: 'Báo cáo hư hỏng', icon: 'fas fa-exclamation-triangle' }
+    );
   }
 
   return (
-    <div className="dashboard-wrapper">
+    <AuthProvider>
+      <div className="dashboard-wrapper">
       {/* Mobile Overlay */}
       {mobileMenuOpen && (
         <div className="mobile-overlay" onClick={() => setMobileMenuOpen(false)}></div>
@@ -155,7 +169,8 @@ export default function DashboardLayout({
       </div>
 
       <ToastContainer position="bottom-right" />
-    </div>
+      </div>
+    </AuthProvider>
   );
 }
 

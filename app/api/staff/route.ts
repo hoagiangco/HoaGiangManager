@@ -44,17 +44,30 @@ export async function POST(request: NextRequest) {
     }
 
     const staffData = await request.json();
+    
+    // Validate email is provided for new staff
+    if (!staffData.email || !staffData.email.trim()) {
+      return NextResponse.json(
+        { status: false, error: 'Email là bắt buộc để tạo tài khoản' },
+        { status: 400 }
+      );
+    }
+
+    // Remove userId from staffData if present (will be auto-generated)
+    const { userId, ...createData } = staffData;
+    
     const staffService = new StaffService();
-    const id = await staffService.create(staffData);
+    const id = await staffService.create(createData);
 
     return NextResponse.json({
       status: id > 0,
-      data: { id }
+      data: { id },
+      message: 'Tạo nhân viên và tài khoản thành công. Mật khẩu mặc định: Staff@123'
     });
   } catch (error: any) {
     console.error('Create staff error:', error);
     return NextResponse.json(
-      { status: false, error: 'Đã xảy ra lỗi khi tạo nhân viên' },
+      { status: false, error: error.message || 'Đã xảy ra lỗi khi tạo nhân viên' },
       { status: 500 }
     );
   }

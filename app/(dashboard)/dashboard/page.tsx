@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import api from '@/lib/utils/api';
 import Link from 'next/link';
+import { useAuth } from '@/lib/contexts/AuthContext';
 
 export default function DashboardPage() {
+  const { user, isAdmin } = useAuth();
   const [stats, setStats] = useState({
     devices: 0,
     departments: 0,
@@ -56,45 +58,60 @@ export default function DashboardPage() {
     <div className="container-fluid">
       <h1 className="mb-4">Trang chủ</h1>
       <div className="row">
-        <div className="col-md-3 mb-4">
-          <div className="card text-white bg-primary">
-            <div className="card-body">
-              <h5 className="card-title">Thiết bị</h5>
-              <h2>{stats.devices}</h2>
-              <Link href="/dashboard/devices" className="text-white">
-                Xem chi tiết →
-              </Link>
+        {isAdmin && (
+          <>
+            <div className="col-md-3 mb-4">
+              <div className="card text-white bg-primary">
+                <div className="card-body">
+                  <h5 className="card-title">Thiết bị</h5>
+                  <h2>{stats.devices}</h2>
+                  <Link href="/dashboard/devices" className="text-white">
+                    Xem chi tiết →
+                  </Link>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-        <div className="col-md-3 mb-4">
-          <div className="card text-white bg-success">
-            <div className="card-body">
-              <h5 className="card-title">Phòng ban</h5>
-              <h2>{stats.departments}</h2>
-              <Link href="/dashboard/departments" className="text-white">
-                Xem chi tiết →
-              </Link>
+            <div className="col-md-3 mb-4">
+              <div className="card text-white bg-success">
+                <div className="card-body">
+                  <h5 className="card-title">Phòng ban</h5>
+                  <h2>{stats.departments}</h2>
+                  <Link href="/dashboard/departments" className="text-white">
+                    Xem chi tiết →
+                  </Link>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-        <div className="col-md-3 mb-4">
-          <div className="card text-white bg-info">
-            <div className="card-body">
-              <h5 className="card-title">Nhân viên</h5>
-              <h2>{stats.staff}</h2>
-              <Link href="/dashboard/staff" className="text-white">
-                Xem chi tiết →
-              </Link>
+            <div className="col-md-3 mb-4">
+              <div className="card text-white bg-info">
+                <div className="card-body">
+                  <h5 className="card-title">Nhân viên</h5>
+                  <h2>{stats.staff}</h2>
+                  <Link href="/dashboard/staff" className="text-white">
+                    Xem chi tiết →
+                  </Link>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+            <div className="col-md-3 mb-4">
+              <div className="card text-white bg-warning">
+                <div className="card-body">
+                  <h5 className="card-title">Sự kiện</h5>
+                  <h2>{stats.events}</h2>
+                  <Link href="/dashboard/events" className="text-white">
+                    Xem chi tiết →
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
         <div className="col-md-3 mb-4">
-          <div className="card text-white bg-warning">
+          <div className="card text-white bg-danger">
             <div className="card-body">
-              <h5 className="card-title">Sự kiện</h5>
-              <h2>{stats.events}</h2>
-              <Link href="/dashboard/events" className="text-white">
+              <h5 className="card-title">Báo cáo hư hỏng</h5>
+              <h2>-</h2>
+              <Link href="/dashboard/damage-reports" className="text-white">
                 Xem chi tiết →
               </Link>
             </div>

@@ -51,16 +51,15 @@ export async function POST(request: NextRequest) {
     // Save file
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
+    if (buffer.length === 0) {
+      return NextResponse.json({ error: 'Empty file' }, { status: 400 });
+    }
     await writeFile(filePath, buffer);
 
     // Return file URL
     const fileUrl = `/uploads/${fileName}`;
     
-    console.log('File uploaded successfully:', {
-      fileName,
-      fileUrl,
-      size: file.size
-    });
+    console.log('File uploaded successfully:', fileName, fileUrl, 'size:', file.size);
     
     return NextResponse.json({
       success: true,

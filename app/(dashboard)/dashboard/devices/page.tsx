@@ -8,12 +8,13 @@ import { DeviceVM, DeviceStatus, DeviceCategory, Department } from '@/types';
 import { format } from 'date-fns';
 import dynamic from 'next/dynamic';
 import FileManager from '@/components/FileManager';
+import AdminRoute from '@/components/AdminRoute';
 
 // Dynamically import ReactQuill to avoid SSR issues
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 import 'react-quill/dist/quill.snow.css';
 
-export default function DevicesPage() {
+function DevicesPageContent() {
   // Control mobile filter visibility
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [devices, setDevices] = useState<DeviceVM[]>([]);
@@ -1389,6 +1390,14 @@ export default function DevicesPage() {
         multiSelect={false}
       />
     </div>
+  );
+}
+
+export default function DevicesPage() {
+  return (
+    <AdminRoute>
+      <DevicesPageContent />
+    </AdminRoute>
   );
 }
 
