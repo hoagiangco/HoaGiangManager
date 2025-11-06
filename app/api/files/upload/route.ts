@@ -7,18 +7,40 @@ import { authenticate } from '@/lib/auth/middleware';
 // Dynamic import for Vercel Blob (only in production)
 async function uploadToBlob(fileName: string, buffer: Buffer, contentType: string): Promise<string | null> {
   try {
+    // Check if running on Vercel
+    const isVercel = !!process.env.VERCEL;
+    const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN;
+    
+    console.log('Blob upload check:', {
+      isVercel,
+      hasToken,
+      nodeEnv: process.env.NODE_ENV,
+    });
+
     // Only try blob in production/Vercel environment
-    if (process.env.VERCEL && process.env.BLOB_READ_WRITE_TOKEN) {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { put } = require('@vercel/blob');
+    if (isVercel && hasToken) {
+      // Dynamic import to avoid bundling issues
+      const { put } = await import('@vercel/blob');
+      
+      console.log('Uploading to Vercel Blob:', fileName, 'Size:', buffer.length);
+      
       const blob = await put(fileName, buffer, {
         access: 'public',
         contentType: contentType || 'application/octet-stream',
       });
+      
+      console.log('Blob uploaded successfully:', blob.url);
       return blob.url;
+    } else if (isVercel && !hasToken) {
+      console.error('Running on Vercel but BLOB_READ_WRITE_TOKEN not found');
     }
   } catch (error: any) {
-    console.error('Vercel Blob upload error:', error.message);
+    console.error('Vercel Blob upload error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    });
     // Fallback to local storage
   }
   return null;
