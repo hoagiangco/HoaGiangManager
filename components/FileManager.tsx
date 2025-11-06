@@ -33,7 +33,14 @@ export default function FileManager({
   mode = 'all',
   multiSelect = false 
 }: FileManagerProps) {
-  console.log('FileManager: Component rendered/re-rendered, isOpen:', isOpen);
+  // Log immediately when component is called - this should ALWAYS appear if component is rendered
+  console.log('=== FileManager: Component FUNCTION CALLED ===', {
+    isOpen,
+    mode,
+    accept,
+    multiSelect,
+    timestamp: new Date().toISOString(),
+  });
   
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -109,13 +116,20 @@ export default function FileManager({
   };
 
   useEffect(() => {
-    console.log('FileManager: useEffect triggered, isOpen:', isOpen, 'mode:', mode, 'accept:', accept);
+    console.log('=== FileManager: useEffect TRIGGERED ===', {
+      isOpen,
+      mode,
+      accept,
+      timestamp: new Date().toISOString(),
+    });
     if (isOpen) {
-      console.log('FileManager: isOpen is true, calling loadFiles()');
-      loadFiles();
+      console.log('FileManager: isOpen is TRUE, calling loadFiles() NOW...');
+      loadFiles().catch(err => {
+        console.error('FileManager: loadFiles() FAILED:', err);
+      });
       setSelectedFiles(new Set());
     } else {
-      console.log('FileManager: isOpen is false, skipping loadFiles()');
+      console.log('FileManager: isOpen is FALSE, skipping loadFiles()');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
@@ -160,7 +174,10 @@ export default function FileManager({
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log('handleFileUpload called');
+    console.log('=== FileManager: handleFileUpload CALLED ===', {
+      filesCount: e.target.files?.length || 0,
+      timestamp: new Date().toISOString(),
+    });
     const filesToUpload = Array.from(e.target.files || []);
     console.log('Files to upload:', filesToUpload.length);
     
