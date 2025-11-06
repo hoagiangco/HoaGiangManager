@@ -23,7 +23,7 @@ async function listBlobFiles(): Promise<any[]> {
       pageCount++;
       console.log(`Fetching page ${pageCount}${cursor ? ` (cursor: ${cursor.substring(0, 20)}...)` : ''}...`);
       
-      const result = await list({
+      const result: any = await list({
         cursor: cursor,
         limit: 1000, // Maximum items per page
       });
