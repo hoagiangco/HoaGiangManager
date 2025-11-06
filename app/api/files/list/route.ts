@@ -5,7 +5,7 @@ import path from 'path';
 import { authenticate } from '@/lib/auth/middleware';
 
 // List files from Vercel Blob
-async function listBlobFiles(): Promise<any[]> {
+async function listBlobFiles(): Promise<{ files: any[]; pages: number; total: number }> {
   try {
     // Dynamic import to avoid bundling issues
     const { list } = await import('@vercel/blob');
@@ -85,7 +85,7 @@ async function listBlobFiles(): Promise<any[]> {
     });
     
     console.log(`Mapped ${mappedFiles.length} files for FileManager`);
-    return mappedFiles;
+    return { files: mappedFiles, pages: pageCount, total: mappedFiles.length };
   } catch (error: any) {
     console.error('Error listing Vercel Blob files:', error);
     console.error('Error details:', {
@@ -99,6 +99,8 @@ async function listBlobFiles(): Promise<any[]> {
 
 export async function GET(request: NextRequest) {
   try {
+    const url = new URL(request.url);
+    const debug = url.searchParams.get('debug') === '1' || url.searchParams.get('debug') === 'true';
     // Check authentication
     const authResult = await authenticate(request);
     if (!authResult.user) {
@@ -114,19 +116,13 @@ export async function GET(request: NextRequest) {
     );
     const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN;
 
-    console.log('List files - Environment check:', {
-      isVercel,
-      hasToken,
-      VERCEL: process.env.VERCEL,
-      VERCEL_ENV: process.env.VERCEL_ENV,
-      VERCEL_URL: process.env.VERCEL_URL,
-    });
+    console.log('List files - Environment check:', { isVercel, hasToken, VERCEL: process.env.VERCEL, VERCEL_ENV: process.env.VERCEL_ENV, VERCEL_URL: process.env.VERCEL_URL });
 
     // If on Vercel and has token, list from Blob
     if (isVercel && hasToken) {
       console.log('Attempting to list files from Vercel Blob...');
       try {
-        const blobFiles = await listBlobFiles();
+        const { files: blobFiles, pages, total } = await listBlobFiles();
         
         console.log(`Successfully retrieved ${blobFiles.length} files from Vercel Blob`);
         
@@ -135,7 +131,7 @@ export async function GET(request: NextRequest) {
           new Date(b.modified).getTime() - new Date(a.modified).getTime()
         );
 
-        return NextResponse.json({ files: blobFiles }, {
+        return NextResponse.json({ files: blobFiles, ...(debug ? { debug: { isVercel, hasToken, pages, total } } : {}) }, {
           headers: {
             'Cache-Control': 'no-store',
           },
@@ -151,7 +147,7 @@ export async function GET(request: NextRequest) {
         // On Vercel, if Blob list fails, return empty array instead of falling back to filesystem
         if (isVercel) {
           console.error('On Vercel, cannot fallback to local filesystem. Returning empty array.');
-          return NextResponse.json({ files: [] }, {
+          return NextResponse.json({ files: [], ...(debug ? { debug: { isVercel, hasToken } } : {}) }, {
             headers: { 'Cache-Control': 'no-store' },
           });
         }
@@ -167,7 +163,7 @@ export async function GET(request: NextRequest) {
       // If on Vercel but no token, return empty array (cannot use local filesystem)
       if (isVercel) {
         console.error('On Vercel but BLOB_READ_WRITE_TOKEN not found. Returning empty array.');
-        return NextResponse.json({ files: [] }, {
+        return NextResponse.json({ files: [], ...(debug ? { debug: { isVercel, hasToken } } : {}) }, {
           headers: { 'Cache-Control': 'no-store' },
         });
       }
@@ -177,7 +173,7 @@ export async function GET(request: NextRequest) {
     const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
     
     if (!existsSync(uploadsDir)) {
-      return NextResponse.json({ files: [] }, {
+      return NextResponse.json({ files: [], ...(debug ? { debug: { isVercel, hasToken } } : {}) }, {
         headers: { 'Cache-Control': 'no-store' },
       });
     }
@@ -214,7 +210,7 @@ export async function GET(request: NextRequest) {
       new Date(b.modified).getTime() - new Date(a.modified).getTime()
     );
 
-    return NextResponse.json({ files: validFiles });
+    return NextResponse.json({ files: validFiles, ...(debug ? { debug: { isVercel, hasToken } } : {}) });
   } catch (error: any) {
     console.error('List files error:', error);
     return NextResponse.json(
