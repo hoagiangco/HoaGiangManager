@@ -47,7 +47,6 @@ function DevicesPageContent() {
   const [fileManagerMode, setFileManagerMode] = useState<'image' | 'all'>('image');
   const [fileManagerCallback, setFileManagerCallback] = useState<((url: string) => void) | null>(null);
   const fileManagerCallbackRef = useRef<((url: string) => void) | null>(null);
-  const quillRef = useRef<any>(null);
   const pendingImageUrl = useRef<string | null>(null);
   const quillInsertIndex = useRef<number | null>(null);
   const [showImagePreview, setShowImagePreview] = useState(false);
@@ -72,7 +71,7 @@ function DevicesPageContent() {
           // Ensure no leftover pending URL accidentally updates image field
           pendingImageUrl.current = null;
           try {
-            const editor = (quillRef as any).current?.getEditor?.() || (this as any).quill;
+            const editor = (this as any).quill;
             if (editor) {
               editor.focus();
               const range = editor.getSelection(true) || { index: editor.getLength(), length: 0 };
@@ -106,7 +105,8 @@ function DevicesPageContent() {
             const imgTag = `<img src="${relativePath}" alt="" />`;
             setTimeout(() => {
               try {
-                const editor = (quillRef as any).current?.getEditor?.() || (this as any).quill;
+                // Access editor through the handler context
+                const editor = (this as any).quill;
                 if (editor) {
                   // Prefer stored index to avoid lost selection after modal
                   const insertIndex = (typeof quillInsertIndex.current === 'number')
@@ -1290,7 +1290,6 @@ function DevicesPageContent() {
                         <div className="quill-editor">
                           <ReactQuill
                             key={`quill-${showModal}-${isEdit}`}
-                            ref={quillRef}
                             theme="snow"
                             value={quillValue || ''}
                             onChange={(value) => {

@@ -185,7 +185,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Return file as response
-    return new NextResponse(excelBuffer, {
+    return new NextResponse(excelBuffer as any, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

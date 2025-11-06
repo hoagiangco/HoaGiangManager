@@ -66,7 +66,7 @@ export class EventService {
       finishDate: row.FinishDate,
       staffId: row.StaffID,
       notes: row.Notes,
-      newDeviceStatus: row.NewDeviceStatus ? (typeof row.NewDeviceStatus === 'string' ? parseInt(row.NewDeviceStatus) : row.NewDeviceStatus) as DeviceStatus : null
+      newDeviceStatus: row.NewDeviceStatus ? (typeof row.NewDeviceStatus === 'string' ? parseInt(row.NewDeviceStatus) : row.NewDeviceStatus) as DeviceStatus : undefined
     };
   }
 

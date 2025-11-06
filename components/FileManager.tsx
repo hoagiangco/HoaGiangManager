@@ -94,7 +94,7 @@ export default function FileManager({
       const resultFile = compressed instanceof File
         ? compressed
         : new File([compressed], file.name, {
-            type: compressed.type || file.type || 'image/jpeg',
+            type: (compressed as Blob).type || file.type || 'image/jpeg',
             lastModified: (compressed as any).lastModified || Date.now(),
           });
 
