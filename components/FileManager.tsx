@@ -47,13 +47,19 @@ export default function FileManager({
     console.log('FileManager: loadFiles() called');
     setLoading(true);
     try {
-      console.log('FileManager: Calling /api/files/list...');
-      const response = await api.get('/files/list');
+      console.log('FileManager: Calling /api/files/list with debug...');
+      const response = await api.get('/files/list?debug=1');
       console.log('FileManager: Response received:', {
         status: response.status,
         fileCount: response.data?.files?.length || 0,
+        debug: response.data?.debug || 'No debug info',
         files: response.data?.files || [],
       });
+      
+      // Log debug info if available
+      if (response.data?.debug) {
+        console.log('FileManager: Debug info:', JSON.stringify(response.data.debug, null, 2));
+      }
       
       let fileList = response.data.files || [];
       
