@@ -33,6 +33,8 @@ export default function FileManager({
   mode = 'all',
   multiSelect = false 
 }: FileManagerProps) {
+  console.log('FileManager: Component rendered/re-rendered, isOpen:', isOpen);
+  
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -93,7 +95,7 @@ export default function FileManager({
   };
 
   useEffect(() => {
-    console.log('FileManager: useEffect triggered, isOpen:', isOpen);
+    console.log('FileManager: useEffect triggered, isOpen:', isOpen, 'mode:', mode, 'accept:', accept);
     if (isOpen) {
       console.log('FileManager: isOpen is true, calling loadFiles()');
       loadFiles();
@@ -101,6 +103,7 @@ export default function FileManager({
     } else {
       console.log('FileManager: isOpen is false, skipping loadFiles()');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   const compressImage = async (file: File): Promise<File> => {
@@ -370,7 +373,12 @@ export default function FileManager({
     return iconMap[ext || ''] || 'fa-file';
   };
 
-  if (!isOpen) return null;
+  console.log('FileManager: About to render, isOpen:', isOpen);
+  if (!isOpen) {
+    console.log('FileManager: isOpen is false, returning null (not rendering)');
+    return null;
+  }
+  console.log('FileManager: isOpen is true, rendering modal');
 
   return (
     <div 
