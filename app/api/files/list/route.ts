@@ -4,6 +4,11 @@ import { existsSync } from 'fs';
 import path from 'path';
 import { authenticate } from '@/lib/auth/middleware';
 
+// Ensure this route runs as a Node.js Serverless Function (so logs appear in Vercel)
+export const runtime = 'nodejs';
+// Disable caching at the framework level
+export const dynamic = 'force-dynamic';
+
 // List files from Vercel Blob
 async function listBlobFiles(): Promise<{ files: any[]; pages: number; total: number }> {
   try {
