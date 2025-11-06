@@ -33,23 +33,6 @@ export default function FileManager({
   mode = 'all',
   multiSelect = false 
 }: FileManagerProps) {
-  // Log immediately when component is called - this should ALWAYS appear if component is rendered
-  console.log('=== FileManager: Component FUNCTION CALLED ===', {
-    isOpen,
-    mode,
-    accept,
-    multiSelect,
-    timestamp: new Date().toISOString(),
-    version: '2849e7c-WITH-REFRESH-BUTTON', // Latest commit with refresh button
-  });
-  
-  // Force alert to verify code is loaded (remove after testing)
-  if (typeof window !== 'undefined' && !(window as any).__fileManagerVersionChecked) {
-    (window as any).__fileManagerVersionChecked = true;
-    console.log('🔍 FileManager Version Check: 2849e7c-WITH-REFRESH-BUTTON');
-    console.log('🔍 If you see this, new code is loaded!');
-  }
-  
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -61,83 +44,34 @@ export default function FileManager({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadFiles = async () => {
-    console.log('FileManager: loadFiles() called');
     setLoading(true);
     try {
-      console.log('FileManager: Calling /api/files/list with debug...');
-      const response = await api.get('/files/list?debug=1');
-      console.log('FileManager: Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        fileCount: response.data?.files?.length || 0,
-        debug: response.data?.debug || 'No debug info',
-        hasFiles: !!response.data?.files,
-        filesArray: Array.isArray(response.data?.files) ? response.data.files : 'NOT AN ARRAY',
-      });
-      
-      // Log debug info if available
-      if (response.data?.debug) {
-        console.log('FileManager: Debug info:', JSON.stringify(response.data.debug, null, 2));
-      }
-      
-      // Log first few file names if available
-      if (Array.isArray(response.data?.files) && response.data.files.length > 0) {
-        console.log('FileManager: First 5 files:', response.data.files.slice(0, 5).map((f: any) => f.name));
-      } else {
-        console.warn('FileManager: No files in response or files is not an array!', {
-          dataType: typeof response.data,
-          filesType: typeof response.data?.files,
-          isArray: Array.isArray(response.data?.files),
-          rawData: response.data,
-        });
-      }
-      
-      let fileList = response.data.files || [];
+      const response = await api.get('/files/list');
+      let fileList = response.data?.files || [];
       
       if (mode === 'image' || accept === 'image/*') {
-        console.log('FileManager: Filtering for images only');
         fileList = fileList.filter((file: FileItem) => {
           const ext = file.name.toLowerCase();
           return ext.endsWith('.jpg') || ext.endsWith('.jpeg') || 
                  ext.endsWith('.png') || ext.endsWith('.gif') || 
                  ext.endsWith('.webp') || ext.endsWith('.svg');
         });
-        console.log(`FileManager: Filtered to ${fileList.length} image files`);
       }
       
       setFiles(fileList);
-      console.log(`FileManager: Set ${fileList.length} files to state`);
     } catch (error: any) {
       console.error('FileManager: Error loading files:', error);
-      console.error('FileManager: Error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-      });
       const errorMessage = error.response?.data?.error || error.message || 'Lỗi khi tải danh sách file';
       toast.error(errorMessage);
     } finally {
       setLoading(false);
-      console.log('FileManager: loadFiles() completed');
     }
   };
 
   useEffect(() => {
-    console.log('=== FileManager: useEffect TRIGGERED ===', {
-      isOpen,
-      mode,
-      accept,
-      timestamp: new Date().toISOString(),
-    });
     if (isOpen) {
-      console.log('FileManager: isOpen is TRUE, calling loadFiles() NOW...');
-      loadFiles().catch(err => {
-        console.error('FileManager: loadFiles() FAILED:', err);
-      });
+      loadFiles();
       setSelectedFiles(new Set());
-    } else {
-      console.log('FileManager: isOpen is FALSE, skipping loadFiles()');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
@@ -182,21 +116,9 @@ export default function FileManager({
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    // FORCE LOG - This should ALWAYS appear if upload is triggered
-    console.log('🚀🚀🚀 FileManager: handleFileUpload CALLED 🚀🚀🚀', {
-      filesCount: e.target.files?.length || 0,
-      timestamp: new Date().toISOString(),
-      componentVersion: '2bf1023', // Latest commit
-    });
-    console.error('🔴 ERROR TEST - If you see this, console is working');
-    console.warn('🟡 WARN TEST - If you see this, console is working');
-    console.info('🔵 INFO TEST - If you see this, console is working');
-    
     const filesToUpload = Array.from(e.target.files || []);
-    console.log('📁 Files to upload:', filesToUpload.length, filesToUpload.map(f => f.name));
     
     if (filesToUpload.length === 0) {
-      console.log('No files selected');
       return;
     }
 
@@ -216,27 +138,21 @@ export default function FileManager({
     try {
       for (const file of filesToUpload) {
         try {
-          console.log(`Uploading file: ${file.name}, size: ${file.size}, type: ${file.type}`);
-          
           // Compress image if it's an image file
           let fileToUpload: File;
           try {
             // Only compress if file is larger than 500KB
             if (file.size > 500 * 1024 && file.type.startsWith('image/')) {
               fileToUpload = await compressImage(file);
-              console.log(`File after compression: ${fileToUpload.name}, size: ${fileToUpload.size}, type: ${fileToUpload.type}`);
             } else {
               fileToUpload = file;
-              console.log(`Using original file (no compression needed): ${file.name}, size: ${file.size}`);
             }
           } catch (compressionError) {
-            console.warn('Compression failed, using original file:', compressionError);
             fileToUpload = file;
           }
 
           // Validate file before upload
           if (!fileToUpload || !(fileToUpload instanceof File)) {
-            console.error('Invalid file object:', fileToUpload);
             toast.error(`File ${file.name} không hợp lệ`);
             failCount++;
             continue;
@@ -245,26 +161,16 @@ export default function FileManager({
           const formData = new FormData();
           formData.append('file', fileToUpload, fileToUpload.name);
 
-          console.log('Sending upload request to /files/upload...');
           const response = await api.post('/files/upload', formData);
-          console.log('Upload response:', response.data);
           
           if (response.data && response.data.success) {
             successCount++;
-            console.log(`File ${file.name} uploaded successfully:`, response.data.url);
           } else {
-            console.error(`Upload failed for ${file.name}:`, response.data);
             toast.error(`Lỗi khi upload ${file.name}: ${response.data?.error || 'Unknown error'}`);
             failCount++;
           }
         } catch (error: any) {
           console.error(`Error uploading ${file.name}:`, error);
-          console.error('Error details:', {
-            message: error.message,
-            response: error.response?.data,
-            status: error.response?.status,
-            stack: error.stack
-          });
           const errorMsg = error.response?.data?.error || error.message || 'Lỗi không xác định';
           toast.error(`Lỗi khi upload ${file.name}: ${errorMsg}`);
           failCount++;
@@ -272,20 +178,13 @@ export default function FileManager({
       }
 
       if (successCount > 0) {
-        console.log('✅✅✅ Upload SUCCESS - About to show toast and reload ✅✅✅', {
-          successCount,
-          timestamp: new Date().toISOString(),
-        });
         toast.success(`Upload thành công ${successCount} file${successCount > 1 ? 's' : ''}`);
-        console.log(`🔄 FileManager: Upload successful, reloading file list...`);
         // Add a small delay to ensure blob is available
-        await new Promise(resolve => setTimeout(resolve, 500));
-        console.log('📞 FileManager: Calling loadFiles() after upload...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
         try {
           await loadFiles();
-          console.log('✅ FileManager: loadFiles() completed after upload');
         } catch (loadError) {
-          console.error('❌ FileManager: loadFiles() FAILED after upload:', loadError);
+          console.error('FileManager: Failed to reload files after upload:', loadError);
         }
       }
       if (failCount > 0) {
@@ -430,20 +329,9 @@ export default function FileManager({
     return iconMap[ext || ''] || 'fa-file';
   };
 
-  console.log('=== FileManager: About to RETURN JSX ===', {
-    isOpen,
-    filesCount: files.length,
-    loading,
-    uploading,
-    timestamp: new Date().toISOString(),
-  });
-  
   if (!isOpen) {
-    console.log('FileManager: isOpen is FALSE, returning NULL (component will not render)');
     return null;
   }
-  
-  console.log('FileManager: isOpen is TRUE, RETURNING MODAL JSX NOW');
 
   return (
     <div 
@@ -464,12 +352,7 @@ export default function FileManager({
               <button
                 type="button"
                 className="btn btn-outline-secondary btn-sm"
-                onClick={() => {
-                  console.log('🔄 REFRESH BUTTON CLICKED - Force reloading files...');
-                  loadFiles().catch(err => {
-                    console.error('❌ Refresh failed:', err);
-                  });
-                }}
+                onClick={() => loadFiles()}
                 disabled={loading || uploading}
                 title="Refresh file list"
               >
@@ -478,10 +361,7 @@ export default function FileManager({
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
-                onClick={() => {
-                  console.log('📤 UPLOAD BUTTON CLICKED');
-                  fileInputRef.current?.click();
-                }}
+                onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
                 title="Upload file"
               >
