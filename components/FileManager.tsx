@@ -40,7 +40,15 @@ export default function FileManager({
     accept,
     multiSelect,
     timestamp: new Date().toISOString(),
+    version: '2849e7c-WITH-REFRESH-BUTTON', // Latest commit with refresh button
   });
+  
+  // Force alert to verify code is loaded (remove after testing)
+  if (typeof window !== 'undefined' && !(window as any).__fileManagerVersionChecked) {
+    (window as any).__fileManagerVersionChecked = true;
+    console.log('🔍 FileManager Version Check: 2849e7c-WITH-REFRESH-BUTTON');
+    console.log('🔍 If you see this, new code is loaded!');
+  }
   
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(false);
