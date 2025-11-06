@@ -141,7 +141,13 @@ export async function GET(request: NextRequest) {
           stack: error.stack,
           name: error.name,
         });
-        // Fall through to local storage as fallback
+        
+        // On Vercel, if Blob list fails, return empty array instead of falling back to filesystem
+        if (isVercel) {
+          console.error('On Vercel, cannot fallback to local filesystem. Returning empty array.');
+          return NextResponse.json({ files: [] });
+        }
+        // Only fall through to local storage if NOT on Vercel
       }
     } else {
       console.log('Skipping Vercel Blob list:', {
@@ -149,9 +155,15 @@ export async function GET(request: NextRequest) {
         isVercel,
         hasToken,
       });
+      
+      // If on Vercel but no token, return empty array (cannot use local filesystem)
+      if (isVercel) {
+        console.error('On Vercel but BLOB_READ_WRITE_TOKEN not found. Returning empty array.');
+        return NextResponse.json({ files: [] });
+      }
     }
 
-    // Fallback: Local filesystem (for development)
+    // Fallback: Local filesystem (ONLY for development, NOT on Vercel)
     const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
     
     if (!existsSync(uploadsDir)) {
