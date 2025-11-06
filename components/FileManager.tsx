@@ -44,34 +44,56 @@ export default function FileManager({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadFiles = async () => {
+    console.log('FileManager: loadFiles() called');
     setLoading(true);
     try {
+      console.log('FileManager: Calling /api/files/list...');
       const response = await api.get('/files/list');
+      console.log('FileManager: Response received:', {
+        status: response.status,
+        fileCount: response.data?.files?.length || 0,
+        files: response.data?.files || [],
+      });
+      
       let fileList = response.data.files || [];
       
       if (mode === 'image' || accept === 'image/*') {
+        console.log('FileManager: Filtering for images only');
         fileList = fileList.filter((file: FileItem) => {
           const ext = file.name.toLowerCase();
           return ext.endsWith('.jpg') || ext.endsWith('.jpeg') || 
                  ext.endsWith('.png') || ext.endsWith('.gif') || 
                  ext.endsWith('.webp') || ext.endsWith('.svg');
         });
+        console.log(`FileManager: Filtered to ${fileList.length} image files`);
       }
       
       setFiles(fileList);
+      console.log(`FileManager: Set ${fileList.length} files to state`);
     } catch (error: any) {
-      console.error('Error loading files:', error);
+      console.error('FileManager: Error loading files:', error);
+      console.error('FileManager: Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+      });
       const errorMessage = error.response?.data?.error || error.message || 'Lỗi khi tải danh sách file';
       toast.error(errorMessage);
     } finally {
       setLoading(false);
+      console.log('FileManager: loadFiles() completed');
     }
   };
 
   useEffect(() => {
+    console.log('FileManager: useEffect triggered, isOpen:', isOpen);
     if (isOpen) {
+      console.log('FileManager: isOpen is true, calling loadFiles()');
       loadFiles();
       setSelectedFiles(new Set());
+    } else {
+      console.log('FileManager: isOpen is false, skipping loadFiles()');
     }
   }, [isOpen]);
 
