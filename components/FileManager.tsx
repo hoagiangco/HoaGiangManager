@@ -174,12 +174,18 @@ export default function FileManager({
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log('=== FileManager: handleFileUpload CALLED ===', {
+    // FORCE LOG - This should ALWAYS appear if upload is triggered
+    console.log('🚀🚀🚀 FileManager: handleFileUpload CALLED 🚀🚀🚀', {
       filesCount: e.target.files?.length || 0,
       timestamp: new Date().toISOString(),
+      componentVersion: '2bf1023', // Latest commit
     });
+    console.error('🔴 ERROR TEST - If you see this, console is working');
+    console.warn('🟡 WARN TEST - If you see this, console is working');
+    console.info('🔵 INFO TEST - If you see this, console is working');
+    
     const filesToUpload = Array.from(e.target.files || []);
-    console.log('Files to upload:', filesToUpload.length);
+    console.log('📁 Files to upload:', filesToUpload.length, filesToUpload.map(f => f.name));
     
     if (filesToUpload.length === 0) {
       console.log('No files selected');
@@ -258,13 +264,21 @@ export default function FileManager({
       }
 
       if (successCount > 0) {
+        console.log('✅✅✅ Upload SUCCESS - About to show toast and reload ✅✅✅', {
+          successCount,
+          timestamp: new Date().toISOString(),
+        });
         toast.success(`Upload thành công ${successCount} file${successCount > 1 ? 's' : ''}`);
-        console.log(`FileManager: Upload successful, reloading file list...`);
+        console.log(`🔄 FileManager: Upload successful, reloading file list...`);
         // Add a small delay to ensure blob is available
         await new Promise(resolve => setTimeout(resolve, 500));
-        console.log('FileManager: Calling loadFiles() after upload...');
-        await loadFiles();
-        console.log('FileManager: loadFiles() completed after upload');
+        console.log('📞 FileManager: Calling loadFiles() after upload...');
+        try {
+          await loadFiles();
+          console.log('✅ FileManager: loadFiles() completed after upload');
+        } catch (loadError) {
+          console.error('❌ FileManager: loadFiles() FAILED after upload:', loadError);
+        }
       }
       if (failCount > 0) {
         toast.error(`Lỗi khi upload ${failCount} file${failCount > 1 ? 's' : ''}`);
