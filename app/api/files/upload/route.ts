@@ -7,18 +7,25 @@ import { authenticate } from '@/lib/auth/middleware';
 // Dynamic import for Vercel Blob (only in production)
 async function uploadToBlob(fileName: string, buffer: Buffer, contentType: string): Promise<string | null> {
   try {
-    // Check if running on Vercel
-    const isVercel = !!process.env.VERCEL;
+    // Check if running on Vercel (multiple ways to detect)
+    const isVercel = !!(
+      process.env.VERCEL || 
+      process.env.VERCEL_ENV || 
+      process.env.VERCEL_URL ||
+      process.env.NEXT_PUBLIC_VERCEL_URL
+    );
     const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN;
     
     console.log('Blob upload check:', {
       isVercel,
       hasToken,
+      VERCEL: process.env.VERCEL,
+      VERCEL_ENV: process.env.VERCEL_ENV,
       nodeEnv: process.env.NODE_ENV,
     });
 
-    // Only try blob in production/Vercel environment
-    if (isVercel && hasToken) {
+    // Only try blob if we have token (on Vercel or production)
+    if (hasToken) {
       // Dynamic import to avoid bundling issues
       const { put } = await import('@vercel/blob');
       
@@ -31,8 +38,9 @@ async function uploadToBlob(fileName: string, buffer: Buffer, contentType: strin
       
       console.log('Blob uploaded successfully:', blob.url);
       return blob.url;
-    } else if (isVercel && !hasToken) {
+    } else if (isVercel) {
       console.error('Running on Vercel but BLOB_READ_WRITE_TOKEN not found');
+      throw new Error('BLOB_READ_WRITE_TOKEN is required for Vercel Blob upload');
     }
   } catch (error: any) {
     console.error('Vercel Blob upload error:', error);
@@ -41,7 +49,8 @@ async function uploadToBlob(fileName: string, buffer: Buffer, contentType: strin
       stack: error.stack,
       name: error.name,
     });
-    // Fallback to local storage
+    // Don't fallback - let caller handle the error
+    throw error;
   }
   return null;
 }
@@ -88,8 +97,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Empty file' }, { status: 400 });
     }
 
+    // Check if running on Vercel (multiple ways to detect)
+    const isVercel = !!(
+      process.env.VERCEL || 
+      process.env.VERCEL_ENV || 
+      process.env.VERCEL_URL ||
+      process.env.NEXT_PUBLIC_VERCEL_URL
+    );
+
+    console.log('Environment check:', {
+      VERCEL: process.env.VERCEL,
+      VERCEL_ENV: process.env.VERCEL_ENV,
+      VERCEL_URL: process.env.VERCEL_URL,
+      isVercel,
+    });
+
     // Try Vercel Blob first (if available)
-    const blobUrl = await uploadToBlob(fileName, buffer, file.type || 'application/octet-stream');
+    let blobUrl: string | null = null;
+    try {
+      blobUrl = await uploadToBlob(fileName, buffer, file.type || 'application/octet-stream');
+    } catch (blobError: any) {
+      // If we're on Vercel and blob upload failed, return error immediately
+      if (isVercel) {
+        console.error('Vercel Blob upload failed:', blobError);
+        const errorMsg = process.env.BLOB_READ_WRITE_TOKEN 
+          ? `Failed to upload to Vercel Blob: ${blobError.message}. Please check Blob Store configuration and logs.`
+          : 'Vercel Blob Store not configured. Please set up Blob Store in Vercel Dashboard and ensure BLOB_READ_WRITE_TOKEN is set.';
+        
+        return NextResponse.json(
+          { 
+            error: errorMsg,
+            details: 'Vercel serverless functions have read-only filesystem. File upload requires Vercel Blob Storage.',
+            troubleshooting: '1. Go to Vercel Dashboard → Storage → Create/Connect Blob Store. 2. Ensure BLOB_READ_WRITE_TOKEN is set. 3. Redeploy your project.'
+          },
+          { status: 500 }
+        );
+      }
+      // If not on Vercel, fall through to local storage
+      console.warn('Blob upload failed, falling back to local storage:', blobError.message);
+    }
     
     if (blobUrl) {
       console.log('File uploaded to Vercel Blob:', fileName, blobUrl);
@@ -102,20 +148,31 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Fallback: Try to use /tmp directory on Vercel (read-only filesystem)
-    // On Vercel, we cannot write to public/uploads, so we must use Blob
-    if (process.env.VERCEL) {
-      console.error('Vercel Blob not available, but running on Vercel. Please configure Blob Store.');
+    // CRITICAL: On Vercel, NEVER try to write to filesystem
+    // If we're on Vercel and blob upload failed, return error immediately
+    if (isVercel) {
+      const errorMsg = process.env.BLOB_READ_WRITE_TOKEN 
+        ? 'Failed to upload to Vercel Blob. Please check Blob Store configuration and logs.'
+        : 'Vercel Blob Store not configured. Please set up Blob Store in Vercel Dashboard and ensure BLOB_READ_WRITE_TOKEN is set.';
+      
+      console.error('Vercel upload failed:', {
+        hasToken: !!process.env.BLOB_READ_WRITE_TOKEN,
+        errorMsg,
+      });
+      
       return NextResponse.json(
         { 
-          error: 'File upload not configured. Please set up Vercel Blob Store in your project settings.',
-          details: 'Vercel serverless functions have read-only filesystem. Use Vercel Blob for file storage.'
+          error: errorMsg,
+          details: 'Vercel serverless functions have read-only filesystem. File upload requires Vercel Blob Storage.',
+          troubleshooting: '1. Go to Vercel Dashboard → Storage → Create/Connect Blob Store. 2. Ensure BLOB_READ_WRITE_TOKEN is set. 3. Redeploy your project.'
         },
         { status: 500 }
       );
     }
 
-    // Local development: save to public/uploads
+    // ONLY for local development: save to public/uploads
+    // This code should NEVER run on Vercel
+    console.log('Using local file storage (development mode)');
     const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
     if (!existsSync(uploadsDir)) {
       await mkdir(uploadsDir, { recursive: true });
