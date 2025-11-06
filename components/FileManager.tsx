@@ -455,8 +455,25 @@ export default function FileManager({
             <div className="d-flex gap-2 align-items-center">
               <button
                 type="button"
+                className="btn btn-outline-secondary btn-sm"
+                onClick={() => {
+                  console.log('🔄 REFRESH BUTTON CLICKED - Force reloading files...');
+                  loadFiles().catch(err => {
+                    console.error('❌ Refresh failed:', err);
+                  });
+                }}
+                disabled={loading || uploading}
+                title="Refresh file list"
+              >
+                <i className="fas fa-sync-alt"></i> Refresh
+              </button>
+              <button
+                type="button"
                 className="btn btn-primary btn-sm"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => {
+                  console.log('📤 UPLOAD BUTTON CLICKED');
+                  fileInputRef.current?.click();
+                }}
                 disabled={uploading}
                 title="Upload file"
               >
