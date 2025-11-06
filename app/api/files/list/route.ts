@@ -9,6 +9,7 @@ async function listBlobFiles(): Promise<any[]> {
   try {
     // Dynamic import to avoid bundling issues
     const { list } = await import('@vercel/blob');
+    const token = process.env.BLOB_READ_WRITE_TOKEN as string | undefined;
     
     console.log('Calling Vercel Blob list()...');
     
@@ -26,6 +27,7 @@ async function listBlobFiles(): Promise<any[]> {
       const result: any = await list({
         cursor: cursor,
         limit: 1000, // Maximum items per page
+        token,
       });
       
       console.log(`Page ${pageCount} result:`, {
@@ -133,7 +135,11 @@ export async function GET(request: NextRequest) {
           new Date(b.modified).getTime() - new Date(a.modified).getTime()
         );
 
-        return NextResponse.json({ files: blobFiles });
+        return NextResponse.json({ files: blobFiles }, {
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        });
       } catch (error: any) {
         console.error('Failed to list from Vercel Blob:', error);
         console.error('Error details:', {
@@ -145,7 +151,9 @@ export async function GET(request: NextRequest) {
         // On Vercel, if Blob list fails, return empty array instead of falling back to filesystem
         if (isVercel) {
           console.error('On Vercel, cannot fallback to local filesystem. Returning empty array.');
-          return NextResponse.json({ files: [] });
+          return NextResponse.json({ files: [] }, {
+            headers: { 'Cache-Control': 'no-store' },
+          });
         }
         // Only fall through to local storage if NOT on Vercel
       }
@@ -159,7 +167,9 @@ export async function GET(request: NextRequest) {
       // If on Vercel but no token, return empty array (cannot use local filesystem)
       if (isVercel) {
         console.error('On Vercel but BLOB_READ_WRITE_TOKEN not found. Returning empty array.');
-        return NextResponse.json({ files: [] });
+        return NextResponse.json({ files: [] }, {
+          headers: { 'Cache-Control': 'no-store' },
+        });
       }
     }
 
@@ -167,7 +177,9 @@ export async function GET(request: NextRequest) {
     const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
     
     if (!existsSync(uploadsDir)) {
-      return NextResponse.json({ files: [] });
+      return NextResponse.json({ files: [] }, {
+        headers: { 'Cache-Control': 'no-store' },
+      });
     }
 
     const files = await readdir(uploadsDir);
