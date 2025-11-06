@@ -12,32 +12,65 @@ async function listBlobFiles(): Promise<any[]> {
     
     console.log('Calling Vercel Blob list()...');
     
-    // List all blobs
-    const result = await list();
+    // List all blobs with pagination support
+    let allBlobs: any[] = [];
+    let cursor: string | undefined = undefined;
+    let hasMore = true;
+    let pageCount = 0;
+    const maxPages = 100; // Safety limit to prevent infinite loops
     
-    console.log('Vercel Blob list() result:', {
-      hasBlobs: !!result.blobs,
-      blobCount: result.blobs?.length || 0,
-      hasCursor: !!result.cursor,
-      hasHasMore: 'hasMore' in result ? result.hasMore : 'N/A',
-    });
+    while (hasMore && pageCount < maxPages) {
+      pageCount++;
+      console.log(`Fetching page ${pageCount}${cursor ? ` (cursor: ${cursor.substring(0, 20)}...)` : ''}...`);
+      
+      const result = await list({
+        cursor: cursor,
+        limit: 1000, // Maximum items per page
+      });
+      
+      console.log(`Page ${pageCount} result:`, {
+        hasBlobs: !!result.blobs,
+        blobCount: result.blobs?.length || 0,
+        hasCursor: !!result.cursor,
+        hasHasMore: 'hasMore' in result ? result.hasMore : 'N/A',
+      });
+      
+      const pageBlobs = result.blobs || [];
+      allBlobs = allBlobs.concat(pageBlobs);
+      
+      // Check if there are more pages
+      if (result.cursor && pageBlobs.length > 0) {
+        cursor = result.cursor;
+        hasMore = true;
+      } else {
+        hasMore = false;
+      }
+      
+      // If no cursor or empty result, we're done
+      if (!result.cursor || pageBlobs.length === 0) {
+        hasMore = false;
+      }
+    }
     
-    const blobs = result.blobs || [];
-    console.log(`Found ${blobs.length} files in Vercel Blob`);
+    console.log(`Total files found: ${allBlobs.length} (across ${pageCount} pages)`);
     
-    if (blobs.length > 0) {
+    if (allBlobs.length > 0) {
       console.log('Sample blob:', {
-        pathname: blobs[0].pathname,
-        url: blobs[0].url,
-        size: blobs[0].size,
-        uploadedAt: blobs[0].uploadedAt,
+        pathname: allBlobs[0].pathname,
+        url: allBlobs[0].url,
+        size: allBlobs[0].size,
+        uploadedAt: allBlobs[0].uploadedAt,
       });
     }
     
     // Map blob format to our file format
-    const mappedFiles = blobs.map((blob: any) => {
+    const mappedFiles = allBlobs.map((blob: any) => {
       // Extract filename from pathname (could be just filename or path/filename)
-      const fileName = blob.pathname.split('/').pop() || blob.pathname || 'unnamed';
+      // Handle both cases: "filename.jpg" or "path/to/filename.jpg"
+      let fileName = blob.pathname || 'unnamed';
+      if (fileName.includes('/')) {
+        fileName = fileName.split('/').pop() || fileName;
+      }
       
       return {
         name: fileName,
