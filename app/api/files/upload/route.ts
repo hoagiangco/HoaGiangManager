@@ -3,13 +3,25 @@ import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 import { authenticate } from '@/lib/auth/middleware';
-// Vercel Blob is used in production for persistent storage
-let put: any;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  ({ put } = require('@vercel/blob'));
-} catch {
-  // no-op locally if package not present yet
+
+// Dynamic import for Vercel Blob (only in production)
+async function uploadToBlob(fileName: string, buffer: Buffer, contentType: string): Promise<string | null> {
+  try {
+    // Only try blob in production/Vercel environment
+    if (process.env.VERCEL && process.env.BLOB_READ_WRITE_TOKEN) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { put } = require('@vercel/blob');
+      const blob = await put(fileName, buffer, {
+        access: 'public',
+        contentType: contentType || 'application/octet-stream',
+      });
+      return blob.url;
+    }
+  } catch (error: any) {
+    console.error('Vercel Blob upload error:', error.message);
+    // Fallback to local storage
+  }
+  return null;
 }
 
 export async function POST(request: NextRequest) {
@@ -54,26 +66,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Empty file' }, { status: 400 });
     }
 
-    // If running on Vercel (production), use Blob storage
-    const isProd = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
-    if (isProd && put) {
-      const blob = await put(fileName, buffer, {
-        access: 'public',
-        contentType: file.type || 'application/octet-stream',
-      });
-      const fileUrl = blob.url as string;
-
-      console.log('File uploaded to Vercel Blob:', fileName, fileUrl);
+    // Try Vercel Blob first (if available)
+    const blobUrl = await uploadToBlob(fileName, buffer, file.type || 'application/octet-stream');
+    
+    if (blobUrl) {
+      console.log('File uploaded to Vercel Blob:', fileName, blobUrl);
       return NextResponse.json({
         success: true,
-        url: fileUrl,
-        path: fileUrl,
+        url: blobUrl,
+        path: blobUrl,
         name: originalName,
         size: file.size,
       });
     }
 
-    // Fallback for local/dev: save to public/uploads
+    // Fallback: Try to use /tmp directory on Vercel (read-only filesystem)
+    // On Vercel, we cannot write to public/uploads, so we must use Blob
+    if (process.env.VERCEL) {
+      console.error('Vercel Blob not available, but running on Vercel. Please configure Blob Store.');
+      return NextResponse.json(
+        { 
+          error: 'File upload not configured. Please set up Vercel Blob Store in your project settings.',
+          details: 'Vercel serverless functions have read-only filesystem. Use Vercel Blob for file storage.'
+        },
+        { status: 500 }
+      );
+    }
+
+    // Local development: save to public/uploads
     const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
     if (!existsSync(uploadsDir)) {
       await mkdir(uploadsDir, { recursive: true });
