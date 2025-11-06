@@ -408,12 +408,20 @@ export default function FileManager({
     return iconMap[ext || ''] || 'fa-file';
   };
 
-  console.log('FileManager: About to render, isOpen:', isOpen);
+  console.log('=== FileManager: About to RETURN JSX ===', {
+    isOpen,
+    filesCount: files.length,
+    loading,
+    uploading,
+    timestamp: new Date().toISOString(),
+  });
+  
   if (!isOpen) {
-    console.log('FileManager: isOpen is false, returning null (not rendering)');
+    console.log('FileManager: isOpen is FALSE, returning NULL (component will not render)');
     return null;
   }
-  console.log('FileManager: isOpen is true, rendering modal');
+  
+  console.log('FileManager: isOpen is TRUE, RETURNING MODAL JSX NOW');
 
   return (
     <div 
