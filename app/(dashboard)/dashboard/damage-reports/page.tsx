@@ -182,6 +182,11 @@ export default function DamageReportsPage() {
   const [showFileManager, setShowFileManager] = useState(false);
   const [fileManagerMode, setFileManagerMode] = useState<'image' | 'all'>('image');
   
+  // Log FileManager state changes
+  useEffect(() => {
+    console.log('DamageReports: showFileManager state changed to:', showFileManager);
+  }, [showFileManager]);
+  
   // Export Excel modal state
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportDepartment, setExportDepartment] = useState(0);
@@ -1947,7 +1952,12 @@ export default function DamageReportsPage() {
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center justify-content-between">
                       <span>Hình ảnh</span>
-                      <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => { setFileManagerMode('image'); setShowFileManager(true); }}>Chọn hình</button>
+                      <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => { 
+                        console.log('DamageReports: Opening FileManager, setting showFileManager to true');
+                        setFileManagerMode('image'); 
+                        setShowFileManager(true);
+                        console.log('DamageReports: showFileManager state updated');
+                      }}>Chọn hình</button>
                     </label>
                     {formData.images && formData.images.length > 0 ? (
                       <div className="d-flex flex-wrap gap-2">
@@ -1974,11 +1984,17 @@ export default function DamageReportsPage() {
         </div>
       )}
 
-      {showFileManager && (
+      {showFileManager && (() => {
+        console.log('DamageReports: Rendering FileManager, showFileManager:', showFileManager, 'fileManagerMode:', fileManagerMode);
+        return (
         <FileManager
           isOpen={showFileManager}
-          onClose={() => setShowFileManager(false)}
+          onClose={() => {
+            console.log('DamageReports: FileManager onClose called');
+            setShowFileManager(false);
+          }}
           onSelectFile={(url: string) => {
+            console.log('DamageReports: FileManager onSelectFile called with URL:', url);
             setFormData(prev => ({ ...prev, images: Array.from(new Set([...(prev.images || []), url])) }));
             setShowFileManager(false);
           }}
@@ -1986,7 +2002,8 @@ export default function DamageReportsPage() {
           mode="image"
           multiSelect={false}
         />
-      )}
+        );
+      })()}
 
       {showQuickView && (
         <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={closeQuickView}>
