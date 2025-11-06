@@ -53,14 +53,28 @@ export default function FileManager({
       const response = await api.get('/files/list?debug=1');
       console.log('FileManager: Response received:', {
         status: response.status,
+        statusText: response.statusText,
         fileCount: response.data?.files?.length || 0,
         debug: response.data?.debug || 'No debug info',
-        files: response.data?.files || [],
+        hasFiles: !!response.data?.files,
+        filesArray: Array.isArray(response.data?.files) ? response.data.files : 'NOT AN ARRAY',
       });
       
       // Log debug info if available
       if (response.data?.debug) {
         console.log('FileManager: Debug info:', JSON.stringify(response.data.debug, null, 2));
+      }
+      
+      // Log first few file names if available
+      if (Array.isArray(response.data?.files) && response.data.files.length > 0) {
+        console.log('FileManager: First 5 files:', response.data.files.slice(0, 5).map((f: any) => f.name));
+      } else {
+        console.warn('FileManager: No files in response or files is not an array!', {
+          dataType: typeof response.data,
+          filesType: typeof response.data?.files,
+          isArray: Array.isArray(response.data?.files),
+          rawData: response.data,
+        });
       }
       
       let fileList = response.data.files || [];
@@ -228,12 +242,16 @@ export default function FileManager({
 
       if (successCount > 0) {
         toast.success(`Upload thành công ${successCount} file${successCount > 1 ? 's' : ''}`);
+        console.log(`FileManager: Upload successful, reloading file list...`);
+        // Add a small delay to ensure blob is available
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log('FileManager: Calling loadFiles() after upload...');
+        await loadFiles();
+        console.log('FileManager: loadFiles() completed after upload');
       }
       if (failCount > 0) {
         toast.error(`Lỗi khi upload ${failCount} file${failCount > 1 ? 's' : ''}`);
       }
-
-      await loadFiles();
     } catch (error: any) {
       console.error('Upload error:', error);
       console.error('Error details:', {
