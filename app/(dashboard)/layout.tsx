@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { AuthProvider } from '@/lib/contexts/AuthContext';
+import api from '@/lib/utils/api';
 
 export default function DashboardLayout({
   children,
@@ -17,6 +18,7 @@ export default function DashboardLayout({
   const [user, setUser] = useState<any>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [staffName, setStaffName] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -30,15 +32,53 @@ export default function DashboardLayout({
       }
 
       try {
-        setUser(JSON.parse(userStr));
+        const userData = JSON.parse(userStr);
+        setUser(userData);
         if (savedCollapsed === 'true') {
           setSidebarCollapsed(true);
         }
+        // Load staff name
+        loadStaffName(userData);
       } catch (error) {
         router.push('/login');
       }
     }
   }, [router]);
+
+  const loadStaffName = async (userData: any) => {
+    try {
+      if (!userData?.userId && !userData?.id && !userData?.fid && !userData?.email) return;
+      
+      const response = await api.get('/staff?departmentId=0');
+      if (response.data.status && response.data.data) {
+        const staff = response.data.data;
+        
+        // Try to find staff by userId/id/fid
+        const possibleUserIds: string[] = [];
+        if (userData.userId) possibleUserIds.push(String(userData.userId));
+        if (userData.id) possibleUserIds.push(String(userData.id));
+        if (userData.fid) possibleUserIds.push(String(userData.fid));
+        
+        let foundStaff = staff.find((s: any) => 
+          s.userId && possibleUserIds.some(uid => uid && s.userId === uid)
+        );
+        
+        // Fallback to email match
+        if (!foundStaff && userData.email) {
+          const userEmail = String(userData.email).trim().toLowerCase();
+          foundStaff = staff.find((s: any) => 
+            (s.email || '').trim().toLowerCase() === userEmail
+          );
+        }
+        
+        if (foundStaff) {
+          setStaffName(foundStaff.name);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading staff name:', error);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -144,11 +184,12 @@ export default function DashboardLayout({
                 <i className="fas fa-bars"></i>
               </button>
               <span 
-                className="top-navbar-user"
-                title={user?.fullName || user?.email}
-                aria-label={user?.fullName || user?.email}
+                className="top-navbar-user d-flex align-items-center gap-2"
+                title={staffName || user?.fullName || user?.email}
+                aria-label={staffName || user?.fullName || user?.email}
               >
                 <i className="fas fa-user-circle"></i>
+                {staffName && <span>{staffName}</span>}
               </span>
               <button 
                 className="btn btn-outline-primary btn-sm" 

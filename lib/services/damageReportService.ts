@@ -80,24 +80,7 @@ export class DamageReportService {
     const params: any[] = [];
     let paramIndex = 1;
 
-    // If user is not admin, only show reports created by them
-    if (filters && !filters.isAdmin && filters.currentUserId) {
-      // Get staffId from userId
-      const staffResult = await pool.query(
-        'SELECT "ID" FROM "Staff" WHERE "UserId" = $1',
-        [filters.currentUserId]
-      );
-      
-      if (staffResult.rows.length > 0) {
-        const staffId = staffResult.rows[0].ID;
-        query += ` AND dr."ReporterID" = $${paramIndex}`;
-        params.push(staffId);
-        paramIndex++;
-      } else {
-        // If user doesn't have a staff record, return empty array
-        return [];
-      }
-    }
+    // View permission: Users can view all records. Filtering for "My Work" is handled at the UI level.
 
     if (filters) {
       if (filters.status) {
@@ -477,6 +460,37 @@ export class DamageReportService {
         `INSERT INTO "DamageReportHistory" ("DamageReportID", "FieldName", "OldValue", "NewValue", "ChangedBy")
          VALUES ($1, 'Priority', $2, $3, $4)`,
         [id, currentPriority, priority.toString(), updatedBy]
+      );
+    }
+
+    return id;
+  }
+
+  async updateHandlerNotes(id: number, handlerNotes: string, updatedBy: string): Promise<number> {
+    // Get current handler notes
+    const currentResult = await pool.query(
+      `SELECT "HandlerNotes" FROM "DamageReport" WHERE "ID" = $1`,
+      [id]
+    );
+    
+    if (currentResult.rows.length === 0) {
+      throw new Error('Báo cáo không tồn tại');
+    }
+
+    const currentHandlerNotes = currentResult.rows[0].HandlerNotes || '';
+
+    // Update handler notes
+    await pool.query(
+      `UPDATE "DamageReport" SET "HandlerNotes" = $1, "UpdatedBy" = $2, "UpdatedAt" = CURRENT_TIMESTAMP WHERE "ID" = $3`,
+      [handlerNotes || null, updatedBy, id]
+    );
+
+    // Track change in history if notes actually changed
+    if (currentHandlerNotes !== (handlerNotes || '')) {
+      await pool.query(
+        `INSERT INTO "DamageReportHistory" ("DamageReportID", "FieldName", "OldValue", "NewValue", "ChangedBy")
+         VALUES ($1, 'HandlerNotes', $2, $3, $4)`,
+        [id, currentHandlerNotes || '', handlerNotes || '', updatedBy]
       );
     }
 

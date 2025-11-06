@@ -22,6 +22,10 @@ function AdminUsersPageContent() {
   const [showRolesModal, setShowRolesModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserVM | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [passwordUser, setPasswordUser] = useState<UserVM | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   useEffect(() => {
     loadData();
@@ -76,6 +80,43 @@ function AdminUsersPageContent() {
     }
   };
 
+  const openChangePasswordModal = (user: UserVM) => {
+    setPasswordUser(user);
+    setNewPassword('');
+    setConfirmPassword('');
+    setShowChangePasswordModal(true);
+  };
+
+  const handleChangePassword = async () => {
+    if (!passwordUser) return;
+
+    if (!newPassword || !confirmPassword) {
+      toast.error('Vui lòng nhập đầy đủ thông tin');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      toast.error('Mật khẩu phải có ít nhất 6 ký tự');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast.error('Mật khẩu xác nhận không khớp');
+      return;
+    }
+
+    try {
+      await api.put(`/users/${passwordUser.id}/change-password`, { newPassword });
+      toast.success('Đổi mật khẩu thành công');
+      setShowChangePasswordModal(false);
+      setPasswordUser(null);
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Lỗi khi đổi mật khẩu');
+    }
+  };
+
   if (loading) {
     return (
       <div className="container-fluid">
@@ -107,7 +148,7 @@ function AdminUsersPageContent() {
                   <th>Email</th>
                   <th>Quyền</th>
                   <th>Ngày tạo</th>
-                  <th style={{ width: '80px' }}>Thao tác</th>
+                  <th style={{ width: '150px' }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -123,9 +164,14 @@ function AdminUsersPageContent() {
                     </td>
                     <td>{u.createdDate ? new Date(u.createdDate).toLocaleString() : '-'}</td>
                     <td>
-                      <button className="btn btn-sm btn-primary" onClick={() => openRolesModal(u)} title="Gán quyền">
-                        <i className="fas fa-user-shield"></i>
-                      </button>
+                      <div className="d-flex gap-1">
+                        <button className="btn btn-sm btn-primary" onClick={() => openRolesModal(u)} title="Gán quyền">
+                          <i className="fas fa-user-shield"></i>
+                        </button>
+                        <button className="btn btn-sm btn-warning" onClick={() => openChangePasswordModal(u)} title="Đổi mật khẩu">
+                          <i className="fas fa-key"></i>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -165,6 +211,53 @@ function AdminUsersPageContent() {
               <div className="modal-footer">
                 <button className="btn btn-secondary" onClick={() => setShowRolesModal(false)}>Đóng</button>
                 <button className="btn btn-primary" onClick={saveRoles}>Lưu</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showChangePasswordModal && passwordUser && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} tabIndex={-1}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Đổi mật khẩu cho {passwordUser.email}</h5>
+                <button type="button" className="btn-close" onClick={() => setShowChangePasswordModal(false)}></button>
+              </div>
+              <div className="modal-body">
+                <div className="mb-3">
+                  <label className="form-label">Mật khẩu mới <span className="text-danger">*</span></label>
+                  <input
+                    type="password"
+                    className="form-control"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Nhập mật khẩu mới (ít nhất 6 ký tự)"
+                    minLength={6}
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Xác nhận mật khẩu <span className="text-danger">*</span></label>
+                  <input
+                    type="password"
+                    className="form-control"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Nhập lại mật khẩu mới"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleChangePassword();
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setShowChangePasswordModal(false)}>Hủy</button>
+                <button className="btn btn-warning" onClick={handleChangePassword}>
+                  <i className="fas fa-key me-2"></i>Đổi mật khẩu
+                </button>
               </div>
             </div>
           </div>

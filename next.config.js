@@ -12,6 +12,18 @@ const nextConfig = {
       },
     ];
   },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+      };
+    }
+    // exceljs is better supported in Next.js, no need for special handling
+    return config;
+  },
 }
 
 module.exports = nextConfig

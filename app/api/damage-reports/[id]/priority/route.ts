@@ -20,6 +20,14 @@ export async function PUT(
     const id = parseInt(params.id);
     const { priority } = await request.json();
 
+    // Only Admin can update priority
+    if (!user.roles || !user.roles.includes('Admin')) {
+      return NextResponse.json(
+        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được cập nhật ưu tiên' },
+        { status: 403 }
+      );
+    }
+
     if (!priority || ![1, 2, 3, 4].includes(priority)) {
       return NextResponse.json(
         { status: false, error: 'Ưu tiên không hợp lệ' },

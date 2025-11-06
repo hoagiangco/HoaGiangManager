@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/auth/middleware';
 import { DamageReportService } from '@/lib/services/damageReportService';
-import { DamageReportStatus } from '@/types';
 
 export async function PUT(
   request: NextRequest,
@@ -18,41 +17,33 @@ export async function PUT(
     }
 
     const id = parseInt(params.id);
-    const { status } = await request.json();
+    const { handlerNotes } = await request.json();
 
-    // Admin and User can update status
+    // Admin and User can update handler notes
     const isAdmin = user.roles && user.roles.includes('Admin');
     const isUser = user.roles && user.roles.includes('User');
     
     if (!isAdmin && !isUser) {
       return NextResponse.json(
-        { status: false, error: 'Forbidden: Bạn không có quyền cập nhật trạng thái' },
+        { status: false, error: 'Forbidden: Bạn không có quyền cập nhật ghi chú người xử lý' },
         { status: 403 }
       );
     }
 
-    if (!status || ![1, 2, 3, 4, 5, 6].includes(status)) {
-      return NextResponse.json(
-        { status: false, error: 'Trạng thái không hợp lệ' },
-        { status: 400 }
-      );
-    }
-
     const damageReportService = new DamageReportService();
-    await damageReportService.updateStatus(id, status as DamageReportStatus, user.userId);
+    await damageReportService.updateHandlerNotes(id, handlerNotes || '', user.userId);
 
     return NextResponse.json({
       status: true
     });
   } catch (error: any) {
-    console.error('Update status error:', error);
+    console.error('Update handler notes error:', error);
     return NextResponse.json(
-      { status: false, error: error.message || 'Đã xảy ra lỗi khi cập nhật trạng thái' },
+      { status: false, error: error.message || 'Đã xảy ra lỗi khi cập nhật ghi chú người xử lý' },
       { status: 500 }
     );
   }
 }
-
 
 
 

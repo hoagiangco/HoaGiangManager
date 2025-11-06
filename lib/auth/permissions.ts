@@ -10,6 +10,7 @@ export interface UserPermissions {
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  canUpdateStatus?: boolean; // For users to update status only
 }
 
 export function hasRole(userRoles: string[] | undefined, role: Role | string): boolean {
@@ -43,8 +44,9 @@ export function getDamageReportPermissions(userRoles: string[] | undefined): Use
   return {
     canView: isAdminUser || isUserRole,
     canCreate: isAdminUser || isUserRole,
-    canEdit: isAdminUser || isUserRole,
+    canEdit: isAdminUser, // Only admin can edit
     canDelete: isAdminUser, // Only admin can delete
+    canUpdateStatus: isAdminUser || isUserRole, // Both admin and user can update status
   };
 }
 

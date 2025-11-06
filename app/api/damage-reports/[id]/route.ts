@@ -52,43 +52,21 @@ export async function PUT(
     
     const isAdmin = user.roles && user.roles.includes('Admin');
 
-    // Build safe payload
-    let reportData: any = { id };
-
-    if (isAdmin) {
-      reportData = { ...body, id };
-    } else {
-      // Only allow updating Notes and Status for normal users
-      if (body.notes !== undefined) reportData.notes = body.notes;
-      if (body.status !== undefined) reportData.status = body.status;
-
-      // No other fields are allowed
+    // Only Admin can edit damage reports
+    if (!isAdmin) {
+      return NextResponse.json(
+        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được chỉnh sửa báo cáo hư hỏng' },
+        { status: 403 }
+      );
     }
+
+    // Build safe payload
+    const reportData: any = { ...body, id };
 
     // Set updatedBy
     reportData.updatedBy = user.userId;
 
     const damageReportService = new DamageReportService();
-
-    // For non-admin users, check ownership (createdBy or reporter linked to this user)
-    if (!isAdmin) {
-      const current = await damageReportService.getById(id);
-      if (!current) {
-        return NextResponse.json({ status: false, error: 'Không tìm thấy báo cáo' }, { status: 404 });
-      }
-
-      // Resolve staffId by userId
-      const { rows } = await (await import('@/lib/db')).default.query(
-        'SELECT "ID" FROM "Staff" WHERE "UserId" = $1',
-        [user.userId]
-      );
-      const staffId = rows.length > 0 ? rows[0].ID : null;
-
-      const isOwner = current?.createdBy === user.userId || (staffId && current?.reporterId === staffId);
-      if (!isOwner) {
-        return NextResponse.json({ status: false, error: 'Forbidden' }, { status: 403 });
-      }
-    }
 
     await damageReportService.update(reportData);
 

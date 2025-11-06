@@ -6,7 +6,136 @@ import { toast } from 'react-toastify';
 import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, StaffVM, Department } from '@/types';
 import { format } from 'date-fns';
 import FileManager from '@/components/FileManager';
-import { getDamageReportPermissions } from '@/lib/auth/permissions';
+import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
+
+// Handler Notes Editor Component
+const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false, canEdit = true }: { 
+  reportId: number; 
+  value: string; 
+  onChange: (value: string) => void;
+  onClick?: (e: React.MouseEvent) => void;
+  isCard?: boolean;
+  canEdit?: boolean;
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+  const [isSaving, setIsSaving] = useState(false);
+  const inputRef = React.useRef<HTMLTextAreaElement>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setEditValue(value);
+  }, [value]);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.setSelectionRange(inputRef.current.value.length, inputRef.current.value.length);
+    }
+  }, [isEditing]);
+
+  const handleBlur = async () => {
+    if (editValue !== value && !isSaving) {
+      setIsSaving(true);
+      try {
+        await onChange(editValue);
+      } catch (error) {
+        // Error handled by parent
+      } finally {
+        setIsSaving(false);
+        setIsEditing(false);
+      }
+    } else {
+      setIsEditing(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setEditValue(value);
+      setIsEditing(false);
+    }
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    // Stop propagation to prevent row selection
+    if (onClick) {
+      onClick(e);
+    }
+    // Only allow editing if canEdit is true
+    if (!isEditing && canEdit) {
+      setIsEditing(true);
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <textarea
+        ref={inputRef}
+        className="form-control form-control-sm"
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        onClick={(e) => e.stopPropagation()}
+        disabled={isSaving}
+        style={{
+          fontSize: isCard ? '0.8rem' : '0.75rem',
+          padding: isCard ? '0.5rem' : '0.25rem 0.5rem',
+          minHeight: isCard ? '3rem' : '2rem',
+          maxHeight: isCard ? '6rem' : '4rem',
+          resize: 'vertical',
+          width: '100%',
+          minWidth: isCard ? '100%' : '200px',
+          lineHeight: '1.5',
+          pointerEvents: 'auto'
+        }}
+        rows={isCard ? 3 : 2}
+      />
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      onClick={handleClick}
+      style={{
+        cursor: canEdit ? 'text' : 'default',
+        padding: isCard ? '0.5rem' : '0.25rem 0.5rem',
+        minHeight: isCard ? '3rem' : '2rem',
+        fontSize: isCard ? '0.8rem' : '0.75rem',
+        color: value ? '#495057' : '#6c757d',
+        fontStyle: value ? 'normal' : 'italic',
+        border: '1px solid transparent',
+        borderRadius: '4px',
+        transition: 'background-color 0.2s, border-color 0.2s',
+        maxWidth: isCard ? '100%' : '200px',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+        lineHeight: '1.5',
+        backgroundColor: isCard ? '#ffffff' : 'transparent',
+        pointerEvents: canEdit ? 'auto' : 'none',
+        userSelect: 'none',
+        opacity: canEdit ? 1 : 0.7
+      }}
+      onMouseEnter={(e) => {
+        if (canEdit) {
+          e.currentTarget.style.backgroundColor = '#f8f9fa';
+          e.currentTarget.style.borderColor = '#dee2e6';
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = isCard ? '#ffffff' : 'transparent';
+        e.currentTarget.style.borderColor = 'transparent';
+      }}
+      title={canEdit ? (value || 'Click để thêm ghi chú') : 'Chỉ người xử lý mới có thể chỉnh sửa'}
+    >
+      {isSaving ? 'Đang lưu...' : (value || 'Click để thêm ghi chú...')}
+    </div>
+  );
+};
 
 export default function DamageReportsPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -22,12 +151,19 @@ export default function DamageReportsPage() {
     canCreate: false,
     canEdit: false,
     canDelete: false,
+    canUpdateStatus: false,
   });
   const [selectedStatus, setSelectedStatus] = useState<DamageReportStatus | 0>(0);
   const [selectedPriority, setSelectedPriority] = useState<DamageReportPriority | 0>(0);
   const [selectedDevice, setSelectedDevice] = useState(0);
   const [selectedDepartment, setSelectedDepartment] = useState(0);
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchInputValue, setSearchInputValue] = useState(''); // Temporary value for search input
+  const [myWorkFilter, setMyWorkFilter] = useState(false);
+  const [myReportFilter, setMyReportFilter] = useState(false);
+  const [currentUserStaffId, setCurrentUserStaffId] = useState<number | null>(null);
+  const skipPageResetOnMyWorkToggle = useRef(false);
+  const skipPageResetOnMyReportToggle = useRef(false);
   const [showModal, setShowModal] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   
@@ -39,12 +175,21 @@ export default function DamageReportsPage() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   
   // Sort state
-  const [sortField, setSortField] = useState<string>('createdAt');
+  const [sortField, setSortField] = useState<string>('reportDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   
   // File Manager state
   const [showFileManager, setShowFileManager] = useState(false);
   const [fileManagerMode, setFileManagerMode] = useState<'image' | 'all'>('image');
+  
+  // Export Excel modal state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportDepartment, setExportDepartment] = useState(0);
+  const [exportFromDate, setExportFromDate] = useState(format(new Date(new Date().getFullYear(), 0, 1), 'yyyy-MM-dd')); // Start of year
+  const [exportToDate, setExportToDate] = useState(format(new Date(), 'yyyy-MM-dd')); // Today
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -196,15 +341,118 @@ export default function DamageReportsPage() {
     }
   };
 
+  const handlePrevImage = () => {
+    if (selectedImages.length === 0) return;
+    setCurrentImageIndex((prev) => (prev === 0 ? selectedImages.length - 1 : prev - 1));
+  };
+
+  const handleNextImage = () => {
+    if (selectedImages.length === 0) return;
+    setCurrentImageIndex((prev) => (prev === selectedImages.length - 1 ? 0 : prev + 1));
+  };
+
+  // Keyboard navigation for image modal
+  useEffect(() => {
+    if (!showImageModal) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowImageModal(false);
+      } else if (e.key === 'ArrowLeft') {
+        handlePrevImage();
+      } else if (e.key === 'ArrowRight') {
+        handleNextImage();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showImageModal, currentImageIndex, selectedImages.length]);
+
+  // Get current user staff ID (robust matching by userId/fid/id/email)
+  useEffect(() => {
+    if (!currentUser) return;
+    if (staff.length === 0) return;
+
+    const possibleUserIds: string[] = [];
+    // Common keys where an id may live
+    if (currentUser.userId) possibleUserIds.push(String(currentUser.userId));
+    if ((currentUser as any).id) possibleUserIds.push(String((currentUser as any).id));
+    if ((currentUser as any).fid) possibleUserIds.push(String((currentUser as any).fid));
+    if ((currentUser as any).sub) possibleUserIds.push(String((currentUser as any).sub));
+
+    const currentEmail: string | null = (currentUser as any).email ? String((currentUser as any).email).trim().toLowerCase() : null;
+
+    // Development logging - helps debug staff matching
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Resolve staff for user. ids:', possibleUserIds, 'email:', currentEmail);
+      console.log('Staff snapshot:', staff.map(s => ({ id: s.id, name: s.name, userId: s.userId, email: (s.email || '').toLowerCase() })));
+    }
+
+    // Try by userId keys (exact match)
+    let me = staff.find((s) => s.userId && possibleUserIds.some(uid => uid && s.userId === uid));
+    
+    // Try case-insensitive userId match
+    if (!me) {
+      me = staff.find((s) => s.userId && possibleUserIds.some(uid => 
+        uid && s.userId && s.userId.toLowerCase() === uid.toLowerCase()
+      ));
+    }
+    
+    // Try by userId with trimmed whitespace
+    if (!me) {
+      me = staff.find((s) => s.userId && possibleUserIds.some(uid => 
+        uid && s.userId && s.userId.trim() === uid.trim()
+      ));
+    }
+    
+    // Fallback by email (case-insensitive, trimmed)
+    if (!me && currentEmail) {
+      me = staff.find((s) => {
+        const staffEmail = (s.email || '').trim().toLowerCase();
+        return staffEmail && staffEmail === currentEmail;
+      });
+    }
+
+    if (me) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Resolved currentUserStaffId:', me.id, me.name);
+      }
+      setCurrentUserStaffId(me.id);
+    } else {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Unable to resolve staff for current user');
+      }
+      setCurrentUserStaffId(null);
+    }
+  }, [currentUser, staff]);
+
   // Filter and search logic
   useEffect(() => {
     loadData();
-    setCurrentPage(1);
-  }, [selectedStatus, selectedPriority, selectedDevice, selectedDepartment, searchKeyword]);
+    // Only reset page if not skipping (for filter toggles)
+    if (!skipPageResetOnMyWorkToggle.current && !skipPageResetOnMyReportToggle.current) {
+      setCurrentPage(1);
+    } else {
+      skipPageResetOnMyWorkToggle.current = false;
+      skipPageResetOnMyReportToggle.current = false;
+    }
+  }, [selectedStatus, selectedPriority, selectedDevice, selectedDepartment, searchKeyword, myWorkFilter, myReportFilter]);
 
   // Sort and pagination
   useEffect(() => {
     let filtered = [...allReports];
+
+    // Filter by "My Work" - only show reports assigned to current user
+    if (myWorkFilter && currentUserStaffId !== null) {
+      filtered = filtered.filter(report => report.handlerId === currentUserStaffId);
+    }
+
+    // Filter by "My Report" - only show reports created by current user
+    if (myReportFilter && currentUserStaffId !== null) {
+      filtered = filtered.filter(report => report.reporterId === currentUserStaffId);
+    }
 
     // Sort
     filtered.sort((a, b) => {
@@ -247,16 +495,19 @@ export default function DamageReportsPage() {
     });
 
     setReports(filtered);
-  }, [allReports, sortField, sortDirection]);
+  }, [allReports, sortField, sortDirection, myWorkFilter, myReportFilter, currentUserStaffId]);
 
   const handleNew = () => {
+    // Get current user's staff info
+    const currentStaff = currentUserStaffId ? staff.find(s => s.id === currentUserStaffId) : null;
+    
     setFormData({
       id: 0,
       deviceId: undefined,
       damageLocation: '',
       deviceSelection: 'device',
-      reporterId: 0,
-      reportingDepartmentId: 0,
+      reporterId: currentUserStaffId || 0,
+      reportingDepartmentId: currentStaff?.departmentId || 0,
       handlerId: undefined,
       assignedDate: '',
       reportDate: format(new Date(), 'yyyy-MM-dd'),
@@ -295,7 +546,9 @@ export default function DamageReportsPage() {
       }
 
       const selectedReport = response.data.data;
-      console.log('Loaded report data:', selectedReport); // Debug log
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Loaded report data:', selectedReport); // Debug log
+      }
       
       // Determine deviceSelection: if deviceId exists and is valid, it's 'device', otherwise 'other'
       const isDevice = selectedReport.deviceId !== null && selectedReport.deviceId !== undefined && selectedReport.deviceId > 0;
@@ -334,20 +587,24 @@ export default function DamageReportsPage() {
         rejectionReason: selectedReport.rejectionReason || '',
       };
       
-      console.log('Form data to set:', formDataToSet); // Debug log
-      console.log('Available devices:', devices.map(d => ({ id: d.id, name: d.name }))); // Debug
-      console.log('Available staff:', staff.map(s => ({ id: s.id, name: s.name }))); // Debug
-      console.log('Available departments:', departments.map(d => ({ id: d.id, name: d.name }))); // Debug
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Form data to set:', formDataToSet); // Debug log
+        console.log('Available devices:', devices.map(d => ({ id: d.id, name: d.name }))); // Debug
+        console.log('Available staff:', staff.map(s => ({ id: s.id, name: s.name }))); // Debug
+        console.log('Available departments:', departments.map(d => ({ id: d.id, name: d.name }))); // Debug
+      }
       
       // Check if the IDs exist in the loaded options
-      if (formDataToSet.deviceId && !devices.find(d => d.id === formDataToSet.deviceId)) {
-        console.warn(`Device ID ${formDataToSet.deviceId} not found in devices list`);
-      }
-      if (formDataToSet.reporterId && !staff.find(s => s.id === formDataToSet.reporterId)) {
-        console.warn(`Reporter ID ${formDataToSet.reporterId} not found in staff list`);
-      }
-      if (formDataToSet.handlerId && !staff.find(s => s.id === formDataToSet.handlerId)) {
-        console.warn(`Handler ID ${formDataToSet.handlerId} not found in staff list`);
+      if (process.env.NODE_ENV === 'development') {
+        if (formDataToSet.deviceId && !devices.find(d => d.id === formDataToSet.deviceId)) {
+          console.warn(`Device ID ${formDataToSet.deviceId} not found in devices list`);
+        }
+        if (formDataToSet.reporterId && !staff.find(s => s.id === formDataToSet.reporterId)) {
+          console.warn(`Reporter ID ${formDataToSet.reporterId} not found in staff list`);
+        }
+        if (formDataToSet.handlerId && !staff.find(s => s.id === formDataToSet.handlerId)) {
+          console.warn(`Handler ID ${formDataToSet.handlerId} not found in staff list`);
+        }
       }
       
       // Set form data immediately
@@ -604,6 +861,35 @@ export default function DamageReportsPage() {
     }
   };
 
+  const handleHandlerNotesChange = async (reportId: number, newHandlerNotes: string): Promise<void> => {
+    if (!currentUser?.id) {
+      toast.error('Không thể xác định người dùng');
+      throw new Error('User not authenticated');
+    }
+
+    try {
+      const response = await api.put(`/damage-reports/${reportId}/handler-notes`, { handlerNotes: newHandlerNotes });
+      if (response.data.status) {
+        // Update local state immediately for better UX
+        setReports(prev => prev.map(r => 
+          r.id === reportId ? { ...r, handlerNotes: newHandlerNotes } : r
+        ));
+        setAllReports(prev => prev.map(r => 
+          r.id === reportId ? { ...r, handlerNotes: newHandlerNotes } : r
+        ));
+        toast.success('Cập nhật ghi chú thành công');
+      } else {
+        const errorMsg = response.data.error || 'Lỗi khi cập nhật ghi chú';
+        toast.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.error || error.message || 'Lỗi khi cập nhật ghi chú';
+      toast.error(errorMsg);
+      throw error;
+    }
+  };
+
   // Handle table scroll
   useEffect(() => {
     const tableContainer = document.getElementById('damage-reports-table-responsive');
@@ -647,6 +933,136 @@ export default function DamageReportsPage() {
     }
   }, [showModal, isEdit, staff, currentUser]);
 
+  // Open Export Modal
+  const handleOpenExportModal = () => {
+    setShowExportModal(true);
+  };
+
+  // Export to Excel function
+  const handleExportExcel = async () => {
+    try {
+      // Validate dates
+      if (!exportFromDate || !exportToDate) {
+        toast.error('Vui lòng chọn khoảng thời gian');
+        return;
+      }
+
+      const fromDate = new Date(exportFromDate);
+      const toDate = new Date(exportToDate);
+      toDate.setHours(23, 59, 59, 999); // End of day
+
+      if (fromDate > toDate) {
+        toast.error('Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc');
+        return;
+      }
+
+      // Check if there's data to export before showing loading toast
+      const fromCheck = new Date(exportFromDate);
+      fromCheck.setHours(0, 0, 0, 0);
+      const toCheck = new Date(exportToDate);
+      toCheck.setHours(23, 59, 59, 999);
+
+      // Filter reports on client-side to check if there's any data
+      const hasData = allReports.some(report => {
+        // Check department filter
+        if (exportDepartment > 0 && report.reportingDepartmentId !== exportDepartment) {
+          return false;
+        }
+        
+        // Check date range
+        if (report.reportDate) {
+          const reportDate = new Date(report.reportDate);
+          reportDate.setHours(0, 0, 0, 0);
+          if (reportDate < fromCheck || reportDate > toCheck) {
+            return false;
+          }
+        } else {
+          return false; // Skip reports without reportDate
+        }
+        
+        return true;
+      });
+
+      if (!hasData) {
+        const deptName = exportDepartment > 0 
+          ? (departments.find(d => d.id === exportDepartment)?.name || 'bộ phận đã chọn')
+          : 'tất cả bộ phận';
+        const dateRange = `${format(fromDate, 'dd/MM/yyyy')} đến ${format(toDate, 'dd/MM/yyyy')}`;
+        toast.error(`Không có dữ liệu để xuất cho ${deptName} trong khoảng thời gian từ ${dateRange}. Vui lòng chọn khoảng thời gian khác hoặc bộ phận khác.`);
+        return;
+      }
+
+      // Show loading only if we have data
+      toast.info('Đang xuất Excel...');
+
+      // Build query string
+      const params = new URLSearchParams({
+        departmentId: exportDepartment.toString(),
+        fromDate: exportFromDate,
+        toDate: exportToDate,
+      });
+
+      // Call API to export Excel
+      const response = await api.get(`/damage-reports/export?${params.toString()}`, {
+        responseType: 'blob', // Important for binary data
+      });
+
+      // Get filename from Content-Disposition header or generate one
+      const contentDisposition = response.headers['content-disposition'];
+      let fileName = `BaoCaoHuHong_${format(fromDate, 'yyyyMMdd')}_${format(toDate, 'yyyyMMdd')}.xlsx`;
+      
+      if (contentDisposition) {
+        const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (fileNameMatch && fileNameMatch[1]) {
+          fileName = fileNameMatch[1].replace(/['"]/g, '');
+          // Decode URI component if needed
+          try {
+            fileName = decodeURIComponent(fileName);
+          } catch (e) {
+            // If decode fails, use as is
+          }
+        }
+      }
+
+      // Create blob and download
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      setShowExportModal(false);
+      toast.success('Xuất Excel thành công!');
+    } catch (error: any) {
+      console.error('Export error:', error);
+      
+      // Try to get error message from response
+      let errorMessage = 'Lỗi khi xuất Excel';
+      if (error.response?.data) {
+        try {
+          // If response is JSON
+          const text = await error.response.data.text();
+          const json = JSON.parse(text);
+          errorMessage = json.error || errorMessage;
+        } catch (e) {
+          // If response is not JSON, use default message
+          errorMessage = error.response.status === 403 
+            ? 'Bạn không có quyền xuất Excel' 
+            : errorMessage;
+        }
+      }
+      
+      toast.error(errorMessage);
+    }
+  };
+
   // Loading guard
   if (loading) return (
     <div className="container-fluid">
@@ -667,7 +1083,7 @@ export default function DamageReportsPage() {
         <div className="card-header">
           <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
             <h4 className="mb-0 mb-2 mb-md-0">LIST HƯ HỎNG</h4>
-            <div className="d-flex gap-1 align-items-center" style={{ flexWrap: 'nowrap' }}>
+            <div className="d-flex gap-1 align-items-center" style={{ flexWrap: 'wrap', rowGap: '0.25rem', justifyContent: 'flex-end', marginRight: '1rem' }}>
               <button
                 type="button"
                 className="btn btn-outline-secondary btn-sm d-md-none"
@@ -678,19 +1094,69 @@ export default function DamageReportsPage() {
                 <i className={`fas ${filtersOpen ? 'fa-chevron-up' : 'fa-filter'}`}></i>
               </button>
               <button 
+                className={`btn btn-sm ${myWorkFilter ? 'btn-info' : 'btn-outline-info'}`}
+                onClick={() => {
+                  if (currentUserStaffId === null) {
+                    toast.warning('Tài khoản của bạn chưa liên kết với nhân viên, không thể lọc My Work.');
+                    return;
+                  }
+                  skipPageResetOnMyWorkToggle.current = true;
+                  setMyWorkFilter(!myWorkFilter);
+                  // Disable My Report when My Work is active
+                  if (!myWorkFilter) {
+                    setMyReportFilter(false);
+                  }
+                }}
+                title="Lọc công việc của tôi"
+              >
+                <i className="fas fa-user-tie"></i>
+                <span className="d-none d-md-inline ms-1">{myWorkFilter ? 'All' : 'My Work'}</span>
+              </button>
+              <button 
+                className={`btn btn-sm ${myReportFilter ? 'btn-success' : 'btn-outline-success'}`}
+                onClick={() => {
+                  if (currentUserStaffId === null) {
+                    toast.warning('Tài khoản của bạn chưa liên kết với nhân viên, không thể lọc My Report.');
+                    return;
+                  }
+                  skipPageResetOnMyReportToggle.current = true;
+                  setMyReportFilter(!myReportFilter);
+                  // Disable My Work when My Report is active
+                  if (!myReportFilter) {
+                    setMyWorkFilter(false);
+                  }
+                }}
+                title="Lọc báo cáo của tôi"
+              >
+                <i className="fas fa-file-alt"></i>
+                <span className="d-none d-md-inline ms-1">{myReportFilter ? 'All' : 'My Report'}</span>
+              </button>
+              {isAdmin(currentUser?.roles) && (
+                <button 
+                  className="btn btn-success btn-sm d-none d-md-inline-flex"
+                  onClick={handleOpenExportModal}
+                  title="Xuất Excel"
+                >
+                  <i className="fas fa-file-excel"></i>
+                  <span className="ms-1">Xuất Excel</span>
+                </button>
+              )}
+              <button 
                 className="btn btn-primary btn-sm" 
                 onClick={handleNew}
                 title="Thêm mới"
               >
                 <i className="fas fa-plus"></i>
               </button>
-              <button 
-                className="btn btn-success btn-sm" 
-                onClick={handleEdit}
-                title="Sửa"
-              >
-                <i className="fas fa-edit"></i>
-              </button>
+              {userPermissions.canEdit && (
+                <button 
+                  className="btn btn-success btn-sm" 
+                  onClick={handleEdit}
+                  title="Sửa"
+                >
+                  <i className="fas fa-edit"></i>
+                </button>
+              )}
               {userPermissions.canDelete && (
                 <button 
                   className="btn btn-danger btn-sm" 
@@ -700,23 +1166,6 @@ export default function DamageReportsPage() {
                   <i className="fas fa-trash"></i>
                 </button>
               )}
-              <button 
-                className="btn btn-dark btn-sm" 
-                onClick={() => {
-                  // Reset all filters
-                  setSelectedStatus(0);
-                  setSelectedPriority(0);
-                  setSelectedDevice(0);
-                  setSelectedDepartment(0);
-                  setSearchKeyword('');
-                  setCurrentPage(1);
-                  // Reload data
-                  loadData();
-                }}
-                title="Tải lại và reset bộ lọc"
-              >
-                <i className="fas fa-circle-notch"></i>
-              </button>
             </div>
           </div>
           
@@ -733,7 +1182,6 @@ export default function DamageReportsPage() {
                   >
                     <option value="0">Tất cả</option>
                     <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
-                    <option value={DamageReportStatus.Assigned}>Đã phân công</option>
                     <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
                     <option value={DamageReportStatus.Completed}>Hoàn thành</option>
                     <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
@@ -769,27 +1217,47 @@ export default function DamageReportsPage() {
                 </div>
                 <div className="col-12 col-md-6 col-lg-3">
                   <label className="form-label small">Tìm kiếm</label>
-                  <input
-                    type="text"
-                    className="form-control form-control-sm"
-                    placeholder="Tìm kiếm..."
-                    value={searchKeyword}
-                    onChange={(e) => setSearchKeyword(e.target.value)}
-                  />
-                </div>
-                <div className="col-12">
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => {
-                      setSearchKeyword('');
-                      setSelectedStatus(0);
-                      setSelectedPriority(0);
-                      setSelectedDepartment(0);
-                      setSelectedDevice(0);
-                    }}
-                  >
-                    <i className="fas fa-filter"></i> Xóa bộ lọc
-                  </button>
+                  <div className="d-flex gap-1">
+                    <div className="input-group input-group-sm flex-grow-1">
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="Tìm kiếm..."
+                        value={searchInputValue}
+                        onChange={(e) => setSearchInputValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            setSearchKeyword(searchInputValue);
+                          }
+                        }}
+                      />
+                      <button
+                        className="btn btn-outline-secondary"
+                        type="button"
+                        onClick={() => setSearchKeyword(searchInputValue)}
+                        title="Tìm kiếm"
+                      >
+                        <i className="fas fa-search"></i>
+                      </button>
+                    </div>
+                    <button
+                      className="btn btn-outline-secondary btn-sm"
+                      type="button"
+                      onClick={() => {
+                        setSearchKeyword('');
+                        setSearchInputValue('');
+                        setSelectedStatus(0);
+                        setSelectedPriority(0);
+                        setSelectedDepartment(0);
+                        setSelectedDevice(0);
+                      }}
+                      title="Xóa bộ lọc"
+                      style={{ whiteSpace: 'nowrap' }}
+                    >
+                      <i className="fas fa-times-circle"></i>
+                      <span className="d-none d-md-inline ms-1">Xóa</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -888,12 +1356,13 @@ export default function DamageReportsPage() {
                   </th>
                   <th style={{ minWidth: '120px' }}>Người cập nhật</th>
                   <th style={{ minWidth: '200px' }}>Nội dung hư hỏng</th>
+                  <th style={{ minWidth: '200px' }}>Ghi chú người xử lý</th>
                 </tr>
               </thead>
               <tbody>
                 {currentReports.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="text-center py-4">
+                    <td colSpan={11} className="text-center py-4">
                       <span className="text-muted">Không có dữ liệu</span>
                     </td>
                   </tr>
@@ -931,6 +1400,7 @@ export default function DamageReportsPage() {
                             className="form-control form-control-sm damage-report-status-select"
                             value={report.status}
                             onChange={(e) => handleStatusChange(report.id, Number(e.target.value) as DamageReportStatus)}
+                            disabled={!userPermissions.canUpdateStatus}
                             style={{
                               width: 'auto',
                               minWidth: '80px',
@@ -948,7 +1418,6 @@ export default function DamageReportsPage() {
                             onClick={(e) => e.stopPropagation()}
                           >
                             <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.7rem' }}>Chờ xử lý</option>
-                            <option value={DamageReportStatus.Assigned} style={{ backgroundColor: '#cff4fc', color: '#0a58ca', fontSize: '0.7rem' }}>Đã phân công</option>
                             <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.7rem' }}>Đang xử lý</option>
                             <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.7rem' }}>Hoàn thành</option>
                             <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.7rem' }}>Đã hủy</option>
@@ -961,6 +1430,7 @@ export default function DamageReportsPage() {
                           className="form-control form-control-sm damage-report-priority-select"
                           value={report.priority}
                           onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
+                          disabled={!userPermissions.canEdit}
                           style={{
                             width: 'auto',
                             minWidth: '80px',
@@ -992,6 +1462,14 @@ export default function DamageReportsPage() {
                           {report.damageContent || 'N/A'}
                         </div>
                       </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <HandlerNotesEditor
+                          reportId={report.id}
+                          value={report.handlerNotes || ''}
+                          onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
+                          canEdit={userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)}
+                        />
+                      </td>
                     </tr>
                   ))
                 )}
@@ -1018,14 +1496,15 @@ export default function DamageReportsPage() {
                         borderBottom: `3px solid ${getPriorityStyle(report.priority).borderColor || '#dee2e6'}`,
                         cursor: 'default',
                         borderRadius: '8px',
-                        overflow: 'hidden'
+                        overflow: 'hidden',
+                        backgroundColor: '#ffffff'
                       }}
                     >
                       {/* Card Header */}
                       <div 
                         className="card-header p-3" 
                         style={{ 
-                          backgroundColor: '#f8f9fa', 
+                          backgroundColor: '#f0f2f5', 
                           borderBottom: '2px solid #e9ecef',
                           display: 'flex',
                           justifyContent: 'space-between',
@@ -1094,7 +1573,7 @@ export default function DamageReportsPage() {
                       </div>
 
                       {/* Card Body */}
-                      <div className="card-body p-3">
+                      <div className="card-body p-3" style={{ backgroundColor: '#fafbfc' }}>
                         {/* Status and Priority Row */}
                         <div className="row g-2 mb-3">
                           <div className="col-6">
@@ -1105,6 +1584,7 @@ export default function DamageReportsPage() {
                               className="form-control form-control-sm damage-report-status-select"
                               value={report.status}
                               onChange={(e) => handleStatusChange(report.id, Number(e.target.value) as DamageReportStatus)}
+                              disabled={!userPermissions.canUpdateStatus}
                               onClick={(e) => e.stopPropagation()}
                               style={{
                                 width: '100%',
@@ -1120,7 +1600,6 @@ export default function DamageReportsPage() {
                               }}
                             >
                               <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.75rem' }}>Chờ xử lý</option>
-                              <option value={DamageReportStatus.Assigned} style={{ backgroundColor: '#cff4fc', color: '#0a58ca', fontSize: '0.75rem' }}>Đã phân công</option>
                               <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.75rem' }}>Đang xử lý</option>
                               <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.75rem' }}>Hoàn thành</option>
                               <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>Đã hủy</option>
@@ -1135,6 +1614,7 @@ export default function DamageReportsPage() {
                               className="form-control form-control-sm damage-report-priority-select"
                               value={report.priority}
                               onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
+                              disabled={!userPermissions.canEdit}
                               onClick={(e) => e.stopPropagation()}
                               style={{
                                 width: '100%',
@@ -1209,6 +1689,23 @@ export default function DamageReportsPage() {
                           </div>
                         </div>
 
+                        {/* Handler Notes */}
+                        <div className="mb-3" onClick={(e) => e.stopPropagation()}>
+                          <div className="d-flex align-items-center gap-1 mb-1">
+                            <i className="fas fa-sticky-note text-muted" style={{ fontSize: '0.7rem' }}></i>
+                            <label className="small text-muted mb-0" style={{ fontSize: '0.7rem', fontWeight: '500' }}>
+                              Ghi chú người xử lý
+                            </label>
+                          </div>
+                          <HandlerNotesEditor
+                            reportId={report.id}
+                            value={report.handlerNotes || ''}
+                            onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
+                            isCard={true}
+                            canEdit={userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)}
+                          />
+                        </div>
+
                         {/* Images */}
                         {report.images && report.images.length > 0 && (
                           <div>
@@ -1224,6 +1721,13 @@ export default function DamageReportsPage() {
                                   key={idx}
                                   src={img}
                                   alt={`Hình ${idx + 1}`}
+                                  onClick={() => {
+                                    if (report.images && Array.isArray(report.images)) {
+                                      setSelectedImages(report.images);
+                                      setCurrentImageIndex(idx);
+                                      setShowImageModal(true);
+                                    }
+                                  }}
                                   style={{
                                     width: '55px',
                                     height: '55px',
@@ -1238,16 +1742,30 @@ export default function DamageReportsPage() {
                                 />
                               ))}
                               {report.images.length > 4 && (
-                                <div className="d-flex align-items-center justify-content-center" style={{
-                                  width: '55px',
-                                  height: '55px',
-                                  backgroundColor: '#f8f9fa',
-                                  borderRadius: '6px',
-                                  border: '1px solid #dee2e6',
-                                  fontSize: '0.7rem',
-                                  color: '#6c757d',
-                                  fontWeight: '500'
-                                }}>
+                                <div
+                                  className="d-flex align-items-center justify-content-center"
+                                  onClick={() => {
+                                    if (report.images && Array.isArray(report.images)) {
+                                      setSelectedImages(report.images);
+                                      setCurrentImageIndex(4);
+                                      setShowImageModal(true);
+                                    }
+                                  }}
+                                  style={{
+                                    width: '55px',
+                                    height: '55px',
+                                    backgroundColor: '#f8f9fa',
+                                    borderRadius: '6px',
+                                    border: '1px solid #dee2e6',
+                                    fontSize: '0.7rem',
+                                    color: '#6c757d',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    transition: 'transform 0.2s'
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                                  onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                >
                                   +{report.images.length - 4}
                                 </div>
                               )}
@@ -1361,7 +1879,12 @@ export default function DamageReportsPage() {
 
                   <div className="col-12 col-md-6">
                     <label className="form-label">Người báo cáo <span className="text-danger">*</span></label>
-                    <select className="form-control" value={formData.reporterId} onChange={(e) => setFormData({ ...formData, reporterId: Number(e.target.value) })}>
+                    <select 
+                      className="form-control" 
+                      value={formData.reporterId} 
+                      onChange={(e) => setFormData({ ...formData, reporterId: Number(e.target.value) })}
+                      disabled={currentUserStaffId !== null}
+                    >
                       <option value={0}>-- Chọn người báo cáo --</option>
                       {staff.map(s => (
                         <option key={s.id} value={s.id}>{s.name}</option>
@@ -1404,7 +1927,6 @@ export default function DamageReportsPage() {
                     <label className="form-label">Trạng thái</label>
                     <select className="form-control" value={formData.status} onChange={(e) => setFormData({ ...formData, status: Number(e.target.value) as DamageReportStatus })}>
                       <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
-                      <option value={DamageReportStatus.Assigned}>Đã phân công</option>
                       <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
                       <option value={DamageReportStatus.Completed}>Hoàn thành</option>
                       <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
@@ -1536,7 +2058,27 @@ export default function DamageReportsPage() {
                           <div className="small text-muted mb-2">Hình ảnh</div>
                           <div className="d-flex flex-wrap gap-2">
                             {quickReport.images.map((img, idx) => (
-                              <div key={`${img}-${idx}`} style={{ width: 112, height: 84, borderRadius: 6, overflow: 'hidden', border: '1px solid #dee2e6' }}>
+                              <div 
+                                key={`${img}-${idx}`} 
+                                onClick={() => {
+                                  if (Array.isArray(quickReport.images) && quickReport.images.length > 0) {
+                                    setSelectedImages(quickReport.images);
+                                    setCurrentImageIndex(idx);
+                                    setShowImageModal(true);
+                                  }
+                                }}
+                                style={{ 
+                                  width: 112, 
+                                  height: 84, 
+                                  borderRadius: 6, 
+                                  overflow: 'hidden', 
+                                  border: '1px solid #dee2e6',
+                                  cursor: 'pointer',
+                                  transition: 'transform 0.2s'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                              >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={img} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                               </div>
@@ -1552,6 +2094,265 @@ export default function DamageReportsPage() {
                 <button type="button" className="btn btn-secondary" onClick={closeQuickView}>Đóng</button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export Excel Modal */}
+      {showExportModal && (
+        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Xuất Excel - Báo cáo hư hỏng</h5>
+                <button type="button" className="btn-close" onClick={() => setShowExportModal(false)}></button>
+              </div>
+              <div className="modal-body">
+                <div className="row g-3">
+                  <div className="col-12">
+                    <label className="form-label">Bộ phận báo cáo <span className="text-danger">*</span></label>
+                    <select
+                      className="form-control"
+                      value={exportDepartment}
+                      onChange={(e) => setExportDepartment(Number(e.target.value))}
+                    >
+                      <option value={0}>Tất cả bộ phận</option>
+                      {departments.map(dept => (
+                        <option key={dept.id} value={dept.id}>{dept.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">Từ ngày <span className="text-danger">*</span></label>
+                    <input
+                      type="date"
+                      className="form-control"
+                      value={exportFromDate}
+                      onChange={(e) => setExportFromDate(e.target.value)}
+                      max={exportToDate}
+                    />
+                  </div>
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">Đến ngày <span className="text-danger">*</span></label>
+                    <input
+                      type="date"
+                      className="form-control"
+                      value={exportToDate}
+                      onChange={(e) => setExportToDate(e.target.value)}
+                      min={exportFromDate}
+                      max={format(new Date(), 'yyyy-MM-dd')}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowExportModal(false)}>
+                  Hủy
+                </button>
+                <button type="button" className="btn btn-success" onClick={handleExportExcel}>
+                  <i className="fas fa-file-excel me-2"></i>Xuất Excel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Lightbox Modal */}
+      {showImageModal && selectedImages.length > 0 && (
+        <div 
+          className="modal show d-block" 
+          style={{ 
+            backgroundColor: 'rgba(0, 0, 0, 0.9)', 
+            zIndex: 9999,
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0
+          }} 
+          tabIndex={-1}
+          onClick={() => setShowImageModal(false)}
+        >
+          <div 
+            className="d-flex align-items-center justify-content-center" 
+            style={{ 
+              width: '100%', 
+              height: '100%',
+              position: 'relative'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button
+              type="button"
+              className="btn btn-link text-white"
+              onClick={() => setShowImageModal(false)}
+              style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                fontSize: '2rem',
+                zIndex: 10000,
+                textDecoration: 'none',
+                opacity: 0.8,
+                border: 'none',
+                background: 'none',
+                padding: '0.5rem'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = '0.8'}
+            >
+              <i className="fas fa-times"></i>
+            </button>
+
+            {/* Previous Button */}
+            {selectedImages.length > 1 && (
+              <button
+                type="button"
+                className="btn btn-link text-white"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePrevImage();
+                }}
+                style={{
+                  position: 'absolute',
+                  left: '20px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  fontSize: '2rem',
+                  zIndex: 10000,
+                  textDecoration: 'none',
+                  opacity: 0.8,
+                  border: 'none',
+                  background: 'none',
+                  padding: '1rem'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.8'}
+              >
+                <i className="fas fa-chevron-left"></i>
+              </button>
+            )}
+
+            {/* Image Container */}
+            <div 
+              style={{ 
+                maxWidth: '90%', 
+                maxHeight: '90%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <img
+                src={selectedImages[currentImageIndex]}
+                alt={`Hình ${currentImageIndex + 1}`}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '85vh',
+                  objectFit: 'contain',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)'
+                }}
+              />
+              
+              {/* Image Counter */}
+              {selectedImages.length > 1 && (
+                <div 
+                  className="text-white mt-3"
+                  style={{
+                    fontSize: '1rem',
+                    fontWeight: '500',
+                    opacity: 0.9
+                  }}
+                >
+                  {currentImageIndex + 1} / {selectedImages.length}
+                </div>
+              )}
+            </div>
+
+            {/* Next Button */}
+            {selectedImages.length > 1 && (
+              <button
+                type="button"
+                className="btn btn-link text-white"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleNextImage();
+                }}
+                style={{
+                  position: 'absolute',
+                  right: '20px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  fontSize: '2rem',
+                  zIndex: 10000,
+                  textDecoration: 'none',
+                  opacity: 0.8,
+                  border: 'none',
+                  background: 'none',
+                  padding: '1rem'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.8'}
+              >
+                <i className="fas fa-chevron-right"></i>
+              </button>
+            )}
+
+            {/* Thumbnail Navigation (for multiple images) */}
+            {selectedImages.length > 1 && selectedImages.length <= 10 && (
+              <div
+                className="d-flex gap-2 justify-content-center"
+                style={{
+                  position: 'absolute',
+                  bottom: '20px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  zIndex: 10000,
+                  maxWidth: '90%',
+                  overflowX: 'auto',
+                  padding: '10px',
+                  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                  borderRadius: '8px'
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {selectedImages.map((img, idx) => (
+                  <img
+                    key={idx}
+                    src={img}
+                    alt={`Thumbnail ${idx + 1}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCurrentImageIndex(idx);
+                    }}
+                    style={{
+                      width: '60px',
+                      height: '60px',
+                      objectFit: 'cover',
+                      borderRadius: '4px',
+                      border: idx === currentImageIndex ? '3px solid #fff' : '2px solid rgba(255, 255, 255, 0.5)',
+                      cursor: 'pointer',
+                      opacity: idx === currentImageIndex ? 1 : 0.6,
+                      transition: 'opacity 0.2s'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (idx !== currentImageIndex) {
+                        e.currentTarget.style.opacity = '0.9';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (idx !== currentImageIndex) {
+                        e.currentTarget.style.opacity = '0.6';
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
