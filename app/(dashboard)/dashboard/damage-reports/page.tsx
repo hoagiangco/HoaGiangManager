@@ -138,6 +138,7 @@ const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false
 };
 
 export default function DamageReportsPage() {
+  console.log('DamageReportsPage: Component rendered/re-rendered');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [reports, setReports] = useState<DamageReportVM[]>([]);
   const [allReports, setAllReports] = useState<DamageReportVM[]>([]);
