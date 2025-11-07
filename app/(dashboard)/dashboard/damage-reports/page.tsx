@@ -2036,8 +2036,8 @@ export default function DamageReportsPage() {
                       <div
                         style={{
                           display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                          gap: '12px 20px',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                          gap: '12px 16px',
                           alignItems: 'start',
                         }}
                       >
@@ -2049,15 +2049,13 @@ export default function DamageReportsPage() {
                           <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Người xử lý</div>
                           <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{quickReport.handlerName || '-'}</div>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px 16px' }}>
-                          <div>
-                            <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ngày bắt đầu xử lý</div>
-                            <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{quickReport.handlingDate ? format(new Date(quickReport.handlingDate), 'dd/MM/yyyy') : '-'}</div>
-                          </div>
-                          <div>
-                            <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ngày hoàn thành</div>
-                            <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{quickReport.completedDate ? format(new Date(quickReport.completedDate), 'dd/MM/yyyy') : '-'}</div>
-                          </div>
+                        <div>
+                          <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ngày bắt đầu xử lý</div>
+                          <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{quickReport.handlingDate ? format(new Date(quickReport.handlingDate), 'dd/MM/yyyy') : '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ngày hoàn thành</div>
+                          <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{quickReport.completedDate ? format(new Date(quickReport.completedDate), 'dd/MM/yyyy') : '-'}</div>
                         </div>
                       </div>
 
