@@ -1334,7 +1334,15 @@ export default function DamageReportsPage() {
         <div className="card-body" style={cardBodyStyle}>
           {/* Table View */}
           {viewMode === 'table' && (
-            <>
+            <div
+              style={{
+                maxHeight: 'calc(100vh - 260px)',
+                overflowY: 'auto',
+                WebkitOverflowScrolling: 'touch',
+                overscrollBehavior: 'contain',
+                paddingRight: '0.35rem',
+              }}
+            >
               <div className="table-scroll-hint" style={{ textAlign: 'center', padding: '0.5rem', fontSize: '0.875rem', color: '#6c757d' }}>
                 <i className="fas fa-arrows-alt-h"></i> Cuộn ngang để xem thêm
               </div>
@@ -1499,7 +1507,7 @@ export default function DamageReportsPage() {
               </tbody>
             </table>
           </div>
-          </>
+          </div>
           )}
 
           {/* Card View */}
