@@ -823,9 +823,19 @@ export default function DamageReportsPage() {
     return priorityMap[priority] || { color: '#6c757d', backgroundColor: '#f8f9fa', borderColor: '#dee2e6' };
   };
 
+  const canUpdateStatusForReport = (report?: DamageReportVM | null): boolean => {
+    if (!report) return false;
+    if (!userPermissions.canUpdateStatus) return false;
+    if (isAdmin(currentUser?.roles)) return true;
+    if (currentUserStaffId === null) return false;
+    return report.handlerId === currentUserStaffId;
+  };
+
   const handleStatusChange = async (reportId: number, newStatus: DamageReportStatus) => {
-    if (!currentUser?.id) {
-      toast.error('Không thể xác định người dùng');
+    const report = allReports.find((r) => r.id === reportId) || reports.find((r) => r.id === reportId);
+
+    if (!canUpdateStatusForReport(report)) {
+      toast.error('Bạn chỉ có thể cập nhật trạng thái khi là người xử lý báo cáo này');
       return;
     }
 
@@ -1400,7 +1410,7 @@ export default function DamageReportsPage() {
                             className="form-control form-control-sm damage-report-status-select"
                             value={report.status}
                             onChange={(e) => handleStatusChange(report.id, Number(e.target.value) as DamageReportStatus)}
-                            disabled={!userPermissions.canUpdateStatus}
+                            disabled={!canUpdateStatusForReport(report)}
                             style={{
                               width: 'auto',
                               minWidth: '80px',
@@ -1584,8 +1594,7 @@ export default function DamageReportsPage() {
                               className="form-control form-control-sm damage-report-status-select"
                               value={report.status}
                               onChange={(e) => handleStatusChange(report.id, Number(e.target.value) as DamageReportStatus)}
-                              disabled={!userPermissions.canUpdateStatus}
-                              onClick={(e) => e.stopPropagation()}
+                              disabled={!canUpdateStatusForReport(report)}
                               style={{
                                 width: '100%',
                                 fontSize: '0.75rem',
@@ -1598,6 +1607,7 @@ export default function DamageReportsPage() {
                                 cursor: 'pointer',
                                 ...getStatusStyle(report.status)
                               }}
+                              onClick={(e) => e.stopPropagation()}
                             >
                               <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.75rem' }}>Chờ xử lý</option>
                               <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.75rem' }}>Đang xử lý</option>
@@ -1615,7 +1625,6 @@ export default function DamageReportsPage() {
                               value={report.priority}
                               onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
                               disabled={!userPermissions.canEdit}
-                              onClick={(e) => e.stopPropagation()}
                               style={{
                                 width: '100%',
                                 fontSize: '0.75rem',

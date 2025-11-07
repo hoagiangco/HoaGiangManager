@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/auth/middleware';
 import { DamageReportService } from '@/lib/services/damageReportService';
+import { StaffService } from '@/lib/services/staffService';
 import { DamageReportStatus } from '@/types';
 
 export async function PUT(
@@ -39,6 +40,27 @@ export async function PUT(
     }
 
     const damageReportService = new DamageReportService();
+    const report = await damageReportService.getById(id);
+
+    if (!report) {
+      return NextResponse.json(
+        { status: false, error: 'Báo cáo không tồn tại' },
+        { status: 404 }
+      );
+    }
+
+    if (!isAdmin) {
+      const staffService = new StaffService();
+      const staff = await staffService.getByUserId(user.userId);
+
+      if (!staff || !report.handlerId || report.handlerId !== staff.id) {
+        return NextResponse.json(
+          { status: false, error: 'Bạn chỉ có thể cập nhật trạng thái khi là người xử lý báo cáo này' },
+          { status: 403 }
+        );
+      }
+    }
+
     await damageReportService.updateStatus(id, status as DamageReportStatus, user.userId);
 
     return NextResponse.json({
