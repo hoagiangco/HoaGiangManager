@@ -1318,18 +1318,7 @@ export default function DamageReportsPage() {
             </div>
           </div>
         </div>
-        <div className="card-body" style={useMemo(() => {
-          if (viewMode === 'card') {
-            return {
-              maxHeight: 'calc(100vh - 240px)',
-              overflowY: 'auto' as const,
-              paddingRight: '0.35rem',
-              WebkitOverflowScrolling: 'touch' as const,
-              overscrollBehavior: 'contain' as const,
-            };
-          }
-          return undefined;
-        }, [viewMode])}>
+        <div className="card-body" style={cardBodyStyle}>
           {/* Table View */}
           {viewMode === 'table' && (
             <>
