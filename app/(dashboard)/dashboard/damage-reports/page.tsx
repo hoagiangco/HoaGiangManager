@@ -2018,60 +2018,115 @@ export default function DamageReportsPage() {
                 ) : !quickReport ? (
                   <div className="text-muted">Không tìm thấy dữ liệu.</div>
                 ) : (
-                  <div className="container-fluid">
-                    <div className="row g-3">
-                      <div className="col-12">
-                        <div className="d-flex align-items-start justify-content-between">
-                          <div>
-                            <div className="fw-semibold" style={{ fontSize: '1rem' }}>{quickReport.displayLocation || 'Không xác định'}</div>
-                            <div className="text-muted" style={{ fontSize: '.85rem' }}>
-                              Mã: #{quickReport.id} · Ngày báo cáo: {quickReport.reportDate ? format(new Date(quickReport.reportDate), 'dd/MM/yyyy') : '-'}
-                            </div>
+                  <div className="container-fluid" style={{ padding: '0.5rem 0 0.75rem' }}>
+                    <div className="d-flex flex-column" style={{ gap: '16px' }}>
+                      <div className="d-flex align-items-start justify-content-between" style={{ gap: '12px' }}>
+                        <div>
+                          <div className="fw-semibold" style={{ fontSize: '1.05rem', lineHeight: 1.25 }}>{quickReport.displayLocation || 'Không xác định'}</div>
+                          <div className="text-muted" style={{ fontSize: '.85rem' }}>
+                            Mã: #{quickReport.id} · Ngày báo cáo: {quickReport.reportDate ? format(new Date(quickReport.reportDate), 'dd/MM/yyyy') : '-'}
                           </div>
-                          <div className="d-flex gap-2">
-                            {getStatusBadge(quickReport.status)}
-                            {getPriorityBadge(quickReport.priority)}
-                          </div>
+                        </div>
+                        <div className="d-flex gap-2 flex-wrap" style={{ justifyContent: 'flex-end' }}>
+                          {getStatusBadge(quickReport.status)}
+                          {getPriorityBadge(quickReport.priority)}
                         </div>
                       </div>
 
-                      <div className="col-12 col-md-6">
-                        <div className="small text-muted">Người báo cáo</div>
-                        <div>{quickReport.reporterName || '-'}</div>
-                      </div>
-                      <div className="col-12 col-md-6">
-                        <div className="small text-muted">Người xử lý</div>
-                        <div>{quickReport.handlerName || '-'}</div>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                          gap: '12px 20px',
+                          alignItems: 'start',
+                        }}
+                      >
+                        <div>
+                          <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Người báo cáo</div>
+                          <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{quickReport.reporterName || '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Người xử lý</div>
+                          <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{quickReport.handlerName || '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ngày bắt đầu xử lý</div>
+                          <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{quickReport.handlingDate ? format(new Date(quickReport.handlingDate), 'dd/MM/yyyy') : '-'}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ngày hoàn thành</div>
+                          <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{quickReport.completedDate ? format(new Date(quickReport.completedDate), 'dd/MM/yyyy') : '-'}</div>
+                        </div>
                       </div>
 
-                      <div className="col-12 col-md-6">
-                        <div className="small text-muted">Ngày bắt đầu xử lý</div>
-                        <div>{quickReport.handlingDate ? format(new Date(quickReport.handlingDate), 'dd/MM/yyyy') : '-'}</div>
-                      </div>
-                      <div className="col-12 col-md-6">
-                        <div className="small text-muted">Ngày hoàn thành</div>
-                        <div>{quickReport.completedDate ? format(new Date(quickReport.completedDate), 'dd/MM/yyyy') : '-'}</div>
+                      <div
+                        style={{
+                          backgroundColor: '#f8f9fa',
+                          border: '1px solid #e9ecef',
+                          borderRadius: '8px',
+                          padding: '12px 14px',
+                        }}
+                      >
+                        <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                          Nội dung hư hỏng
+                        </div>
+                        <div style={{ fontSize: '.95rem', lineHeight: 1.5 }}>{quickReport.damageContent || '-'}</div>
                       </div>
 
-                      <div className="col-12">
-                        <div className="small text-muted">Nội dung hư hỏng</div>
-                        <div>{quickReport.damageContent || '-'}</div>
+                      <div
+                        style={{
+                          backgroundColor: '#f8f9fa',
+                          border: '1px solid #e9ecef',
+                          borderRadius: '8px',
+                          padding: '12px 14px',
+                        }}
+                      >
+                        <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                          Ghi chú người xử lý
+                        </div>
+                        <div style={{ fontSize: '.95rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', color: quickReport.handlerNotes ? '#212529' : '#6c757d' }}>
+                          {quickReport.handlerNotes || 'Chưa có ghi chú'}
+                        </div>
                       </div>
 
                       {quickReport.notes && (
-                        <div className="col-12">
-                          <div className="small text-muted">Ghi chú</div>
-                          <div>{quickReport.notes}</div>
+                        <div
+                          style={{
+                            backgroundColor: '#fff',
+                            border: '1px dashed #ced4da',
+                            borderRadius: '8px',
+                            padding: '12px 14px',
+                          }}
+                        >
+                          <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                            Ghi chú
+                          </div>
+                          <div style={{ fontSize: '.95rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{quickReport.notes}</div>
                         </div>
                       )}
 
                       {Array.isArray(quickReport.images) && quickReport.images.length > 0 && (
-                        <div className="col-12">
-                          <div className="small text-muted mb-2">Hình ảnh</div>
-                          <div className="d-flex flex-wrap gap-2">
+                        <div
+                          style={{
+                            backgroundColor: '#fff',
+                            borderRadius: '8px',
+                            border: '1px solid #e9ecef',
+                            padding: '12px 14px',
+                          }}
+                        >
+                          <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>
+                            Hình ảnh
+                          </div>
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+                              gap: '10px',
+                            }}
+                          >
                             {quickReport.images.map((img, idx) => (
-                              <div 
-                                key={`${img}-${idx}`} 
+                              <div
+                                key={`${img}-${idx}`}
                                 onClick={() => {
                                   if (Array.isArray(quickReport.images) && quickReport.images.length > 0) {
                                     setSelectedImages(quickReport.images);
@@ -2079,45 +2134,43 @@ export default function DamageReportsPage() {
                                     setShowImageModal(true);
                                   }
                                 }}
-                                style={{ 
-                                  width: 112, 
-                                  height: 84, 
-                                  borderRadius: 6, 
-                                  overflow: 'hidden', 
+                                style={{
+                                  position: 'relative',
+                                  width: '100%',
+                                  paddingBottom: '70%',
+                                  borderRadius: '6px',
+                                  overflow: 'hidden',
                                   border: '1px solid #dee2e6',
                                   cursor: 'pointer',
-                                  transition: 'transform 0.2s'
+                                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
                                 }}
-                                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.transform = 'scale(1.03)';
+                                  e.currentTarget.style.boxShadow = '0 6px 18px rgba(33, 37, 41, 0.15)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.transform = 'scale(1)';
+                                  e.currentTarget.style.boxShadow = 'none';
+                                }}
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={img} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                <img
+                                  src={img}
+                                  alt="img"
+                                  style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover',
+                                  }}
+                                />
                               </div>
                             ))}
                           </div>
                         </div>
                       )}
-
-                      <div className="col-12">
-                        <div className="small text-muted">Ghi chú người xử lý</div>
-                        {quickReport.handlerNotes ? (
-                          <div
-                            className="p-2 rounded"
-                            style={{
-                              backgroundColor: '#f8f9fa',
-                              border: '1px solid #e9ecef',
-                              fontSize: '.9rem',
-                              whiteSpace: 'pre-wrap',
-                              lineHeight: 1.4,
-                            }}
-                          >
-                            {quickReport.handlerNotes}
-                          </div>
-                        ) : (
-                          <div className="text-muted" style={{ fontSize: '.9rem' }}>Chưa có ghi chú</div>
-                        )}
-                      </div>
                     </div>
                   </div>
                 )}
