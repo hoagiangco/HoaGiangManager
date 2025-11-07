@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
 import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, StaffVM, Department } from '@/types';
@@ -1318,7 +1318,18 @@ export default function DamageReportsPage() {
             </div>
           </div>
         </div>
-        <div className="card-body">
+        <div className="card-body" style={useMemo(() => {
+          if (viewMode === 'card') {
+            return {
+              maxHeight: 'calc(100vh - 240px)',
+              overflowY: 'auto' as const,
+              paddingRight: '0.35rem',
+              WebkitOverflowScrolling: 'touch' as const,
+              overscrollBehavior: 'contain' as const,
+            };
+          }
+          return undefined;
+        }, [viewMode])}>
           {/* Table View */}
           {viewMode === 'table' && (
             <>
