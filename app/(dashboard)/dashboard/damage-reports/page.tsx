@@ -2098,6 +2098,26 @@ export default function DamageReportsPage() {
                           </div>
                         </div>
                       )}
+
+                      <div className="col-12">
+                        <div className="small text-muted">Ghi chú người xử lý</div>
+                        {quickReport.handlerNotes ? (
+                          <div
+                            className="p-2 rounded"
+                            style={{
+                              backgroundColor: '#f8f9fa',
+                              border: '1px solid #e9ecef',
+                              fontSize: '.9rem',
+                              whiteSpace: 'pre-wrap',
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {quickReport.handlerNotes}
+                          </div>
+                        ) : (
+                          <div className="text-muted" style={{ fontSize: '.9rem' }}>Chưa có ghi chú</div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
