@@ -220,6 +220,19 @@ export default function DamageReportsPage() {
   const [quickViewLoading, setQuickViewLoading] = useState(false);
   const [quickReport, setQuickReport] = useState<DamageReportVM | null>(null);
 
+  const cardBodyStyle = useMemo(() => {
+    if (viewMode === 'card') {
+      return {
+        maxHeight: 'calc(100vh - 240px)',
+        overflowY: 'auto' as const,
+        paddingRight: '0.35rem',
+        WebkitOverflowScrolling: 'touch' as const,
+        overscrollBehavior: 'contain' as const,
+      };
+    }
+    return undefined;
+  }, [viewMode]);
+
   const openQuickView = async (reportId: number) => {
     try {
       setQuickViewLoading(true);
