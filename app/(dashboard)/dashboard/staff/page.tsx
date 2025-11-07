@@ -163,18 +163,42 @@ function StaffPageContent() {
     }
 
     try {
+      let deletedCount = 0;
       for (const id of selectedIds) {
-        const response = await api.delete(`/staff/${id}`);
+        let response = await api.delete(`/staff/${id}`);
+
+        if (!response.data.status && response.data.requiresConfirmation) {
+          let warningMessage = response.data.message || 'Nhân viên này đã được sử dụng, nếu xóa sẽ làm ảnh hưởng đến dữ liệu.';
+          const usageDetails = formatUsageDetails(response.data.usage);
+          if (usageDetails) {
+            warningMessage += `\n\nẢnh hưởng:\n${usageDetails}`;
+          }
+          warningMessage += '\n\nBạn có chắc chắn muốn tiếp tục?';
+
+          if (!confirm(warningMessage)) {
+            continue;
+          }
+
+          response = await api.delete(`/staff/${id}?force=true`);
+        }
+
         if (!response.data.status) {
-          toast.error(response.data.message || 'Không thể xóa nhân viên đang được sử dụng');
+          toast.error(response.data.message || response.data.error || 'Không thể xóa nhân viên');
           return;
         }
+
+        deletedCount++;
       }
-      toast.success('Xóa thành công');
-      setSelectedIds([]);
-      loadData();
-    } catch (error) {
+      if (deletedCount > 0) {
+        toast.success(`Đã xóa ${deletedCount} nhân viên thành công`);
+        setSelectedIds([]);
+        loadData();
+      } else {
+        toast.info('Không có nhân viên nào được xóa');
+      }
+    } catch (error: any) {
       toast.error('Lỗi khi xóa nhân viên');
+      console.error('Delete error:', error);
     }
   };
 
@@ -336,6 +360,18 @@ function StaffPageContent() {
     if (gender === true) return <span className="badge bg-info">Nam</span>;
     if (gender === false) return <span className="badge bg-pink">Nữ</span>;
     return <span className="badge bg-secondary">Chưa xác định</span>;
+  };
+
+  const formatUsageDetails = (usage: any) => {
+    if (!usage) return '';
+    const parts: string[] = [];
+    if (usage.damageReportsHandled) parts.push(`- ${usage.damageReportsHandled} báo cáo đang xử lý`);
+    if (usage.damageReportsReported) parts.push(`- ${usage.damageReportsReported} báo cáo đã báo cáo`);
+    if (usage.events) parts.push(`- ${usage.events} sự kiện`);
+    if (usage.reportsCreatedBy) parts.push(`- ${usage.reportsCreatedBy} báo cáo được tạo bởi tài khoản này`);
+    if (usage.reportsUpdatedBy) parts.push(`- ${usage.reportsUpdatedBy} báo cáo được cập nhật bởi tài khoản này`);
+    if (usage.historyChanges) parts.push(`- ${usage.historyChanges} lịch sử thay đổi`);
+    return parts.join('\n');
   };
 
   // Handle table scroll for visual indicators

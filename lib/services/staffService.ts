@@ -1,6 +1,16 @@
 import pool from '../db';
 import { Staff, StaffVM } from '@/types';
 import { UserService } from './userService';
+import { PoolClient } from 'pg';
+
+interface StaffUsageSummary {
+  events: number;
+  damageReportsHandled: number;
+  damageReportsReported: number;
+  reportsCreatedBy: number;
+  reportsUpdatedBy: number;
+  historyChanges: number;
+}
 
 export class StaffService {
   async getStaffByDepartment(departmentId: number = 0): Promise<StaffVM[]> {
@@ -172,9 +182,9 @@ export class StaffService {
       [
         nextId,
         staff.name,
-        staff.gender || null,
-        staff.birthday || null,
-        staff.departmentId || null,
+        staff.gender === undefined || staff.gender === null ? null : staff.gender,
+        staff.birthday ?? null,
+        staff.departmentId ?? null,
         userId
       ]
     );
@@ -277,9 +287,9 @@ export class StaffService {
        WHERE "ID" = $6`,
       [
         staff.name,
-        staff.gender || null,
-        staff.birthday || null,
-        staff.departmentId || null,
+        staff.gender === undefined || staff.gender === null ? null : staff.gender,
+        staff.birthday ?? null,
+        staff.departmentId ?? null,
         userId,
         staff.id
       ]
@@ -348,19 +358,112 @@ export class StaffService {
     return result.rows;
   }
 
-  async delete(id: number): Promise<boolean> {
-    // Check if staff is used in Event
-    const eventCheck = await pool.query(
-      'SELECT "ID" FROM "Event" WHERE "StaffID" = $1 LIMIT 1',
-      [id]
-    );
+  private async getStaffUsage(client: PoolClient, staffId: number, userId?: string | null): Promise<StaffUsageSummary> {
+    const [eventsRes, handledRes, reportedRes] = await Promise.all([
+      client.query('SELECT COUNT(*)::int AS count FROM "Event" WHERE "StaffID" = $1', [staffId]),
+      client.query('SELECT COUNT(*)::int AS count FROM "DamageReport" WHERE "HandlerID" = $1', [staffId]),
+      client.query('SELECT COUNT(*)::int AS count FROM "DamageReport" WHERE "ReporterID" = $1', [staffId]),
+    ]);
 
-    if (eventCheck.rows.length > 0) {
-      return false; // Cannot delete if used
+    const usage: StaffUsageSummary = {
+      events: eventsRes.rows[0]?.count || 0,
+      damageReportsHandled: handledRes.rows[0]?.count || 0,
+      damageReportsReported: reportedRes.rows[0]?.count || 0,
+      reportsCreatedBy: 0,
+      reportsUpdatedBy: 0,
+      historyChanges: 0,
+    };
+
+    if (userId) {
+      const [createdRes, updatedRes, historyRes] = await Promise.all([
+        client.query('SELECT COUNT(*)::int AS count FROM "DamageReport" WHERE "CreatedBy" = $1', [userId]),
+        client.query('SELECT COUNT(*)::int AS count FROM "DamageReport" WHERE "UpdatedBy" = $1', [userId]),
+        client.query('SELECT COUNT(*)::int AS count FROM "DamageReportHistory" WHERE "ChangedBy" = $1', [userId]),
+      ]);
+
+      usage.reportsCreatedBy = createdRes.rows[0]?.count || 0;
+      usage.reportsUpdatedBy = updatedRes.rows[0]?.count || 0;
+      usage.historyChanges = historyRes.rows[0]?.count || 0;
     }
 
-    await pool.query('DELETE FROM "Staff" WHERE "ID" = $1', [id]);
-    return true;
+    return usage;
+  }
+
+  async delete(id: number, options?: { force?: boolean }): Promise<{ success: boolean; requiresConfirmation?: boolean; usage?: StaffUsageSummary; message?: string; }> {
+    const client = await pool.connect();
+    let transactionStarted = false;
+
+    try {
+      const staffResult = await client.query('SELECT "UserId" FROM "Staff" WHERE "ID" = $1', [id]);
+
+      if (staffResult.rows.length === 0) {
+        return { success: false, message: 'Nhân viên không tồn tại' };
+      }
+
+      const userId: string | null = staffResult.rows[0]?.UserId || staffResult.rows[0]?.userid || null;
+      const usage = await this.getStaffUsage(client, id, userId);
+
+      const hasUsage =
+        usage.events > 0 ||
+        usage.damageReportsHandled > 0 ||
+        usage.damageReportsReported > 0 ||
+        usage.reportsCreatedBy > 0 ||
+        usage.reportsUpdatedBy > 0 ||
+        usage.historyChanges > 0;
+
+      if (hasUsage && !options?.force) {
+        return {
+          success: false,
+          requiresConfirmation: true,
+          usage,
+          message: 'Nhân viên này đã được sử dụng, nếu xóa sẽ làm ảnh hưởng đến dữ liệu.',
+        };
+      }
+
+      await client.query('BEGIN');
+      transactionStarted = true;
+
+      if (usage.events > 0) {
+        await client.query('UPDATE "Event" SET "StaffID" = NULL WHERE "StaffID" = $1', [id]);
+      }
+      if (usage.damageReportsHandled > 0) {
+        await client.query('UPDATE "DamageReport" SET "HandlerID" = NULL WHERE "HandlerID" = $1', [id]);
+      }
+      if (usage.damageReportsReported > 0) {
+        await client.query('UPDATE "DamageReport" SET "ReporterID" = NULL WHERE "ReporterID" = $1', [id]);
+      }
+
+      if (userId) {
+        if (usage.reportsCreatedBy > 0) {
+          await client.query('UPDATE "DamageReport" SET "CreatedBy" = NULL WHERE "CreatedBy" = $1', [userId]);
+        }
+        if (usage.reportsUpdatedBy > 0) {
+          await client.query('UPDATE "DamageReport" SET "UpdatedBy" = NULL WHERE "UpdatedBy" = $1', [userId]);
+        }
+        if (usage.historyChanges > 0) {
+          await client.query('UPDATE "DamageReportHistory" SET "ChangedBy" = NULL WHERE "ChangedBy" = $1', [userId]);
+        }
+      }
+
+      await client.query('DELETE FROM "Staff" WHERE "ID" = $1', [id]);
+
+      if (userId) {
+        await client.query('DELETE FROM "AspNetUserRoles" WHERE "UserId" = $1', [userId]);
+        await client.query('DELETE FROM "AspNetUsers" WHERE "Id" = $1', [userId]);
+      }
+
+      await client.query('COMMIT');
+      transactionStarted = false;
+
+      return { success: true, usage };
+    } catch (error) {
+      if (transactionStarted) {
+        await client.query('ROLLBACK').catch(() => undefined);
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 

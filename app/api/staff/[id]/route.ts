@@ -96,13 +96,37 @@ export async function DELETE(
     console.log(`Deleting staff ${id}`);
     
     const staffService = new StaffService();
-    const result = await staffService.delete(id);
+    const force = request.nextUrl.searchParams.get('force') === 'true';
+    const result = await staffService.delete(id, { force });
 
-    console.log(`Staff ${id} deleted:`, result);
+    if (!result.success) {
+      if (result.requiresConfirmation) {
+        return NextResponse.json(
+          {
+            status: false,
+            requiresConfirmation: true,
+            message: result.message,
+            usage: result.usage,
+          },
+          { status: 409 }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          status: false,
+          message: result.message || 'Không thể xóa nhân viên',
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log(`Staff ${id} deleted`);
 
     return NextResponse.json({
-      status: result,
-      message: result ? 'Xóa thành công' : 'Không thể xóa nhân viên đang được sử dụng trong sự kiện'
+      status: true,
+      message: 'Xóa nhân viên thành công',
+      usage: result.usage,
     });
   } catch (error: any) {
     console.error('Delete staff error:', error);
