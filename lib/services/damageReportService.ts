@@ -1,7 +1,29 @@
 import pool from '../db';
+import { PoolClient } from 'pg';
 import { DamageReport, DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceStatus } from '@/types';
 
 export class DamageReportService {
+  private async ensureHistorySequence(client?: PoolClient): Promise<void> {
+    const executor = client || pool;
+    const maxRes = await executor.query('SELECT COALESCE(MAX("ID"), 0) AS max_id FROM "DamageReportHistory"');
+    const seqRes = await executor.query('SELECT last_value, is_called FROM "DamageReportHistory_ID_seq"');
+
+    const maxId = Number(maxRes.rows[0]?.max_id || 0);
+    let seqValue = Number(seqRes.rows[0]?.last_value || 0);
+    const isCalled = seqRes.rows[0]?.is_called ?? false;
+
+    if (!isCalled) {
+      seqValue -= 1;
+    }
+
+    if (maxId > seqValue) {
+      await executor.query(
+        'SELECT setval(pg_get_serial_sequence(\'"DamageReportHistory"\', \'ID\'), $1, true)',
+        [maxId]
+      );
+    }
+  }
+
   private getStatusName(status: DamageReportStatus): string {
     const labels: { [key: number]: string } = {
       [DamageReportStatus.Pending]: 'Chờ xử lý',
@@ -425,6 +447,7 @@ export class DamageReportService {
 
     // Track change in history
     if (currentStatus !== status.toString()) {
+      await this.ensureHistorySequence();
       await pool.query(
         `INSERT INTO "DamageReportHistory" ("DamageReportID", "FieldName", "OldValue", "NewValue", "ChangedBy")
          VALUES ($1, 'Status', $2, $3, $4)`,
