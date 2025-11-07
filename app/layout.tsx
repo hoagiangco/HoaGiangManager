@@ -9,6 +9,22 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'HoaGiang Manager - Quản lý vật tư',
   description: 'Hệ thống quản lý vật tư và thiết bị',
+  manifest: '/manifest.webmanifest',
+  themeColor: '#0d6efd',
+  icons: {
+    icon: [
+      { url: '/icons/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', rel: 'shortcut icon' },
+    ],
+    apple: [
+      { url: '/icons/icon.svg', type: 'image/svg+xml' },
+    ],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'HoaGiang Manager',
+  },
 };
 
 export default function RootLayout({
