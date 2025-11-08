@@ -82,7 +82,7 @@ async function listBlobFiles(): Promise<{ files: any[]; pages: number; total: nu
       return {
         name: fileName,
         url: blob.url,
-        path: blob.url,
+        path: blob.pathname || blob.url,
         size: blob.size || 0,
         modified: blob.uploadedAt || blob.createdAt || new Date().toISOString(),
         isDirectory: false,
