@@ -69,8 +69,10 @@ export async function DELETE(request: NextRequest) {
         }
 
         let lastError: any = null;
+        let triedCandidates: string[] = [];
         for (const candidate of candidates) {
           try {
+            triedCandidates.push(candidate);
             await del(candidate, { token: process.env.BLOB_READ_WRITE_TOKEN });
             return NextResponse.json({ success: true, message: 'File deleted successfully' });
           } catch (candidateError: any) {
@@ -82,7 +84,50 @@ export async function DELETE(request: NextRequest) {
         }
 
         if (lastError?.status === 404 || lastError?.code === 'not_found') {
-          return NextResponse.json({ error: 'File not found' }, { status: 404 });
+          try {
+            const { list } = await import('@vercel/blob');
+            const token = process.env.BLOB_READ_WRITE_TOKEN as string;
+            const searchTerm = baseTarget.replace(/^https?:\/\//, '').trim();
+            let cursor: string | undefined = undefined;
+            let match: any = null;
+            let pagesChecked = 0;
+            const MAX_PAGES = 10;
+
+            while (!match && pagesChecked < MAX_PAGES) {
+              pagesChecked++;
+              const result = await list({ cursor, token, limit: 1000 });
+              for (const blob of result.blobs || []) {
+                const candidatesToCompare = [
+                  blob.pathname,
+                  blob.pathname ? `/${blob.pathname}` : '',
+                  blob.url,
+                ].filter(Boolean) as string[];
+
+                const normalized = (value: string) => value.trim().replace(/^https?:\/\//, '').replace(/^\/+/, '');
+                const normBase = normalized(baseTarget);
+
+                if (candidatesToCompare.some(candidate => normalized(candidate) === normBase)) {
+                  match = blob;
+                  break;
+                }
+              }
+
+              if (!match && result.cursor && (result.blobs?.length || 0) > 0) {
+                cursor = result.cursor;
+              } else {
+                break;
+              }
+            }
+
+            if (match) {
+              await del(match.pathname, { token });
+              return NextResponse.json({ success: true, message: 'File deleted successfully' });
+            }
+          } catch (recoveryError) {
+            console.warn('Blob delete recovery attempt failed:', recoveryError);
+          }
+
+          return NextResponse.json({ error: 'File not found', attempted: triedCandidates }, { status: 404 });
         }
 
         throw lastError || new Error('Unknown delete error');
