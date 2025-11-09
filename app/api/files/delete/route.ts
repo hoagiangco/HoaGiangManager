@@ -70,7 +70,7 @@ export async function DELETE(request: NextRequest) {
 
         let lastError: any = null;
         let triedCandidates: string[] = [];
-        for (const candidate of candidates) {
+        for (const candidate of Array.from(candidates)) {
           try {
             triedCandidates.push(candidate);
             await del(candidate, { token: process.env.BLOB_READ_WRITE_TOKEN });
