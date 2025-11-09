@@ -2208,6 +2208,7 @@ export default function DamageReportsPage() {
           accept="image/*"
           mode="image"
           multiSelect
+          canManageFiles={isAdmin(currentUser?.roles)}
         />
       )}
 

@@ -22,6 +22,7 @@ interface FileManagerProps {
   accept?: string;
   mode?: 'image' | 'all';
   multiSelect?: boolean;
+  canManageFiles?: boolean;
 }
 
 type ViewMode = 'list' | 'grid';
@@ -33,7 +34,8 @@ export default function FileManager({
   onSelectFiles,
   accept, 
   mode = 'all',
-  multiSelect = false 
+  multiSelect = false,
+  canManageFiles
 }: FileManagerProps) {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -43,6 +45,8 @@ export default function FileManager({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [renamingFile, setRenamingFile] = useState<string | null>(null);
   const [newFileName, setNewFileName] = useState('');
+  const [canManage, setCanManage] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadFiles = async () => {
@@ -77,6 +81,66 @@ export default function FileManager({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
+
+  useEffect(() => {
+    if (typeof canManageFiles === 'boolean') {
+      setCanManage(canManageFiles);
+      return;
+    }
+
+    if (typeof window === 'undefined') {
+      setCanManage(false);
+      return;
+    }
+
+    try {
+      const storedUser = window.localStorage.getItem('user');
+      if (!storedUser) {
+        setCanManage(false);
+        return;
+      }
+
+      const user = JSON.parse(storedUser);
+      if (user?.isAdmin === true) {
+        setCanManage(true);
+        return;
+      }
+
+      const roleSources = [
+        user?.roles,
+        user?.Roles,
+        user?.roleNames,
+        user?.role,
+      ];
+      const roles: string[] = [];
+      roleSources.forEach((source) => {
+        if (!source) return;
+        if (Array.isArray(source)) {
+          roles.push(...source);
+        } else {
+          roles.push(source);
+        }
+      });
+
+      const normalized = roles
+        .map((role) => (role ? String(role).trim().toLowerCase() : ''))
+        .filter(Boolean);
+      const adminRoles = new Set([
+        'admin',
+        'administrator',
+        'super_admin',
+        'superadmin',
+        'system_admin',
+        'systemadmin',
+        'root',
+      ]);
+      const hasAdminRole = normalized.some((role) => adminRoles.has(role));
+      setCanManage(hasAdminRole);
+    } catch (error) {
+      console.warn('FileManager: Unable to determine admin privileges:', error);
+      setCanManage(false);
+    }
+  }, [canManageFiles, isOpen]);
 
   const compressImage = async (file: File): Promise<File> => {
     if (!file.type.startsWith('image/')) {
@@ -208,16 +272,30 @@ export default function FileManager({
     }
   };
 
+  const deleteFileRequest = async (file: FileItem) => {
+    const target = encodeURIComponent(file.path || file.url || file.name);
+    await api.delete(`/files/delete?file=${target}`);
+  };
+
   const handleDeleteFile = async (file: FileItem) => {
+    if (!canManage) {
+      toast.error('Bạn không có quyền xóa file');
+      return;
+    }
+
     if (!confirm(`Bạn có chắc chắn muốn xóa file "${file.name}"?`)) {
       return;
     }
 
+    setIsDeleting(true);
     try {
-      const target = encodeURIComponent(file.path || file.url || file.name);
-      await api.delete(`/files/delete?file=${target}`);
+      await deleteFileRequest(file);
       toast.success('Xóa file thành công');
-      await loadFiles();
+      try {
+        await loadFiles();
+      } catch (error) {
+        console.error('FileManager: Failed to reload files after deleting:', error);
+      }
       setSelectedFiles(prev => {
         const newSet = new Set(prev);
         newSet.delete(file.url);
@@ -225,11 +303,74 @@ export default function FileManager({
       });
     } catch (error: any) {
       console.error('Delete error:', error);
-      toast.error('Lỗi khi xóa file');
+      const errorMessage = error.response?.data?.error || error.message || 'Lỗi khi xóa file';
+      toast.error(errorMessage);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!canManage) {
+      toast.error('Bạn không có quyền xóa file');
+      return;
+    }
+
+    if (selectedFiles.size === 0) {
+      toast.warning('Vui lòng chọn ít nhất một file để xóa');
+      return;
+    }
+
+    if (!confirm(`Bạn có chắc chắn muốn xóa ${selectedFiles.size} file đã chọn?`)) {
+      return;
+    }
+
+    const selectedItems = files.filter(file => selectedFiles.has(file.url));
+    if (selectedItems.length === 0) {
+      toast.warning('Không tìm thấy file đã chọn');
+      return;
+    }
+
+    setIsDeleting(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    try {
+      for (const file of selectedItems) {
+        try {
+          await deleteFileRequest(file);
+          successCount++;
+        } catch (error) {
+          console.error(`Delete error for ${file.name}:`, error);
+          failCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`Đã xóa ${successCount} file`);
+      }
+      if (failCount > 0) {
+        toast.error(`Không thể xóa ${failCount} file`);
+      }
+
+      try {
+        await loadFiles();
+      } catch (error) {
+        console.error('FileManager: Failed to reload files after deleting selections:', error);
+      }
+      setSelectedFiles(new Set());
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   const handleRenameFile = async (oldName: string, newName: string) => {
+    if (!canManage) {
+      toast.error('Bạn không có quyền đổi tên file');
+      setRenamingFile(null);
+      return;
+    }
+
     if (!newName || newName.trim() === '') {
       toast.error('Tên file không được để trống');
       return;
@@ -241,10 +382,13 @@ export default function FileManager({
     }
 
     try {
-      await api.post('/files/rename', { oldName, newName: newName.trim() });
+      const trimmedName = newName.trim();
+      await api.post('/files/rename', { oldName, newName: trimmedName });
       toast.success('Đổi tên file thành công');
       await loadFiles();
+      setSelectedFiles(new Set());
       setRenamingFile(null);
+      setNewFileName('');
     } catch (error: any) {
       console.error('Rename error:', error);
       const errorMessage = error.response?.data?.error || error.message || 'Lỗi khi đổi tên file';
@@ -252,8 +396,10 @@ export default function FileManager({
     }
   };
 
+  const selectionEnabled = multiSelect || canManage;
+
   const handleSelectFile = (file: FileItem) => {
-    if (multiSelect) {
+    if (selectionEnabled) {
       setSelectedFiles(prev => {
         const newSet = new Set(prev);
         if (newSet.has(file.url)) {
@@ -269,6 +415,10 @@ export default function FileManager({
   };
 
   const handleSelectAll = () => {
+    if (!selectionEnabled) {
+      return;
+    }
+
     if (selectedFiles.size === files.length) {
       setSelectedFiles(new Set());
     } else {
@@ -387,13 +537,32 @@ export default function FileManager({
             {/* Toolbar */}
             <div className="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
               <div className="d-flex gap-2 align-items-center">
-                {multiSelect && files.length > 0 && (
+                {selectionEnabled && files.length > 0 && (
                   <button
                     type="button"
                     className="btn btn-outline-secondary btn-sm"
                     onClick={handleSelectAll}
+                    disabled={isDeleting}
                   >
                     <i className="fas fa-check-square"></i> {selectedFiles.size === files.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                  </button>
+                )}
+                {canManage && selectedFiles.size > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-outline-danger btn-sm"
+                    onClick={handleDeleteSelected}
+                    disabled={isDeleting}
+                  >
+                    {isDeleting ? (
+                      <>
+                        <i className="fas fa-spinner fa-spin"></i> Đang xóa...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-trash"></i> Xóa đã chọn
+                      </>
+                    )}
                   </button>
                 )}
               </div>
@@ -431,6 +600,11 @@ export default function FileManager({
             {uploading && (
               <div className="alert alert-info mb-3">
                 <i className="fas fa-spinner fa-spin"></i> Đang upload file...
+              </div>
+            )}
+            {isDeleting && !uploading && (
+              <div className="alert alert-warning mb-3">
+                <i className="fas fa-spinner fa-spin"></i> Đang xóa file...
               </div>
             )}
 
@@ -487,7 +661,7 @@ export default function FileManager({
                               <i className={`fas ${getFileIcon(file.name)} fa-4x text-muted`}></i>
                             </div>
                           )}
-                          {isRenaming ? (
+                          {isRenaming && canManage ? (
                             <input
                               type="text"
                               className="form-control form-control-sm mt-2"
@@ -522,29 +696,35 @@ export default function FileManager({
                             </div>
                           )}
                         </div>
-                        <div className="card-footer p-1 bg-transparent border-0 d-flex justify-content-center gap-1">
-                          <button
-                            className="btn btn-sm btn-outline-primary"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setRenamingFile(file.name);
-                              setNewFileName(file.name);
-                            }}
-                            title="Đổi tên"
-                          >
-                            <i className="fas fa-edit"></i>
-                          </button>
-                          <button
-                            className="btn btn-sm btn-outline-danger"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteFile(file);
-                            }}
-                            title="Xóa"
-                          >
-                            <i className="fas fa-trash"></i>
-                          </button>
-                        </div>
+                        {canManage && (
+                          <div className="card-footer p-1 bg-transparent border-0 d-flex justify-content-center gap-1">
+                            <button
+                              className="btn btn-sm btn-outline-primary"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (isDeleting) return;
+                                setRenamingFile(file.name);
+                                setNewFileName(file.name);
+                              }}
+                              title="Đổi tên"
+                              disabled={isDeleting}
+                            >
+                              <i className="fas fa-edit"></i>
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (isDeleting) return;
+                                handleDeleteFile(file);
+                              }}
+                              title="Xóa"
+                              disabled={isDeleting}
+                            >
+                              <i className="fas fa-trash"></i>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -614,7 +794,7 @@ export default function FileManager({
                             )}
                           </td>
                           <td>
-                            {isRenaming ? (
+                            {isRenaming && canManage ? (
                               <input
                                 type="text"
                                 className="form-control form-control-sm"
@@ -662,29 +842,35 @@ export default function FileManager({
                             })}
                           </td>
                           <td>
-                            <div className="btn-group btn-group-sm">
-                              <button
-                                className="btn btn-outline-primary"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setRenamingFile(file.name);
-                                  setNewFileName(file.name);
-                                }}
-                                title="Đổi tên"
-                              >
-                                <i className="fas fa-edit"></i>
-                              </button>
-                              <button
-                                className="btn btn-outline-danger"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteFile(file);
-                                }}
-                                title="Xóa"
-                              >
-                                <i className="fas fa-trash"></i>
-                              </button>
-                            </div>
+                            {canManage && (
+                              <div className="btn-group btn-group-sm">
+                                <button
+                                  className="btn btn-outline-primary"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (isDeleting) return;
+                                    setRenamingFile(file.name);
+                                    setNewFileName(file.name);
+                                  }}
+                                  title="Đổi tên"
+                                  disabled={isDeleting}
+                                >
+                                  <i className="fas fa-edit"></i>
+                                </button>
+                                <button
+                                  className="btn btn-outline-danger"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (isDeleting) return;
+                                    handleDeleteFile(file);
+                                  }}
+                                  title="Xóa"
+                                  disabled={isDeleting}
+                                >
+                                  <i className="fas fa-trash"></i>
+                                </button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       );

@@ -1387,6 +1387,7 @@ function DevicesPageContent() {
         mode={fileManagerMode}
         accept={fileManagerMode === 'image' ? 'image/*' : undefined}
         multiSelect={false}
+        canManageFiles
       />
     </div>
   );
