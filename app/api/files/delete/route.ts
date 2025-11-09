@@ -95,7 +95,7 @@ export async function DELETE(request: NextRequest) {
 
             while (!match && pagesChecked < MAX_PAGES) {
               pagesChecked++;
-              const result = await list({ cursor, token, limit: 1000 });
+              const result: { blobs: any[]; cursor?: string } = await list({ cursor, token, limit: 1000 });
               for (const blob of result.blobs || []) {
                 const candidatesToCompare = [
                   blob.pathname,
