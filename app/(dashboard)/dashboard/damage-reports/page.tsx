@@ -1436,7 +1436,7 @@ export default function DamageReportsPage() {
                   touchAction: 'pan-x',
                 }}
               >
-            <table className="table table-bordered table-hover" style={{ marginBottom: 0, minWidth: '1200px' }}>
+            <table className="table table-bordered table-hover align-middle" style={{ marginBottom: 0, minWidth: '1200px' }}>
               <thead>
                 <tr>
                   <th style={{ width: '60px' }}>
@@ -1475,7 +1475,13 @@ export default function DamageReportsPage() {
                   </tr>
                 ) : (
                   currentReports.map((report) => (
-                    <tr key={report.id} style={{ cursor: report.id && selectedIds.includes(report.id) ? 'pointer' : 'default' }}>
+                    <tr
+                      key={report.id}
+                      style={{
+                        cursor: report.id && selectedIds.includes(report.id) ? 'pointer' : 'default',
+                        verticalAlign: 'middle',
+                      }}
+                    >
                       <td>
                         <div className="d-flex align-items-center gap-2">
                           <input
@@ -1501,7 +1507,7 @@ export default function DamageReportsPage() {
                           <i className="fas fa-exclamation-triangle text-danger ms-1" title="Quá hạn"></i>
                         )}
                       </td>
-                      <td style={{ verticalAlign: 'top', padding: '0.5rem 0.25rem' }}>
+                      <td style={{ padding: '0.5rem 0.25rem' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
                           <select
                             className="form-control form-control-sm damage-report-status-select"
@@ -1532,7 +1538,7 @@ export default function DamageReportsPage() {
                           </select>
                         </div>
                       </td>
-                      <td style={{ verticalAlign: 'top', padding: '0.5rem 0.25rem' }}>
+                      <td style={{ padding: '0.5rem 0.25rem' }}>
                         <select
                           className="form-control form-control-sm damage-report-priority-select"
                           value={report.priority}
