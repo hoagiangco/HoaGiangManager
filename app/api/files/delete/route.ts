@@ -37,100 +37,112 @@ export async function DELETE(request: NextRequest) {
       }
 
       try {
-        const { del } = await import('@vercel/blob');
+        const { del, list } = await import('@vercel/blob');
+        const token = process.env.BLOB_READ_WRITE_TOKEN as string;
         const baseTarget = decodedParam.trim();
 
-        const candidates = new Set<string>();
-        if (baseTarget) {
-          candidates.add(baseTarget);
+        const normalize = (value: string) =>
+          value.trim().replace(/^https?:\/\//, '').replace(/^\/+/, '');
 
-          if (baseTarget.startsWith('/')) {
-            candidates.add(baseTarget.slice(1));
-          } else {
-            candidates.add(`/${baseTarget}`);
+        const findMatchingBlob = async () => {
+          const targetNorm = normalize(baseTarget);
+          let cursor: string | undefined;
+          let pagesChecked = 0;
+          const MAX_PAGES = 10;
+
+          while (pagesChecked < MAX_PAGES) {
+            pagesChecked++;
+            const result: { blobs: any[]; cursor?: string } = await list({ cursor, token, limit: 1000 });
+            for (const blob of result.blobs || []) {
+              const compareValues = [
+                blob.pathname,
+                blob.pathname ? `/${blob.pathname}` : '',
+                blob.url,
+              ].filter(Boolean) as string[];
+
+              if (compareValues.some((value) => normalize(value) === targetNorm)) {
+                return blob;
+              }
+            }
+
+            if (result.cursor && (result.blobs?.length || 0) > 0) {
+              cursor = result.cursor;
+            } else {
+              break;
+            }
           }
 
-          if (baseTarget.startsWith('http')) {
-            try {
-              const parsed = new URL(baseTarget);
-              const pathname = parsed.pathname?.startsWith('/')
-                ? parsed.pathname.slice(1)
-                : parsed.pathname;
-              if (pathname) {
-                candidates.add(pathname);
-                candidates.add(`/${pathname}`);
-              }
-              // Ensure full URL is also attempted
-              candidates.add(parsed.toString());
-            } catch (parseError) {
-              console.warn('Failed to parse delete target as URL:', parseError);
-            }
+          return null;
+        };
+
+        const addCandidate = (set: Set<string>, value?: string | null) => {
+          if (!value) return;
+          const trimmed = value.trim();
+          if (trimmed) {
+            set.add(trimmed);
+          }
+        };
+
+        const candidates = new Set<string>();
+        addCandidate(candidates, baseTarget);
+        if (baseTarget.startsWith('/')) {
+          addCandidate(candidates, baseTarget.slice(1));
+        } else {
+          addCandidate(candidates, `/${baseTarget}`);
+        }
+        if (baseTarget.startsWith('http')) {
+          try {
+            const parsed = new URL(baseTarget);
+            addCandidate(candidates, parsed.toString());
+            const pathname = parsed.pathname?.startsWith('/')
+              ? parsed.pathname.slice(1)
+              : parsed.pathname;
+            addCandidate(candidates, pathname);
+            addCandidate(candidates, pathname ? `/${pathname}` : undefined);
+          } catch (parseError) {
+            console.warn('Failed to parse delete target as URL:', parseError);
           }
         }
 
-        let lastError: any = null;
-        let triedCandidates: string[] = [];
+        const matchedBlob = await findMatchingBlob();
+        if (matchedBlob) {
+          addCandidate(candidates, matchedBlob.pathname);
+          addCandidate(candidates, matchedBlob.pathname ? `/${matchedBlob.pathname}` : undefined);
+          addCandidate(candidates, matchedBlob.url);
+        }
+
+        const triedCandidates: string[] = [];
+        const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
         for (const candidate of Array.from(candidates)) {
+          triedCandidates.push(candidate);
           try {
-            triedCandidates.push(candidate);
-            await del(candidate, { token: process.env.BLOB_READ_WRITE_TOKEN });
-            return NextResponse.json({ success: true, message: 'File deleted successfully' });
+            await del(candidate, { token });
+            await wait(300);
+            const stillExists = await findMatchingBlob();
+            if (!stillExists) {
+              return NextResponse.json({ success: true, message: 'File deleted successfully' });
+            }
+            console.warn('Blob delete reported success but blob still exists. Retrying...', {
+              candidate,
+              baseTarget,
+            });
           } catch (candidateError: any) {
-            lastError = candidateError;
             if (!(candidateError?.status === 404 || candidateError?.code === 'not_found')) {
               console.warn(`Delete attempt failed for candidate "${candidate}":`, candidateError);
             }
           }
         }
 
-        if (lastError?.status === 404 || lastError?.code === 'not_found') {
-          try {
-            const { list } = await import('@vercel/blob');
-            const token = process.env.BLOB_READ_WRITE_TOKEN as string;
-            const searchTerm = baseTarget.replace(/^https?:\/\//, '').trim();
-            let cursor: string | undefined = undefined;
-            let match: any = null;
-            let pagesChecked = 0;
-            const MAX_PAGES = 10;
-
-            while (!match && pagesChecked < MAX_PAGES) {
-              pagesChecked++;
-              const result: { blobs: any[]; cursor?: string } = await list({ cursor, token, limit: 1000 });
-              for (const blob of result.blobs || []) {
-                const candidatesToCompare = [
-                  blob.pathname,
-                  blob.pathname ? `/${blob.pathname}` : '',
-                  blob.url,
-                ].filter(Boolean) as string[];
-
-                const normalized = (value: string) => value.trim().replace(/^https?:\/\//, '').replace(/^\/+/, '');
-                const normBase = normalized(baseTarget);
-
-                if (candidatesToCompare.some(candidate => normalized(candidate) === normBase)) {
-                  match = blob;
-                  break;
-                }
-              }
-
-              if (!match && result.cursor && (result.blobs?.length || 0) > 0) {
-                cursor = result.cursor;
-              } else {
-                break;
-              }
-            }
-
-            if (match) {
-              await del(match.pathname, { token });
-              return NextResponse.json({ success: true, message: 'File deleted successfully' });
-            }
-          } catch (recoveryError) {
-            console.warn('Blob delete recovery attempt failed:', recoveryError);
-          }
-
-          return NextResponse.json({ error: 'File not found', attempted: triedCandidates }, { status: 404 });
+        const finalCheck = await findMatchingBlob();
+        if (!finalCheck) {
+          return NextResponse.json({ success: true, message: 'File deleted successfully' });
         }
 
-        throw lastError || new Error('Unknown delete error');
+        return NextResponse.json({
+          error: 'File not found or could not be deleted',
+          attempted: triedCandidates,
+        }, { status: 404 });
       } catch (error: any) {
         console.error('Vercel Blob delete error:', error);
         return NextResponse.json({
