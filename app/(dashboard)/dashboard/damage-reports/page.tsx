@@ -195,6 +195,8 @@ export default function DamageReportsPage() {
   // Modal device filter state
   const [modalDeviceCategoryId, setModalDeviceCategoryId] = useState<number>(0);
   const [modalDeviceSearch, setModalDeviceSearch] = useState('');
+  const [isDeviceDropdownOpen, setIsDeviceDropdownOpen] = useState(false);
+  const deviceDropdownRef = useRef<HTMLDivElement | null>(null);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -277,8 +279,23 @@ export default function DamageReportsPage() {
     if (showModal) {
       setModalDeviceCategoryId(0);
       setModalDeviceSearch('');
+      setIsDeviceDropdownOpen(false);
     }
   }, [showModal]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!deviceDropdownRef.current) return;
+      if (!deviceDropdownRef.current.contains(event.target as Node)) {
+        setIsDeviceDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const openQuickView = async (reportId: number) => {
     try {
@@ -1951,7 +1968,7 @@ export default function DamageReportsPage() {
 
                   {formData.deviceSelection === 'device' ? (
                     <div className="col-12">
-                      <div className="row g-2 align-items-end">
+                      <div className="row g-3">
                         <div className="col-12 col-md-6">
                           <label className="form-label mb-1">Danh mục thiết bị</label>
                           <select
@@ -1966,36 +1983,101 @@ export default function DamageReportsPage() {
                           </select>
                         </div>
                         <div className="col-12 col-md-6">
-                          <label className="form-label mb-1">Tìm thiết bị</label>
-                          <input
-                            type="text"
-                            className="form-control"
-                            placeholder="Nhập tên, mã hoặc serial..."
-                            value={modalDeviceSearch}
-                            onChange={(e) => setModalDeviceSearch(e.target.value)}
-                          />
+                          <label className="form-label mb-1">Thiết bị <span className="text-danger">*</span></label>
+                          <div
+                            ref={deviceDropdownRef}
+                            className="position-relative"
+                          >
+                            <button
+                              type="button"
+                              className="form-control text-start d-flex justify-content-between align-items-center"
+                              onClick={() => setIsDeviceDropdownOpen((prev) => !prev)}
+                              style={{ cursor: 'pointer' }}
+                            >
+                              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {(() => {
+                                  if (formData.deviceId) {
+                                    const selected = devices.find((d) => d.id === formData.deviceId);
+                                    if (selected) {
+                                      return `${selected.name}${selected.serial ? ` (${selected.serial})` : ''}`;
+                                    }
+                                  }
+                                  return '-- Chọn thiết bị --';
+                                })()}
+                              </span>
+                              <i className={`fas fa-chevron-${isDeviceDropdownOpen ? 'up' : 'down'} ms-2 text-muted`} />
+                            </button>
+                            {isDeviceDropdownOpen && (
+                              <div
+                                className="border rounded shadow-sm mt-1"
+                                style={{
+                                  position: 'absolute',
+                                  zIndex: 1080,
+                                  backgroundColor: '#fff',
+                                  width: '100%',
+                                  maxHeight: '280px',
+                                  overflow: 'hidden',
+                                }}
+                              >
+                                <div className="p-2 border-bottom bg-light">
+                                  <input
+                                    autoFocus
+                                    type="text"
+                                    className="form-control form-control-sm"
+                                    placeholder="Nhập tên, mã hoặc serial..."
+                                    value={modalDeviceSearch}
+                                    onChange={(e) => setModalDeviceSearch(e.target.value)}
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                </div>
+                                <div
+                                  style={{
+                                    maxHeight: '220px',
+                                    overflowY: 'auto',
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    className={`dropdown-item text-start ${!formData.deviceId ? 'active' : ''}`}
+                                    onClick={() => {
+                                      setFormData({ ...formData, deviceId: undefined });
+                                      setIsDeviceDropdownOpen(false);
+                                    }}
+                                  >
+                                    -- Chưa chọn thiết bị --
+                                  </button>
+                                  {filteredModalDevices.length === 0 && (
+                                    <div className="px-3 py-2 text-muted small">
+                                      Không tìm thấy thiết bị phù hợp. Hãy đổi danh mục hoặc từ khóa tìm kiếm.
+                                    </div>
+                                  )}
+                                  {filteredModalDevices.map((d) => {
+                                    const isSelected = formData.deviceId === d.id;
+                                    return (
+                                      <button
+                                        type="button"
+                                        key={d.id}
+                                        className={`dropdown-item text-start ${isSelected ? 'active' : ''}`}
+                                        onClick={() => {
+                                          setFormData({ ...formData, deviceId: d.id });
+                                          setIsDeviceDropdownOpen(false);
+                                        }}
+                                      >
+                                        <div className="fw-semibold">{d.name}</div>
+                                        {(d.serial || d.deviceCategoryName) && (
+                                          <div className="small text-muted">
+                                            {[d.serial, d.deviceCategoryName].filter(Boolean).join(' • ')}
+                                          </div>
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      <label className="form-label mt-3">Thiết bị <span className="text-danger">*</span></label>
-                      <select
-                        className="form-control"
-                        value={formData.deviceId ? String(formData.deviceId) : ''}
-                        onChange={(e) => setFormData({ ...formData, deviceId: e.target.value ? Number(e.target.value) : undefined })}
-                      >
-                        <option value="">-- Chọn thiết bị --</option>
-                        {filteredModalDevices.map((d) => (
-                          <option key={d.id} value={String(d.id)}>
-                            {d.name}
-                            {d.serial ? ` (${d.serial})` : ''}
-                            {d.deviceCategoryName ? ` - ${d.deviceCategoryName}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                      {filteredModalDevices.length === 0 && (
-                        <div className="form-text text-muted">
-                          Không tìm thấy thiết bị phù hợp. Hãy đổi danh mục hoặc từ khóa tìm kiếm.
-                        </div>
-                      )}
                     </div>
                   ) : (
                     <div className="col-12">
