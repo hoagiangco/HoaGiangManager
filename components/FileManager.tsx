@@ -17,7 +17,8 @@ interface FileItem {
 interface FileManagerProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelectFile: (fileUrl: string) => void;
+  onSelectFile?: (fileUrl: string) => void;
+  onSelectFiles?: (fileUrls: string[]) => void;
   accept?: string;
   mode?: 'image' | 'all';
   multiSelect?: boolean;
@@ -28,7 +29,8 @@ type ViewMode = 'list' | 'grid';
 export default function FileManager({ 
   isOpen, 
   onClose, 
-  onSelectFile, 
+  onSelectFile,
+  onSelectFiles,
   accept, 
   mode = 'all',
   multiSelect = false 
@@ -206,18 +208,19 @@ export default function FileManager({
     }
   };
 
-  const handleDeleteFile = async (fileName: string) => {
-    if (!confirm('Bạn có chắc chắn muốn xóa file này?')) {
+  const handleDeleteFile = async (file: FileItem) => {
+    if (!confirm(`Bạn có chắc chắn muốn xóa file "${file.name}"?`)) {
       return;
     }
 
     try {
-      await api.delete(`/files/delete?file=${encodeURIComponent(fileName)}`);
+      const target = encodeURIComponent(file.path || file.url || file.name);
+      await api.delete(`/files/delete?file=${target}`);
       toast.success('Xóa file thành công');
       await loadFiles();
       setSelectedFiles(prev => {
         const newSet = new Set(prev);
-        newSet.delete(fileName);
+        newSet.delete(file.url);
         return newSet;
       });
     } catch (error: any) {
@@ -279,22 +282,19 @@ export default function FileManager({
       return;
     }
 
+    const selectedUrls = Array.from(selectedFiles);
+
     if (multiSelect) {
-      // Return array of selected files
-      const selectedUrls = Array.from(selectedFiles);
-      console.log('FileManager: Multi-select, URLs:', selectedUrls);
-      selectedUrls.forEach(url => {
-        console.log('FileManager: Calling onSelectFile with:', url);
-        onSelectFile(url);
-      });
+      if (onSelectFiles) {
+        onSelectFiles(selectedUrls);
+      } else if (onSelectFile) {
+        selectedUrls.forEach((url) => onSelectFile(url));
+      }
     } else {
-      // Return single file
-      const firstSelected = Array.from(selectedFiles)[0];
-      console.log('FileManager: Single select, URL:', firstSelected);
-      if (firstSelected) {
-        console.log('FileManager: Calling onSelectFile with:', firstSelected);
+      const firstSelected = selectedUrls[0];
+      if (firstSelected && onSelectFile) {
         onSelectFile(firstSelected);
-      } else {
+      } else if (!firstSelected) {
         console.error('FileManager: No file selected');
       }
     }
@@ -538,7 +538,7 @@ export default function FileManager({
                             className="btn btn-sm btn-outline-danger"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDeleteFile(file.name);
+                              handleDeleteFile(file);
                             }}
                             title="Xóa"
                           >
@@ -678,7 +678,7 @@ export default function FileManager({
                                 className="btn btn-outline-danger"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleDeleteFile(file.name);
+                                  handleDeleteFile(file);
                                 }}
                                 title="Xóa"
                               >

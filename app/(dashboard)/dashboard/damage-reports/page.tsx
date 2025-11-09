@@ -2194,9 +2194,20 @@ export default function DamageReportsPage() {
             setFormData(prev => ({ ...prev, images: Array.from(new Set([...(prev.images || []), url])) }));
             setShowFileManager(false);
           }}
+          onSelectFiles={(urls: string[]) => {
+            if (!urls || urls.length === 0) {
+              toast.warning('Vui lòng chọn ít nhất một hình ảnh');
+              return;
+            }
+            setFormData(prev => ({
+              ...prev,
+              images: Array.from(new Set([...(prev.images || []), ...urls])),
+            }));
+            setShowFileManager(false);
+          }}
           accept="image/*"
           mode="image"
-          multiSelect={false}
+          multiSelect
         />
       )}
 
