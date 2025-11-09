@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
-import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, StaffVM, Department } from '@/types';
+import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, StaffVM, Department, DeviceCategory } from '@/types';
 import { format } from 'date-fns';
 import FileManager from '@/components/FileManager';
 import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
@@ -142,6 +142,7 @@ export default function DamageReportsPage() {
   const [reports, setReports] = useState<DamageReportVM[]>([]);
   const [allReports, setAllReports] = useState<DamageReportVM[]>([]);
   const [devices, setDevices] = useState<DeviceVM[]>([]);
+  const [deviceCategories, setDeviceCategories] = useState<DeviceCategory[]>([]);
   const [staff, setStaff] = useState<StaffVM[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
@@ -190,6 +191,10 @@ export default function DamageReportsPage() {
   const [showImageModal, setShowImageModal] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  // Modal device filter state
+  const [modalDeviceCategoryId, setModalDeviceCategoryId] = useState<number>(0);
+  const [modalDeviceSearch, setModalDeviceSearch] = useState('');
   
   // Form state
   const [formData, setFormData] = useState({
@@ -232,6 +237,48 @@ export default function DamageReportsPage() {
     }
     return undefined;
   }, [viewMode]);
+
+  const filteredModalDevices = useMemo(() => {
+    let list = devices;
+
+    if (modalDeviceCategoryId > 0) {
+      list = list.filter((device) => device.deviceCategoryId === modalDeviceCategoryId);
+    }
+
+    if (modalDeviceSearch.trim()) {
+      const keyword = modalDeviceSearch.trim().toLowerCase();
+      list = list.filter((device) => {
+        const source = `${device.name || ''} ${device.serial || ''} ${device.deviceCategoryName || ''}`.toLowerCase();
+        return source.includes(keyword);
+      });
+    }
+
+    if (formData.deviceId) {
+      const exists = list.some((device) => device.id === formData.deviceId);
+      if (!exists) {
+        const selectedDevice = devices.find((device) => device.id === formData.deviceId);
+        if (selectedDevice) {
+          list = [selectedDevice, ...list];
+        }
+      }
+    }
+
+    const seen = new Set<number>();
+    return list.filter((device) => {
+      if (seen.has(device.id)) {
+        return false;
+      }
+      seen.add(device.id);
+      return true;
+    });
+  }, [devices, modalDeviceCategoryId, modalDeviceSearch, formData.deviceId]);
+
+  useEffect(() => {
+    if (showModal) {
+      setModalDeviceCategoryId(0);
+      setModalDeviceSearch('');
+    }
+  }, [showModal]);
 
   const openQuickView = async (reportId: number) => {
     try {
@@ -295,6 +342,7 @@ export default function DamageReportsPage() {
   useEffect(() => {
     loadData();
     loadDevices();
+    loadDeviceCategories();
     loadStaff();
     loadDepartments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -329,6 +377,17 @@ export default function DamageReportsPage() {
       }
     } catch (error) {
       console.error('Error loading devices:', error);
+    }
+  };
+
+  const loadDeviceCategories = async () => {
+    try {
+      const response = await api.get('/device-categories');
+      if (response.data.status) {
+        setDeviceCategories(response.data.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading device categories:', error);
     }
   };
 
@@ -1892,13 +1951,51 @@ export default function DamageReportsPage() {
 
                   {formData.deviceSelection === 'device' ? (
                     <div className="col-12">
-                      <label className="form-label">Thiết bị <span className="text-danger">*</span></label>
-                      <select className="form-control" value={formData.deviceId ? String(formData.deviceId) : ''} onChange={(e) => setFormData({ ...formData, deviceId: e.target.value ? Number(e.target.value) : undefined })}>
+                      <div className="row g-2 align-items-end">
+                        <div className="col-12 col-md-6">
+                          <label className="form-label mb-1">Danh mục thiết bị</label>
+                          <select
+                            className="form-control"
+                            value={modalDeviceCategoryId}
+                            onChange={(e) => setModalDeviceCategoryId(Number(e.target.value) || 0)}
+                          >
+                            <option value={0}>Tất cả danh mục</option>
+                            {deviceCategories.map((cate) => (
+                              <option key={cate.id} value={cate.id}>{cate.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="col-12 col-md-6">
+                          <label className="form-label mb-1">Tìm thiết bị</label>
+                          <input
+                            type="text"
+                            className="form-control"
+                            placeholder="Nhập tên, mã hoặc serial..."
+                            value={modalDeviceSearch}
+                            onChange={(e) => setModalDeviceSearch(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <label className="form-label mt-3">Thiết bị <span className="text-danger">*</span></label>
+                      <select
+                        className="form-control"
+                        value={formData.deviceId ? String(formData.deviceId) : ''}
+                        onChange={(e) => setFormData({ ...formData, deviceId: e.target.value ? Number(e.target.value) : undefined })}
+                      >
                         <option value="">-- Chọn thiết bị --</option>
-                        {devices.map(d => (
-                          <option key={d.id} value={String(d.id)}>{d.name} {d.serial ? `(${d.serial})` : ''}</option>
+                        {filteredModalDevices.map((d) => (
+                          <option key={d.id} value={String(d.id)}>
+                            {d.name}
+                            {d.serial ? ` (${d.serial})` : ''}
+                            {d.deviceCategoryName ? ` - ${d.deviceCategoryName}` : ''}
+                          </option>
                         ))}
                       </select>
+                      {filteredModalDevices.length === 0 && (
+                        <div className="form-text text-muted">
+                          Không tìm thấy thiết bị phù hợp. Hãy đổi danh mục hoặc từ khóa tìm kiếm.
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="col-12">
