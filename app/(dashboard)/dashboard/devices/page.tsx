@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import React from 'react';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
-import { DeviceVM, DeviceStatus, DeviceCategory, Department } from '@/types';
+import { DeviceVM, DeviceStatus, DeviceCategory, Department, DeviceHistorySummary } from '@/types';
 import { format } from 'date-fns';
 import dynamic from 'next/dynamic';
 import FileManager from '@/components/FileManager';
@@ -50,6 +50,9 @@ function DevicesPageContent() {
   const pendingImageUrl = useRef<string | null>(null);
   const quillInsertIndex = useRef<number | null>(null);
   const [showImagePreview, setShowImagePreview] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyData, setHistoryData] = useState<DeviceHistorySummary | null>(null);
   
   // Define quillModules using useMemo at top level to avoid hook order violation
   const quillModules = useMemo(() => ({
@@ -422,6 +425,49 @@ function DevicesPageContent() {
     }
   };
 
+  const handleViewHistory = async () => {
+    if (selectedIds.length !== 1) {
+      toast.warning('Vui lòng chọn 1 thiết bị để xem lịch sử');
+      return;
+    }
+
+    const deviceId = selectedIds[0];
+    setShowHistoryModal(true);
+    setHistoryLoading(true);
+    setHistoryData(null);
+
+    try {
+      const response = await api.get(`/devices/${deviceId}/history`);
+      if (response.data?.status) {
+        setHistoryData(response.data.data || null);
+      } else {
+        toast.error(response.data?.error || 'Không thể tải lịch sử thiết bị');
+        setShowHistoryModal(false);
+      }
+    } catch (error: any) {
+      console.error('Error loading device history:', error);
+      toast.error(error.response?.data?.error || 'Lỗi khi tải lịch sử thiết bị');
+      setShowHistoryModal(false);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const closeHistoryModal = () => {
+    setShowHistoryModal(false);
+    setHistoryLoading(false);
+    setHistoryData(null);
+  };
+
+  const formatDateTime = (value: string | null | undefined) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return format(date, 'dd/MM/yyyy HH:mm');
+  };
+
   const handleSave = async () => {
     if (!formData.name) {
       toast.error('Vui lòng nhập tên thiết bị');
@@ -640,6 +686,14 @@ function DevicesPageContent() {
                 title={filtersOpen ? 'Ẩn bộ lọc' : 'Hiện bộ lọc'}
               >
                 <i className={`fas ${filtersOpen ? 'fa-chevron-up' : 'fa-filter'}`}></i>
+              </button>
+              <button
+                className="btn btn-outline-info btn-sm"
+                onClick={handleViewHistory}
+                title="Xem lịch sử thiết bị"
+                aria-label="Xem lịch sử thiết bị"
+              >
+                <i className="fas fa-history"></i>
               </button>
               <button 
                 className="btn btn-primary btn-sm" 
@@ -1389,6 +1443,121 @@ function DevicesPageContent() {
         multiSelect={false}
         canManageFiles
       />
+
+      {showHistoryModal && (
+        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog modal-lg modal-dialog-scrollable">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">
+                  <i className="fas fa-history me-2"></i>
+                  Lịch sử thiết bị
+                </h5>
+                <button type="button" className="btn-close" onClick={closeHistoryModal}></button>
+              </div>
+              <div className="modal-body">
+                {historyLoading ? (
+                  <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '200px' }}>
+                    <div className="spinner-border text-primary" role="status">
+                      <span className="visually-hidden">Đang tải...</span>
+                    </div>
+                  </div>
+                ) : !historyData ? (
+                  <div className="text-center text-muted py-4">
+                    Không có dữ liệu lịch sử.
+                  </div>
+                ) : (
+                  <div className="d-flex flex-column" style={{ gap: '1rem' }}>
+                    <div className="border rounded p-3 bg-light">
+                      <div className="fw-semibold" style={{ fontSize: '1rem' }}>
+                        {historyData.deviceName || 'Thiết bị không xác định'}
+                        {historyData.deviceSerial ? ` • Serial: ${historyData.deviceSerial}` : ''}
+                      </div>
+                      <div className="text-muted small mt-2">
+                        Tổng báo cáo: <strong>{historyData.totalReports}</strong> • Tổng thay đổi: <strong>{historyData.totalHistory}</strong>
+                      </div>
+                    </div>
+
+                    {historyData.reports.length === 0 ? (
+                      <div className="text-center text-muted py-4">
+                        Thiết bị chưa có báo cáo hư hỏng nào.
+                      </div>
+                    ) : (
+                      historyData.reports.map((report) => (
+                        <div className="card" key={report.reportId}>
+                          <div className="card-header bg-light">
+                            <div className="d-flex flex-column flex-lg-row justify-content-between gap-2">
+                              <div>
+                                <div className="fw-semibold">
+                                  Báo cáo #{report.reportId}
+                                </div>
+                                <div className="text-muted small">
+                                  {report.reportDate ? formatDateTime(report.reportDate) : '—'}
+                                  {report.displayLocation ? ` • ${report.displayLocation}` : ''}
+                                </div>
+                                <div className="text-muted small">
+                                  Người báo cáo: <span className="fw-semibold">{report.reporterName || '-'}</span>
+                                  {' • '}
+                                  Người xử lý: <span className="fw-semibold">{report.handlerName || '-'}</span>
+                                </div>
+                              </div>
+                              <div className="d-flex gap-2 align-items-start flex-wrap">
+                                <span className="badge bg-primary">
+                                  {report.statusName}
+                                </span>
+                                <span className="badge bg-secondary">
+                                  {report.priorityName}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="card-body" style={{ backgroundColor: '#fbfbfb' }}>
+                            {report.histories.length === 0 ? (
+                              <div className="text-muted fst-italic">
+                                Chưa ghi nhận thay đổi nào cho báo cáo này.
+                              </div>
+                            ) : (
+                              <div className="list-group list-group-flush">
+                                {report.histories.map((history) => (
+                                  <div key={history.id} className="list-group-item px-0">
+                                    <div className="d-flex justify-content-between align-items-start">
+                                      <div>
+                                        <div className="fw-semibold">{history.fieldLabel}</div>
+                                        <div className="text-muted small">
+                                          {formatDateTime(history.changedAt)} • {history.changedByName || 'Không xác định'}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="mt-2 small">
+                                      <div className="text-muted">Từ:</div>
+                                      <div style={{ whiteSpace: 'pre-wrap' }}>
+                                        {history.oldValue || '—'}
+                                      </div>
+                                      <div className="text-muted mt-2">Đến:</div>
+                                      <div style={{ whiteSpace: 'pre-wrap' }}>
+                                        {history.newValue || '—'}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={closeHistoryModal}>
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

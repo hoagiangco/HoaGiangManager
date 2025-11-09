@@ -161,6 +161,41 @@ export interface DamageReportHistory {
   changedByName?: string;               // Tên người thay đổi
 }
 
+export interface DeviceHistoryEntry {
+  id: number;
+  damageReportId: number;
+  fieldName: string;
+  fieldLabel: string;
+  oldValue?: string | null;
+  newValue?: string | null;
+  changedBy?: string | null;
+  changedByName?: string | null;
+  changedAt: string;
+}
+
+export interface DeviceHistoryReport {
+  reportId: number;
+  displayLocation?: string | null;
+  damageContent?: string | null;
+  reportDate?: string | null;
+  status: DamageReportStatus;
+  statusName: string;
+  priority: DamageReportPriority;
+  priorityName: string;
+  handlerName?: string | null;
+  reporterName?: string | null;
+  histories: DeviceHistoryEntry[];
+}
+
+export interface DeviceHistorySummary {
+  deviceId: number;
+  deviceName?: string | null;
+  deviceSerial?: string | null;
+  totalReports: number;
+  totalHistory: number;
+  reports: DeviceHistoryReport[];
+}
+
 // API Response types
 export interface ApiResponse<T = any> {
   status: boolean;
