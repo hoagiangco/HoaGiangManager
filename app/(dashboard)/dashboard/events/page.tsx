@@ -1,56 +1,124 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
-import { EventVM, EventType } from '@/types';
+import { EventStatus, EventType, EventVM } from '@/types';
 import { format } from 'date-fns';
 import AdminRoute from '@/components/AdminRoute';
 
+type EventFormState = {
+  id?: number;
+  title: string;
+  eventTypeId?: number;
+  status: EventStatus;
+  description: string;
+  notes: string;
+  eventDate: string;
+  startDate: string;
+  endDate: string;
+  deviceId: string;
+  staffId: string;
+  relatedReportId: string;
+};
+
+const STATUS_OPTIONS: Array<{ value: EventStatus; label: string }> = [
+  { value: EventStatus.Planned, label: 'Kế hoạch' },
+  { value: EventStatus.InProgress, label: 'Đang thực hiện' },
+  { value: EventStatus.Completed, label: 'Đã hoàn thành' },
+  { value: EventStatus.Cancelled, label: 'Đã hủy' },
+  { value: EventStatus.Missed, label: 'Trễ lịch' },
+];
+
+const STATUS_LABELS: Record<EventStatus, string> = {
+  [EventStatus.Planned]: 'Kế hoạch',
+  [EventStatus.InProgress]: 'Đang thực hiện',
+  [EventStatus.Completed]: 'Đã hoàn thành',
+  [EventStatus.Cancelled]: 'Đã hủy',
+  [EventStatus.Missed]: 'Trễ lịch',
+};
+
+const STATUS_BADGE_CLASS: Record<EventStatus, string> = {
+  [EventStatus.Planned]: 'badge bg-secondary',
+  [EventStatus.InProgress]: 'badge bg-info text-dark',
+  [EventStatus.Completed]: 'badge bg-success',
+  [EventStatus.Cancelled]: 'badge bg-danger',
+  [EventStatus.Missed]: 'badge bg-warning text-dark',
+};
+
+const STATUS_SORT_ORDER: Record<EventStatus, number> = {
+  [EventStatus.Planned]: 1,
+  [EventStatus.InProgress]: 2,
+  [EventStatus.Completed]: 3,
+  [EventStatus.Missed]: 4,
+  [EventStatus.Cancelled]: 5,
+};
+
+const createDefaultFormState = (): EventFormState => ({
+  title: '',
+  eventTypeId: undefined,
+  status: EventStatus.Planned,
+  description: '',
+  notes: '',
+  eventDate: '',
+  startDate: '',
+  endDate: '',
+  deviceId: '',
+  staffId: '',
+  relatedReportId: '',
+});
+
+const formatDateForInput = (value?: string | Date | null): string => {
+  if (!value) {
+    return '';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  return format(date, 'yyyy-MM-dd');
+};
+
+const formatDateForDisplay = (value?: string | Date | null): string => {
+  if (!value) {
+    return '-';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '-';
+  }
+  return format(date, 'dd/MM/yyyy');
+};
+
+const getStatusLabel = (status: EventStatus | undefined | null): string => {
+  if (!status) {
+    return STATUS_LABELS[EventStatus.Planned];
+  }
+  return STATUS_LABELS[status] ?? status;
+};
+
 function EventsPageContent() {
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [events, setEvents] = useState<EventVM[]>([]);
   const [allEvents, setAllEvents] = useState<EventVM[]>([]);
   const [eventTypes, setEventTypes] = useState<EventType[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEventType, setSelectedEventType] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<'all' | EventStatus>('all');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  
-  // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  
-  // Sort state
-  const [sortField, setSortField] = useState<string>('startDate');
+  const [sortField, setSortField] = useState<string>('eventDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  
-  // Form state
-  const [formData, setFormData] = useState<Partial<EventVM>>({
-    id: 0,
-    name: '',
-    deviceId: undefined,
-    eventTypeId: undefined,
-    description: '',
-    img: '',
-    startDate: undefined,
-    finishDate: new Date(),
-    staffId: undefined,
-    notes: '',
-    newDeviceStatus: undefined,
-  });
+  const [formData, setFormData] = useState<EventFormState>(() => createDefaultFormState());
+  const [metadataInput, setMetadataInput] = useState('');
   const [isEdit, setIsEdit] = useState(false);
 
-  useEffect(() => {
-    loadData();
-    loadEventTypes();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = async (eventTypeId: number = selectedEventType) => {
     try {
       setLoading(true);
-      const response = await api.get(`/events?eventTypeId=${selectedEventType}`);
+      const response = await api.get(`/events?eventTypeId=${eventTypeId}`);
       if (response.data.status) {
         setAllEvents(response.data.data || []);
       }
@@ -72,49 +140,181 @@ function EventsPageContent() {
     }
   };
 
-  // Filter and search logic
   useEffect(() => {
+    loadEventTypes();
+  }, []);
+
+  useEffect(() => {
+    loadData(selectedEventType);
+  }, [selectedEventType]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedIds([]);
+  }, [searchKeyword, statusFilter, selectedEventType, itemsPerPage]);
+
+  const filteredEvents = useMemo(() => {
     let filtered = [...allEvents];
 
-    // Filter by event type
     if (selectedEventType > 0) {
-      filtered = filtered.filter(e => e.eventTypeId === selectedEventType);
+      filtered = filtered.filter((event) => event.eventTypeId === selectedEventType);
     }
 
-    // Search by keyword
-    if (searchKeyword.trim()) {
-      const keyword = searchKeyword.toLowerCase();
-      filtered = filtered.filter(e =>
-        e.name?.toLowerCase().includes(keyword) ||
-        e.description?.toLowerCase().includes(keyword) ||
-        e.deviceName?.toLowerCase().includes(keyword) ||
-        e.eventTypeName?.toLowerCase().includes(keyword) ||
-        e.staffName?.toLowerCase().includes(keyword)
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(
+        (event) => (event.status || EventStatus.Planned) === statusFilter
       );
     }
 
-    setEvents(filtered);
-    setCurrentPage(1);
-  }, [allEvents, selectedEventType, searchKeyword]);
+    if (searchKeyword.trim()) {
+      const keyword = searchKeyword.toLowerCase();
+      filtered = filtered.filter((event) => {
+        const values: Array<string | undefined | null> = [
+          event.title,
+          event.description,
+          event.notes,
+          event.deviceName,
+          event.eventTypeName,
+          event.staffName,
+          event.relatedReportSummary,
+          getStatusLabel(event.status),
+        ];
+        return values.some((value) =>
+          value ? value.toLowerCase().includes(keyword) : false
+        );
+      });
+    }
+
+    return filtered;
+  }, [allEvents, selectedEventType, statusFilter, searchKeyword]);
+
+  const sortedEvents = useMemo(() => {
+    const eventsToSort = [...filteredEvents];
+    const resolveTimestamp = (value?: string | Date | null) => {
+      if (!value) return 0;
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+    };
+
+    eventsToSort.sort((a, b) => {
+      let aValue: number | string = '';
+      let bValue: number | string = '';
+
+      switch (sortField) {
+        case 'title':
+          aValue = (a.title || '').toLowerCase();
+          bValue = (b.title || '').toLowerCase();
+          break;
+        case 'deviceName':
+          aValue = (a.deviceName || '').toLowerCase();
+          bValue = (b.deviceName || '').toLowerCase();
+          break;
+        case 'eventTypeName':
+          aValue = (a.eventTypeName || '').toLowerCase();
+          bValue = (b.eventTypeName || '').toLowerCase();
+          break;
+        case 'status':
+          aValue = STATUS_SORT_ORDER[a.status || EventStatus.Planned];
+          bValue = STATUS_SORT_ORDER[b.status || EventStatus.Planned];
+          break;
+        case 'eventDate':
+          aValue = resolveTimestamp(a.eventDate);
+          bValue = resolveTimestamp(b.eventDate);
+          break;
+        case 'startDate':
+          aValue = resolveTimestamp(a.startDate);
+          bValue = resolveTimestamp(b.startDate);
+          break;
+        case 'endDate':
+          aValue = resolveTimestamp(a.endDate);
+          bValue = resolveTimestamp(b.endDate);
+          break;
+        case 'staffName':
+          aValue = (a.staffName || '').toLowerCase();
+          bValue = (b.staffName || '').toLowerCase();
+          break;
+        case 'relatedReportId':
+          aValue = a.relatedReportId || 0;
+          bValue = b.relatedReportId || 0;
+          break;
+        default:
+          aValue = (a.title || '').toLowerCase();
+          bValue = (b.title || '').toLowerCase();
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return eventsToSort;
+  }, [filteredEvents, sortDirection, sortField]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedEvents.length / itemsPerPage));
+  const currentPageSafe = Math.min(currentPage, totalPages);
+  const startIndex = (currentPageSafe - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentEvents = sortedEvents.slice(startIndex, endIndex);
 
   useEffect(() => {
-    loadData();
-  }, [selectedEventType]);
+    if (currentPage !== currentPageSafe) {
+      setCurrentPage(currentPageSafe);
+    }
+  }, [currentPage, currentPageSafe]);
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+    setCurrentPage(1);
+  };
+
+  const getSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <i className="fas fa-sort text-muted" style={{ fontSize: '0.8rem' }} />;
+    }
+    return sortDirection === 'asc'
+      ? <i className="fas fa-sort-up text-primary" />
+      : <i className="fas fa-sort-down text-primary" />;
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    setSelectedIds([]);
+  };
+
+  const handleItemsPerPageChange = (items: number) => {
+    setItemsPerPage(items);
+    setCurrentPage(1);
+  };
+
+  const handleCheckboxChange = (id: number) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedIds(currentEvents.map((event) => event.id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const handleModalClose = () => {
+    setShowModal(false);
+    setIsEdit(false);
+    setFormData(createDefaultFormState());
+    setMetadataInput('');
+  };
 
   const handleNew = () => {
-    setFormData({
-      id: 0,
-      name: '',
-      deviceId: undefined,
-      eventTypeId: undefined,
-      description: '',
-      img: '',
-      startDate: undefined,
-      finishDate: new Date(),
-      staffId: undefined,
-      notes: '',
-      newDeviceStatus: undefined,
-    });
+    setFormData(createDefaultFormState());
+    setMetadataInput('');
     setIsEdit(false);
     setShowModal(true);
   };
@@ -125,21 +325,23 @@ function EventsPageContent() {
       return;
     }
 
-    const selected = allEvents.find(e => e.id === selectedIds[0]);
+    const selected = filteredEvents.find((event) => event.id === selectedIds[0]);
     if (selected) {
       setFormData({
         id: selected.id,
-        name: selected.name || '',
-        deviceId: selected.deviceId,
+        title: selected.title || '',
         eventTypeId: selected.eventTypeId,
+        status: selected.status || EventStatus.Planned,
         description: selected.description || '',
-        img: selected.img || '',
-        startDate: selected.startDate ? new Date(selected.startDate) : undefined,
-        finishDate: selected.finishDate ? new Date(selected.finishDate) : new Date(),
-        staffId: selected.staffId,
         notes: selected.notes || '',
-        newDeviceStatus: selected.newDeviceStatus,
+        eventDate: formatDateForInput(selected.eventDate),
+        startDate: formatDateForInput(selected.startDate),
+        endDate: formatDateForInput(selected.endDate),
+        deviceId: selected.deviceId ? String(selected.deviceId) : '',
+        staffId: selected.staffId ? String(selected.staffId) : '',
+        relatedReportId: selected.relatedReportId ? String(selected.relatedReportId) : '',
       });
+      setMetadataInput(selected.metadata ? JSON.stringify(selected.metadata, null, 2) : '');
       setIsEdit(true);
       setShowModal(true);
     }
@@ -163,7 +365,7 @@ function EventsPageContent() {
           return;
         }
       }
-      toast.success('Xóa thành công');
+      toast.success('Xóa sự kiện thành công');
       setSelectedIds([]);
       loadData();
     } catch (error) {
@@ -172,106 +374,93 @@ function EventsPageContent() {
   };
 
   const handleSave = async () => {
-    if (!formData.description || !formData.description.trim()) {
-      toast.error('Vui lòng nhập mô tả');
+    if (!formData.eventTypeId) {
+      toast.error('Vui lòng chọn loại sự kiện');
       return;
     }
 
-    try {
-      const payload: any = {
-        name: formData.name?.trim() || '',
-        deviceId: formData.deviceId || null,
-        eventTypeId: formData.eventTypeId || null,
-        description: formData.description.trim(),
-        img: formData.img || '',
-        startDate: formData.startDate ? format(formData.startDate, 'yyyy-MM-dd') : null,
-        finishDate: formData.finishDate ? format(formData.finishDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
-        staffId: formData.staffId || null,
-        notes: formData.notes || '',
-        newDeviceStatus: formData.newDeviceStatus || null,
-      };
+    if (!formData.description.trim()) {
+      toast.error('Vui lòng nhập mô tả sự kiện');
+      return;
+    }
 
-      if (isEdit) {
-        await api.put(`/events/${formData.id}`, { ...payload, id: formData.id });
-        toast.success('Cập nhật thành công');
+    let metadata: Record<string, any> | null = null;
+    if (metadataInput.trim()) {
+      try {
+        metadata = JSON.parse(metadataInput);
+      } catch (error) {
+        toast.error('Metadata phải là JSON hợp lệ');
+        return;
+      }
+    }
+
+    const payload = {
+      title: formData.title.trim() || null,
+      eventTypeId: formData.eventTypeId,
+      status: formData.status || EventStatus.Planned,
+      description: formData.description.trim() || null,
+      notes: formData.notes.trim() || null,
+      eventDate: formData.eventDate || null,
+      startDate: formData.startDate || null,
+      endDate: formData.endDate || null,
+      deviceId: formData.deviceId ? Number(formData.deviceId) : null,
+      staffId: formData.staffId ? Number(formData.staffId) : null,
+      relatedReportId: formData.relatedReportId ? Number(formData.relatedReportId) : null,
+      metadata,
+    };
+
+    try {
+      if (isEdit && formData.id) {
+        await api.put(`/events/${formData.id}`, payload);
+        toast.success('Cập nhật sự kiện thành công');
       } else {
         await api.post('/events', payload);
-        toast.success('Thêm mới thành công');
+        toast.success('Thêm sự kiện thành công');
       }
 
-      setShowModal(false);
+      handleModalClose();
       loadData();
-    } catch (error: any) {
-      toast.error(isEdit ? 'Lỗi khi cập nhật' : 'Lỗi khi thêm mới');
+    } catch (error) {
+      toast.error(isEdit ? 'Lỗi khi cập nhật sự kiện' : 'Lỗi khi tạo sự kiện');
     }
   };
 
-  // Sort and pagination calculations
-  const sortedEvents = [...events].sort((a, b) => {
-    let aValue: any = a[sortField as keyof EventVM];
-    let bValue: any = b[sortField as keyof EventVM];
+  const handleRefresh = () => {
+    loadData();
+  };
 
-    if (sortField === 'startDate' || sortField === 'finishDate') {
-      aValue = aValue ? new Date(aValue).getTime() : 0;
-      bValue = bValue ? new Date(bValue).getTime() : 0;
-    } else {
-      aValue = aValue || '';
-      bValue = bValue || '';
+  const handleEventTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value;
+    const selectedTypeId = value ? Number(value) : undefined;
+    const defaultStatus = eventTypes.find((type) => type.id === selectedTypeId)?.defaultStatus;
+
+    setFormData((prev) => ({
+      ...prev,
+      eventTypeId: selectedTypeId,
+      status: defaultStatus || prev.status || EventStatus.Planned,
+    }));
+  };
+
+  const renderDateColumn = (event: EventVM) => {
+    if (event.eventDate) {
+      return formatDateForDisplay(event.eventDate);
     }
-
-    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  const totalPages = Math.ceil(sortedEvents.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentEvents = sortedEvents.slice(startIndex, endIndex);
-
-  const handleSort = (field: string) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
+    if (event.startDate || event.endDate) {
+      const start = formatDateForDisplay(event.startDate);
+      const end = formatDateForDisplay(event.endDate);
+      if (start === end) {
+        return start;
+      }
+      return `${start} → ${end}`;
     }
-    setCurrentPage(1);
+    return '-';
   };
 
-  const getSortIcon = (field: string) => {
-    if (sortField !== field) {
-      return <i className="fas fa-sort text-muted" style={{ fontSize: '0.8rem' }}></i>;
+  const renderRelatedReport = (event: EventVM) => {
+    if (!event.relatedReportId) {
+      return '-';
     }
-    return sortDirection === 'asc' 
-      ? <i className="fas fa-sort-up text-primary"></i>
-      : <i className="fas fa-sort-down text-primary"></i>;
-  };
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    setSelectedIds([]);
-  };
-
-  const handleItemsPerPageChange = (items: number) => {
-    setItemsPerPage(items);
-    setCurrentPage(1);
-  };
-
-  const handleCheckboxChange = (id: number) => {
-    setSelectedIds(prev => 
-      prev.includes(id) 
-        ? prev.filter(i => i !== id)
-        : [...prev, id]
-    );
-  };
-
-  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.checked) {
-      setSelectedIds(currentEvents.map(e => e.id));
-    } else {
-      setSelectedIds([]);
-    }
+    return `#${event.relatedReportId}${event.relatedReportSummary ? ` • ${event.relatedReportSummary}` : ''}`;
   };
 
   if (loading) {
@@ -289,184 +478,171 @@ function EventsPageContent() {
   }
 
   return (
-    <div className="container-fluid" style={{ marginLeft: 0, marginRight: 0, paddingLeft: 0, paddingRight: 0 }}>
+    <div className="container-fluid" style={{ margin: 0, padding: 0 }}>
       <div className="card">
         <div className="card-header">
           <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
-            <h4 className="mb-0 mb-2 mb-md-0">SỰ KIỆN</h4>
-            <div className="d-flex gap-1 align-items-center" style={{ flexWrap: 'nowrap' }}>
+            <h4 className="mb-0 mb-2 mb-md-0">SỰ KIỆN THIẾT BỊ</h4>
+            <div className="d-flex gap-1 align-items-center flex-nowrap">
               <button
                 type="button"
                 className="btn btn-outline-secondary btn-sm d-md-none"
-                onClick={() => setFiltersOpen((s) => !s)}
-                aria-pressed={!filtersOpen}
+                onClick={() => setFiltersOpen((open) => !open)}
                 aria-label={filtersOpen ? 'Ẩn bộ lọc' : 'Hiện bộ lọc'}
                 title={filtersOpen ? 'Ẩn bộ lọc' : 'Hiện bộ lọc'}
               >
-                <i className={`fas ${filtersOpen ? 'fa-chevron-up' : 'fa-filter'}`}></i>
+                <i className={`fas ${filtersOpen ? 'fa-chevron-up' : 'fa-filter'}`} />
               </button>
-              <button 
-                className="btn btn-primary btn-sm" 
-                onClick={handleNew}
-                title="Thêm mới"
-                aria-label="Thêm mới"
-              >
-                <i className="fas fa-plus"></i>
+              <button className="btn btn-primary btn-sm" onClick={handleNew} title="Thêm sự kiện">
+                <i className="fas fa-plus" />
               </button>
-              <button 
-                className="btn btn-success btn-sm" 
-                onClick={handleEdit}
-                title="Sửa"
-                aria-label="Sửa"
-              >
-                <i className="fas fa-edit"></i>
+              <button className="btn btn-success btn-sm" onClick={handleEdit} title="Sửa sự kiện">
+                <i className="fas fa-edit" />
               </button>
-              <button 
-                className="btn btn-danger btn-sm" 
-                onClick={handleDelete}
-                title="Xóa"
-                aria-label="Xóa"
-              >
-                <i className="fas fa-trash"></i>
+              <button className="btn btn-danger btn-sm" onClick={handleDelete} title="Xóa sự kiện">
+                <i className="fas fa-trash" />
               </button>
-              <button 
-                className="btn btn-dark btn-sm" 
-                onClick={loadData}
-                title="Tải lại"
-                aria-label="Tải lại"
-              >
-                <i className="fas fa-circle-notch"></i>
+              <button className="btn btn-dark btn-sm" onClick={handleRefresh} title="Tải lại">
+                <i className="fas fa-rotate" />
               </button>
             </div>
           </div>
-          
-          {/* Filter Section */}
-          <div className={`card mb-3 filter-card ${filtersOpen ? 'filter-open' : 'filter-collapsed'}`} style={{ backgroundColor: '#f8f9fa' }}>
+
+          <div
+            className={`card mb-3 filter-card ${filtersOpen ? 'filter-open' : 'filter-collapsed'}`}
+            style={{ backgroundColor: '#f8f9fa' }}
+          >
             <div className="card-body py-2">
               <div className="row g-2">
-                <div className="col-12 col-md-6 col-lg-4">
+                <div className="col-12 col-md-4">
                   <label className="form-label small">Loại sự kiện</label>
                   <select
                     className="form-control form-control-sm"
                     value={selectedEventType}
                     onChange={(e) => setSelectedEventType(Number(e.target.value))}
                   >
-                    <option value="0">Tất cả</option>
-                    {eventTypes.map(et => (
-                      <option key={et.id} value={et.id}>{et.name}</option>
+                    <option value={0}>Tất cả</option>
+                    {eventTypes.map((type) => (
+                      <option key={type.id} value={type.id}>
+                        {type.code ? `${type.code} — ${type.name}` : type.name}
+                      </option>
                     ))}
                   </select>
                 </div>
-                <div className="col-12 col-md-6 col-lg-4">
-                  <label className="form-label small">Tìm kiếm</label>
+                <div className="col-12 col-md-4">
+                  <label className="form-label small">Trạng thái</label>
+                  <select
+                    className="form-control form-control-sm"
+                    value={statusFilter}
+                    onChange={(e) =>
+                      setStatusFilter(
+                        e.target.value === 'all' ? 'all' : (e.target.value as EventStatus)
+                      )
+                    }
+                  >
+                    <option value="all">Tất cả</option>
+                    {STATUS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-12 col-md-4">
+                  <label className="form-label small">Tìm kiếm nhanh</label>
                   <input
                     type="text"
                     className="form-control form-control-sm"
-                    placeholder="Tên, mô tả, thiết bị..."
+                    placeholder="Tên sự kiện, loại, thiết bị, ghi chú..."
                     value={searchKeyword}
                     onChange={(e) => setSearchKeyword(e.target.value)}
                   />
                 </div>
-                <div className="col-12 col-md-6 col-lg-3">
-                  <div className="d-flex align-items-end h-100">
-                    <button
-                      className="btn btn-secondary btn-sm w-100"
-                      onClick={() => {
-                        setSearchKeyword('');
-                        setSelectedEventType(0);
-                      }}
-                    >
-                      <i className="fas fa-filter"></i> Xóa bộ lọc
-                    </button>
-                  </div>
+                <div className="col-12">
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      setSearchKeyword('');
+                      setSelectedEventType(0);
+                      setStatusFilter('all');
+                    }}
+                  >
+                    <i className="fas fa-eraser me-1" /> Xóa bộ lọc
+                  </button>
                 </div>
               </div>
             </div>
           </div>
-          <div className="d-flex justify-content-between align-items-center" style={{ flexWrap: 'nowrap', gap: '0.5rem' }}>
-            <div className="d-flex align-items-center gap-1" style={{ flexWrap: 'nowrap', flexShrink: 0 }}>
-              <span className="d-none d-sm-inline" style={{ whiteSpace: 'nowrap' }}>Hiển thị:</span>
-              <span className="d-sm-none" style={{ whiteSpace: 'nowrap' }}>Hiện:</span>
+
+          <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div className="d-flex align-items-center gap-1">
+              <span className="d-none d-sm-inline" style={{ whiteSpace: 'nowrap' }}>
+                Hiển thị:
+              </span>
+              <span className="d-sm-none" style={{ whiteSpace: 'nowrap' }}>
+                Hiện:
+              </span>
               <select
                 className="form-control form-control-sm"
-                style={{ width: '60px', padding: '0.25rem 0.5rem' }}
+                style={{ width: '72px' }}
                 value={itemsPerPage}
                 onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
               >
-                <option value="10">10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
+                {[10, 25, 50, 100].map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
               </select>
-              <span className="d-none d-sm-inline" style={{ whiteSpace: 'nowrap' }}>dòng/trang</span>
-            </div>
-            <div style={{ flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              <span style={{ fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
-                Hiển thị {sortedEvents.length > 0 ? startIndex + 1 : 0}-{Math.min(endIndex, sortedEvents.length)} của {sortedEvents.length} sự kiện
-                {(searchKeyword.trim() || selectedEventType > 0) && (
-                  <span className="text-muted"> (đã lọc)</span>
-                )}
+              <span className="d-none d-sm-inline" style={{ whiteSpace: 'nowrap' }}>
+                dòng/trang
               </span>
+            </div>
+            <div style={{ whiteSpace: 'nowrap', fontSize: '0.875rem' }}>
+              {sortedEvents.length === 0
+                ? 'Không có sự kiện'
+                : `Hiển thị ${startIndex + 1}-${Math.min(endIndex, sortedEvents.length)} / ${
+                    sortedEvents.length
+                  } sự kiện${searchKeyword || statusFilter !== 'all' || selectedEventType
+                    ? ' (đã lọc)'
+                    : ''}`}
             </div>
           </div>
         </div>
-        <div className="card-body p-0 p-md-3" style={{ padding: 0 }}>
-          <div className="table-scroll-hint d-block d-sm-none text-center text-muted" style={{ fontSize: '0.75rem', padding: '0.25rem 0', marginBottom: '0.5rem' }}>
-            ← Cuộn để xem thêm →
-          </div>
+
+        <div className="card-body p-0 p-md-3">
           <div
             className="table-responsive"
-            id="events-table-responsive"
             style={{
               overflowX: 'auto',
-              overflowY: 'visible',
               WebkitOverflowScrolling: 'touch',
-              position: 'relative',
-              width: '100%',
-              display: 'block',
-              scrollBehavior: 'smooth',
-              touchAction: 'pan-x',
-              minHeight: '0',
-              maxWidth: '100%'
             }}
           >
-            <table
-              className="table table-striped table-hover mb-0"
-              style={{
-                tableLayout: 'auto',
-                marginBottom: 0,
-                display: 'table'
-              }}
-            >
+            <table className="table table-striped table-hover mb-0">
               <thead>
                 <tr>
                   <th style={{ width: '50px' }}>
                     <input
                       type="checkbox"
-                      checked={selectedIds.length === currentEvents.length && currentEvents.length > 0 && selectedIds.length > 0}
+                      checked={
+                        currentEvents.length > 0 &&
+                        selectedIds.length === currentEvents.length &&
+                        selectedIds.length > 0
+                      }
                       onChange={handleSelectAll}
                     />
                   </th>
-                  <th 
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('name')}
+                  <th
+                    style={{ cursor: 'pointer', userSelect: 'none', minWidth: '220px' }}
+                    onClick={() => handleSort('title')}
                   >
                     <div className="d-flex align-items-center gap-2">
-                      <span>Tên</span>
-                      {getSortIcon('name')}
+                      <span>Tiêu đề</span>
+                      {getSortIcon('title')}
                     </div>
                   </th>
-                  <th 
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('deviceName')}
-                  >
-                    <div className="d-flex align-items-center gap-2">
-                      <span>Thiết bị</span>
-                      {getSortIcon('deviceName')}
-                    </div>
-                  </th>
-                  <th 
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                  <th
+                    style={{ cursor: 'pointer', userSelect: 'none', minWidth: '160px' }}
                     onClick={() => handleSort('eventTypeName')}
                   >
                     <div className="d-flex align-items-center gap-2">
@@ -474,31 +650,49 @@ function EventsPageContent() {
                       {getSortIcon('eventTypeName')}
                     </div>
                   </th>
-                  <th 
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('startDate')}
+                  <th
+                    style={{ cursor: 'pointer', userSelect: 'none', minWidth: '120px' }}
+                    onClick={() => handleSort('status')}
                   >
                     <div className="d-flex align-items-center gap-2">
-                      <span>Ngày bắt đầu</span>
-                      {getSortIcon('startDate')}
+                      <span>Trạng thái</span>
+                      {getSortIcon('status')}
                     </div>
                   </th>
-                  <th 
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('finishDate')}
+                  <th
+                    style={{ cursor: 'pointer', userSelect: 'none', minWidth: '160px' }}
+                    onClick={() => handleSort('deviceName')}
                   >
                     <div className="d-flex align-items-center gap-2">
-                      <span>Ngày kết thúc</span>
-                      {getSortIcon('finishDate')}
+                      <span>Thiết bị</span>
+                      {getSortIcon('deviceName')}
                     </div>
                   </th>
-                  <th 
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                  <th
+                    style={{ cursor: 'pointer', userSelect: 'none', minWidth: '160px' }}
+                    onClick={() => handleSort('eventDate')}
+                  >
+                    <div className="d-flex align-items-center gap-2">
+                      <span>Mốc thời gian</span>
+                      {getSortIcon('eventDate')}
+                    </div>
+                  </th>
+                  <th
+                    style={{ cursor: 'pointer', userSelect: 'none', minWidth: '140px' }}
                     onClick={() => handleSort('staffName')}
                   >
                     <div className="d-flex align-items-center gap-2">
-                      <span>Nhân viên</span>
+                      <span>Phụ trách</span>
                       {getSortIcon('staffName')}
+                    </div>
+                  </th>
+                  <th
+                    style={{ cursor: 'pointer', userSelect: 'none', minWidth: '200px' }}
+                    onClick={() => handleSort('relatedReportId')}
+                  >
+                    <div className="d-flex align-items-center gap-2">
+                      <span>Báo cáo liên quan</span>
+                      {getSortIcon('relatedReportId')}
                     </div>
                   </th>
                 </tr>
@@ -506,8 +700,8 @@ function EventsPageContent() {
               <tbody>
                 {currentEvents.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-4">
-                      <span className="text-muted">Không có dữ liệu</span>
+                    <td colSpan={8} className="text-center py-4 text-muted">
+                      Không có dữ liệu
                     </td>
                   </tr>
                 ) : (
@@ -520,12 +714,37 @@ function EventsPageContent() {
                           onChange={() => handleCheckboxChange(event.id)}
                         />
                       </td>
-                      <td>{event.name || '-'}</td>
+                      <td>
+                        <div className="fw-semibold">
+                          {event.title?.trim()
+                            ? event.title
+                            : event.description?.slice(0, 80) || '(Không có tiêu đề)'}
+                        </div>
+                        {event.description && (
+                          <div className="text-muted small">
+                            {event.description.length > 120
+                              ? `${event.description.slice(0, 120)}…`
+                              : event.description}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <div className="d-flex flex-column">
+                          <span className="fw-semibold">{event.eventTypeName || '-'}</span>
+                          {event.eventTypeCode && (
+                            <span className="small text-muted">{event.eventTypeCode}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <span className={STATUS_BADGE_CLASS[event.status || EventStatus.Planned]}>
+                          {getStatusLabel(event.status)}
+                        </span>
+                      </td>
                       <td>{event.deviceName || '-'}</td>
-                      <td>{event.eventTypeName || '-'}</td>
-                      <td>{event.startDate ? format(new Date(event.startDate), 'dd/MM/yyyy') : '-'}</td>
-                      <td>{event.finishDate ? format(new Date(event.finishDate), 'dd/MM/yyyy') : '-'}</td>
+                      <td>{renderDateColumn(event)}</td>
                       <td>{event.staffName || '-'}</td>
+                      <td>{renderRelatedReport(event)}</td>
                     </tr>
                   ))
                 )}
@@ -533,73 +752,52 @@ function EventsPageContent() {
             </table>
           </div>
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <nav aria-label="Page navigation" className="mt-3">
-              <ul className="pagination justify-content-center">
-                <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
+              <ul className="pagination justify-content-center mb-0">
+                <li className={`page-item ${currentPageSafe === 1 ? 'disabled' : ''}`}>
                   <button
                     className="page-link"
-                    onClick={() => handlePageChange(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    title="Trang trước"
-                    aria-label="Trang trước"
+                    onClick={() => handlePageChange(currentPageSafe - 1)}
+                    disabled={currentPageSafe === 1}
                   >
-                    <i className="fas fa-angle-left"></i>
+                    <i className="fas fa-angle-left" />
                   </button>
                 </li>
-                
                 {(() => {
                   const pages: number[] = [];
-                  
                   if (totalPages <= 7) {
                     for (let i = 1; i <= totalPages; i++) {
                       pages.push(i);
                     }
                   } else {
-                    pages.push(1);
-                    let startPage = Math.max(2, currentPage - 1);
-                    let endPage = Math.min(totalPages - 1, currentPage + 1);
-                    
-                    if (currentPage <= 3) {
-                      startPage = 2;
-                      endPage = 4;
-                    }
-                    
-                    if (currentPage >= totalPages - 2) {
-                      startPage = totalPages - 4;
-                      endPage = totalPages - 1;
-                    }
-                    
-                    for (let i = startPage; i <= endPage; i++) {
-                      if (i > 1 && i < totalPages && !pages.includes(i)) {
-                        pages.push(i);
+                    const addPage = (page: number) => {
+                      if (!pages.includes(page)) {
+                        pages.push(page);
                       }
-                    }
-                    
-                    if (!pages.includes(totalPages)) {
-                      pages.push(totalPages);
-                    }
+                    };
+                    addPage(1);
+                    const neighbours = [currentPageSafe - 1, currentPageSafe, currentPageSafe + 1];
+                    neighbours.forEach((page) => {
+                      if (page > 1 && page < totalPages) {
+                        addPage(page);
+                      }
+                    });
+                    addPage(totalPages);
                   }
-                  
                   const uniquePages = Array.from(new Set(pages)).sort((a, b) => a - b);
-                  
                   return uniquePages.map((page, index) => {
-                    const prevPage = index > 0 ? uniquePages[index - 1] : 0;
-                    const showEllipsisBefore = prevPage > 0 && page - prevPage > 1;
-                    
+                    const prev = uniquePages[index - 1];
+                    const showEllipsis = prev && page - prev > 1;
                     return (
                       <React.Fragment key={page}>
-                        {showEllipsisBefore && (
+                        {showEllipsis && (
                           <li className="page-item disabled">
-                            <span className="page-link">...</span>
+                            <span className="page-link">…</span>
                           </li>
                         )}
-                        <li className={`page-item ${currentPage === page ? 'active' : ''}`}>
-                          <button
-                            className="page-link"
-                            onClick={() => handlePageChange(page)}
-                          >
+                        <li className={`page-item ${currentPageSafe === page ? 'active' : ''}`}>
+                          <button className="page-link" onClick={() => handlePageChange(page)}>
                             {page}
                           </button>
                         </li>
@@ -607,16 +805,13 @@ function EventsPageContent() {
                     );
                   });
                 })()}
-                
-                <li className={`page-item ${currentPage === totalPages ? 'disabled' : ''}`}>
+                <li className={`page-item ${currentPageSafe === totalPages ? 'disabled' : ''}`}>
                   <button
                     className="page-link"
-                    onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    title="Trang sau"
-                    aria-label="Trang sau"
+                    onClick={() => handlePageChange(currentPageSafe + 1)}
+                    disabled={currentPageSafe === totalPages}
                   >
-                    <i className="fas fa-angle-right"></i>
+                    <i className="fas fa-angle-right" />
                   </button>
                 </li>
               </ul>
@@ -625,101 +820,182 @@ function EventsPageContent() {
         </div>
       </div>
 
-      {/* Add/Edit Modal */}
       {showModal && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} tabIndex={-1}>
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog modal-lg">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">{isEdit ? 'Cập nhật sự kiện' : 'Thêm mới sự kiện'}</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => setShowModal(false)}
-                ></button>
+                <h5 className="modal-title">{isEdit ? 'Cập nhật sự kiện' : 'Thêm sự kiện'}</h5>
+                <button type="button" className="btn-close" onClick={handleModalClose} />
               </div>
               <div className="modal-body">
-                <div className="row mb-3">
-                  <div className="col-md-6">
-                    <label className="form-label">Tên sự kiện</label>
+                <div className="row g-3">
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">Tiêu đề</label>
                     <input
                       type="text"
                       className="form-control"
-                      value={formData.name || ''}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="Nhập tên sự kiện"
+                      value={formData.title}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, title: e.target.value }))
+                      }
+                      placeholder="Ví dụ: Bảo trì định kỳ lần 2"
                     />
                   </div>
-                  <div className="col-md-6">
-                    <label className="form-label">Loại sự kiện</label>
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">
+                      Loại sự kiện <span className="text-danger">*</span>
+                    </label>
                     <select
                       className="form-control"
-                      value={formData.eventTypeId || ''}
-                      onChange={(e) => setFormData({ ...formData, eventTypeId: e.target.value ? Number(e.target.value) : undefined })}
+                      value={formData.eventTypeId ?? ''}
+                      onChange={handleEventTypeChange}
                     >
-                      <option value="">Chọn loại sự kiện</option>
-                      {eventTypes.map(et => (
-                        <option key={et.id} value={et.id}>{et.name}</option>
+                      <option value="">-- Chọn loại sự kiện --</option>
+                      {eventTypes.map((type) => (
+                        <option key={type.id} value={type.id}>
+                          {type.code ? `${type.code} — ${type.name}` : type.name}
+                        </option>
                       ))}
                     </select>
                   </div>
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Mô tả <span className="text-danger">*</span></label>
-                  <textarea
-                    className="form-control"
-                    rows={3}
-                    value={formData.description || ''}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Nhập mô tả"
-                    required
-                  />
-                </div>
-                <div className="row mb-3">
-                  <div className="col-md-6">
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">
+                      Trạng thái <span className="text-danger">*</span>
+                    </label>
+                    <select
+                      className="form-control"
+                      value={formData.status}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          status: e.target.value as EventStatus,
+                        }))
+                      }
+                    >
+                      {STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">Thiết bị (ID)</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={formData.deviceId}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, deviceId: e.target.value }))
+                      }
+                      placeholder="Nhập ID thiết bị"
+                      min={0}
+                    />
+                  </div>
+                  <div className="col-12">
+                    <label className="form-label">
+                      Mô tả chi tiết <span className="text-danger">*</span>
+                    </label>
+                    <textarea
+                      className="form-control"
+                      rows={3}
+                      value={formData.description}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, description: e.target.value }))
+                      }
+                      placeholder="Ghi lại nội dung sự kiện, tình trạng, kết quả..."
+                    />
+                  </div>
+                  <div className="col-12">
+                    <label className="form-label">Ghi chú bổ sung</label>
+                    <textarea
+                      className="form-control"
+                      rows={2}
+                      value={formData.notes}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, notes: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="col-12 col-md-4">
+                    <label className="form-label">Ngày diễn ra</label>
+                    <input
+                      type="date"
+                      className="form-control"
+                      value={formData.eventDate}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, eventDate: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="col-12 col-md-4">
                     <label className="form-label">Ngày bắt đầu</label>
                     <input
                       type="date"
                       className="form-control"
-                      value={formData.startDate ? format(new Date(formData.startDate), 'yyyy-MM-dd') : ''}
-                      onChange={(e) => setFormData({ ...formData, startDate: e.target.value ? new Date(e.target.value) : undefined })}
+                      value={formData.startDate}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, startDate: e.target.value }))
+                      }
                     />
                   </div>
-                  <div className="col-md-6">
-                    <label className="form-label">Ngày kết thúc <span className="text-danger">*</span></label>
+                  <div className="col-12 col-md-4">
+                    <label className="form-label">Ngày kết thúc</label>
                     <input
                       type="date"
                       className="form-control"
-                      value={formData.finishDate ? format(new Date(formData.finishDate), 'yyyy-MM-dd') : ''}
-                      onChange={(e) => setFormData({ ...formData, finishDate: e.target.value ? new Date(e.target.value) : new Date() })}
-                      required
+                      value={formData.endDate}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, endDate: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">Người phụ trách (ID nhân viên)</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={formData.staffId}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, staffId: e.target.value }))
+                      }
+                      placeholder="Nhập ID nhân viên"
+                      min={0}
+                    />
+                  </div>
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">Báo cáo hư hỏng liên quan (ID)</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={formData.relatedReportId}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, relatedReportId: e.target.value }))
+                      }
+                      placeholder="Nhập ID báo cáo hư hỏng"
+                      min={0}
+                    />
+                  </div>
+                  <div className="col-12">
+                    <label className="form-label">
+                      Metadata (JSON – lưu thêm thông tin tùy chỉnh)
+                    </label>
+                    <textarea
+                      className="form-control font-monospace"
+                      rows={4}
+                      value={metadataInput}
+                      onChange={(e) => setMetadataInput(e.target.value)}
+                      placeholder='Ví dụ: { "cost": 500000, "location": "Kho A" }'
                     />
                   </div>
                 </div>
-                <div className="mb-3">
-                  <label className="form-label">Ghi chú</label>
-                  <textarea
-                    className="form-control"
-                    rows={2}
-                    value={formData.notes || ''}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    placeholder="Nhập ghi chú"
-                  />
-                </div>
               </div>
-              <div className="modal-footer d-flex justify-content-end gap-2">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowModal(false)}
-                >
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={handleModalClose}>
                   Đóng
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleSave}
-                >
+                <button type="button" className="btn btn-primary" onClick={handleSave}>
                   Lưu
                 </button>
               </div>
@@ -738,3 +1014,4 @@ export default function EventsPage() {
     </AdminRoute>
   );
 }
+

@@ -65,30 +65,56 @@ export interface StaffVM extends Staff {
 }
 
 // EventType types
+export enum EventStatus {
+  Planned = 'planned',
+  InProgress = 'in_progress',
+  Completed = 'completed',
+  Cancelled = 'cancelled',
+  Missed = 'missed',
+}
+
+export type EventCategory = 'lifecycle' | 'maintenance' | 'warranty' | 'movement' | 'inspection' | 'other';
+
 export interface EventType {
   id: number;
   name: string;
+  code?: string | null;
+  description?: string | null;
+  category?: EventCategory | null;
+  color?: string | null;
+  isReminder?: boolean;
+  defaultStatus?: EventStatus;
+  defaultLeadTimeDays?: number | null;
 }
 
 // Event types
 export interface Event {
   id: number;
-  name?: string;
-  deviceId?: number;
-  eventTypeId?: number;
-  description: string;
-  img?: string;
-  startDate?: Date;
-  finishDate: Date;
-  staffId?: number;
-  notes: string;
-  newDeviceStatus?: DeviceStatus;
+  title?: string | null;
+  deviceId?: number | null;
+  eventTypeId: number;
+  description?: string | null;
+  notes?: string | null;
+  status: EventStatus;
+  eventDate?: Date | null;
+  startDate?: Date | null;
+  endDate?: Date | null;
+  staffId?: number | null;
+  relatedReportId?: number | null;
+  metadata?: Record<string, any> | null;
+  createdBy?: string | null;
+  createdAt?: Date | null;
+  updatedBy?: string | null;
+  updatedAt?: Date | null;
 }
 
 export interface EventVM extends Event {
-  deviceName?: string;
-  eventTypeName?: string;
-  staffName?: string;
+  deviceName?: string | null;
+  eventTypeName?: string | null;
+  eventTypeCode?: string | null;
+  staffName?: string | null;
+  relatedReportCode?: string | null;
+  relatedReportSummary?: string | null;
 }
 
 // DamageReport types
@@ -194,6 +220,28 @@ export interface DeviceHistorySummary {
   totalReports: number;
   totalHistory: number;
   reports: DeviceHistoryReport[];
+}
+
+export interface DeviceReminderPlan {
+  id: number;
+  deviceId: number;
+  reminderType: EventCategory | 'custom';
+  eventTypeId?: number | null;
+  title?: string | null;
+  description?: string | null;
+  intervalValue?: number | null;
+  intervalUnit?: 'day' | 'week' | 'month' | 'year' | null;
+  cronExpression?: string | null;
+  startFrom?: Date | null;
+  endAt?: Date | null;
+  nextDueDate?: Date | null;
+  lastTriggeredAt?: Date | null;
+  isActive: boolean;
+  metadata?: Record<string, any> | null;
+  createdBy?: string | null;
+  createdAt?: Date | null;
+  updatedBy?: string | null;
+  updatedAt?: Date | null;
 }
 
 // API Response types

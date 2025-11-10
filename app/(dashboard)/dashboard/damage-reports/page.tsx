@@ -1455,11 +1455,11 @@ export default function DamageReportsPage() {
                   <th style={{ minWidth: '100px' }}>Trạng thái</th>
                   <th style={{ minWidth: '100px' }}>Ưu tiên</th>
                   <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reporterName')}>
-                    Người báo cáo {getSortIcon('reporterName')}
+                    Người b/c {getSortIcon('reporterName')}
                   </th>
                   <th style={{ minWidth: '120px' }}>Người xử lý</th>
                   <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reportDate')}>
-                    Ngày báo cáo {getSortIcon('reportDate')}
+                    Ngày b/c {getSortIcon('reportDate')}
                   </th>
                   <th style={{ minWidth: '120px' }}>Người cập nhật</th>
                   <th style={{ minWidth: '200px' }}>Nội dung hư hỏng</th>

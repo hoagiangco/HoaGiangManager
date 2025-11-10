@@ -1,28 +1,40 @@
 import pool from '../db';
-import { Event, EventVM, DeviceStatus } from '@/types';
+import { Event, EventVM, EventStatus } from '@/types';
 
 export class EventService {
   async getEventByType(eventTypeId: number = 0): Promise<EventVM[]> {
     let query = `
       SELECT 
         e."ID" as id,
-        e."Name" as name,
+        e."Title" as title,
         e."DeviceID" as "deviceId",
         d."Name" as "deviceName",
         e."EventTypeID" as "eventTypeId",
         et."Name" as "eventTypeName",
+        et."Code" as "eventTypeCode",
+        et."Description" as "eventTypeDescription",
+        et."Category" as "eventTypeCategory",
         e."Description" as description,
-        e."Img" as img,
+        e."Notes" as notes,
+        e."Status" as status,
+        e."EventDate" as "eventDate",
         e."StartDate" as "startDate",
-        e."FinishDate" as "finishDate",
+        e."EndDate" as "endDate",
         e."StaffID" as "staffId",
         s."Name" as "staffName",
-        e."Notes" as notes,
-        CAST(e."NewDeviceStatus"::text AS INTEGER) as "newDeviceStatus"
+        e."RelatedReportID" as "relatedReportId",
+        dr."DamageContent" as "relatedReportSummary",
+        dr."DamageLocation" as "relatedReportLocation",
+        e."Metadata" as metadata,
+        e."CreatedBy" as "createdBy",
+        e."CreatedAt" as "createdAt",
+        e."UpdatedBy" as "updatedBy",
+        e."UpdatedAt" as "updatedAt"
       FROM "Event" e
       LEFT JOIN "EventType" et ON e."EventTypeID" = et."ID"
       LEFT JOIN "Device" d ON e."DeviceID" = d."ID"
       LEFT JOIN "Staff" s ON e."StaffID" = s."ID"
+      LEFT JOIN "DamageReport" dr ON e."RelatedReportID" = dr."ID"
     `;
 
     const params: any[] = [];
@@ -31,22 +43,73 @@ export class EventService {
       params.push(eventTypeId);
     }
 
-    if (eventTypeId === 0) {
-      query += ` ORDER BY e."StartDate" DESC`;
-    } else {
-      query += ` ORDER BY e."Name"`;
-    }
+    query += ` ORDER BY COALESCE(e."EventDate", e."StartDate", e."EndDate", e."CreatedAt") DESC NULLS LAST, e."ID" DESC`;
 
     const result = await pool.query(query, params);
-    return result.rows.map((row: any) => ({
-      ...row,
-      newDeviceStatus: row.newDeviceStatus ? parseInt(row.newDeviceStatus) as DeviceStatus : null
-    }));
+    return result.rows.map((row: any) => {
+      let metadata: Record<string, any> | null = null;
+      if (row.metadata) {
+        if (typeof row.metadata === 'string') {
+          try {
+            metadata = JSON.parse(row.metadata);
+          } catch (error) {
+            metadata = null;
+          }
+        } else {
+          metadata = row.metadata;
+        }
+      }
+
+      const statusValue = row.status ? String(row.status).toLowerCase() as EventStatus : EventStatus.Completed;
+
+      return {
+      id: row.id,
+      title: row.title,
+      deviceId: row.deviceId,
+      deviceName: row.deviceName,
+      eventTypeId: row.eventTypeId,
+      eventTypeName: row.eventTypeName,
+      eventTypeCode: row.eventTypeCode,
+      description: row.description,
+      notes: row.notes,
+        status: statusValue,
+      eventDate: row.eventDate,
+      startDate: row.startDate,
+      endDate: row.endDate,
+      staffId: row.staffId,
+      staffName: row.staffName,
+      relatedReportId: row.relatedReportId,
+      relatedReportSummary: row.relatedReportSummary || row.relatedReportLocation || null,
+        metadata,
+      createdBy: row.createdBy,
+      createdAt: row.createdAt,
+      updatedBy: row.updatedBy,
+      updatedAt: row.updatedAt,
+      } as EventVM;
+    });
   }
 
   async getById(id: number): Promise<Event | null> {
     const result = await pool.query(
-      `SELECT * FROM "Event" WHERE "ID" = $1`,
+      `SELECT 
+        "ID" as id,
+        "Title" as title,
+        "DeviceID" as "deviceId",
+        "EventTypeID" as "eventTypeId",
+        "Description" as description,
+        "Notes" as notes,
+        "Status" as status,
+        "EventDate" as "eventDate",
+        "StartDate" as "startDate",
+        "EndDate" as "endDate",
+        "StaffID" as "staffId",
+        "RelatedReportID" as "relatedReportId",
+        "Metadata" as metadata,
+        "CreatedBy" as "createdBy",
+        "CreatedAt" as "createdAt",
+        "UpdatedBy" as "updatedBy",
+        "UpdatedAt" as "updatedAt"
+      FROM "Event" WHERE "ID" = $1`,
       [id]
     );
 
@@ -55,92 +118,109 @@ export class EventService {
     }
 
     const row = result.rows[0];
+    let metadata: Record<string, any> | null = null;
+    if (row.metadata) {
+      if (typeof row.metadata === 'string') {
+        try {
+          metadata = JSON.parse(row.metadata);
+        } catch (error) {
+          metadata = null;
+        }
+      } else {
+        metadata = row.metadata;
+      }
+    }
+
     return {
-      id: row.ID,
-      name: row.Name,
-      deviceId: row.DeviceID,
-      eventTypeId: row.EventTypeID,
-      description: row.Description,
-      img: row.Img,
-      startDate: row.StartDate,
-      finishDate: row.FinishDate,
-      staffId: row.StaffID,
-      notes: row.Notes,
-      newDeviceStatus: row.NewDeviceStatus ? (typeof row.NewDeviceStatus === 'string' ? parseInt(row.NewDeviceStatus) : row.NewDeviceStatus) as DeviceStatus : undefined
+      id: row.id,
+      title: row.title,
+      deviceId: row.deviceId,
+      eventTypeId: row.eventTypeId,
+      description: row.description,
+      notes: row.notes,
+      status: (row.status ? String(row.status).toLowerCase() : EventStatus.Completed) as EventStatus,
+      eventDate: row.eventDate,
+      startDate: row.startDate,
+      endDate: row.endDate,
+      staffId: row.staffId,
+      relatedReportId: row.relatedReportId,
+      metadata,
+      createdBy: row.createdBy,
+      createdAt: row.createdAt,
+      updatedBy: row.updatedBy,
+      updatedAt: row.updatedAt,
     };
   }
 
   async create(event: Omit<Event, 'id'>): Promise<number> {
+    const now = new Date();
     const result = await pool.query(
       `INSERT INTO "Event" (
-        "Name", "DeviceID", "EventTypeID", "Description", "Img",
-        "StartDate", "FinishDate", "StaffID", "Notes", "NewDeviceStatus"
+        "Title", "DeviceID", "EventTypeID", "Description", "Notes",
+        "Status", "EventDate", "StartDate", "EndDate", "StaffID",
+        "RelatedReportID", "Metadata", "CreatedBy", "CreatedAt",
+        "UpdatedBy", "UpdatedAt"
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING "ID"`,
       [
-        event.name || null,
+        event.title || null,
         event.deviceId || null,
-        event.eventTypeId || null,
-        event.description,
-        event.img || null,
+        event.eventTypeId,
+        event.description || null,
+        event.notes || null,
+        event.status || EventStatus.Completed,
+        event.eventDate || null,
         event.startDate || null,
-        event.finishDate,
+        event.endDate || null,
         event.staffId || null,
-        event.notes,
-        event.newDeviceStatus || null
+        event.relatedReportId || null,
+        event.metadata ? JSON.stringify(event.metadata) : null,
+        event.createdBy || null,
+        event.createdAt || now,
+        event.updatedBy || event.createdBy || null,
+        event.updatedAt || now
       ]
     );
 
-    const eventId = result.rows[0].ID;
-
-    // Update device status if NewDeviceStatus is provided
-    if (event.deviceId && event.newDeviceStatus) {
-      await pool.query(
-        `UPDATE "Device" SET "Status" = $1 WHERE "ID" = $2`,
-        [event.newDeviceStatus.toString(), event.deviceId]
-      );
-    }
-
-    return eventId;
+    return result.rows[0].ID;
   }
 
   async update(event: Event): Promise<number> {
     await pool.query(
       `UPDATE "Event" SET
-        "Name" = $1,
+        "Title" = $1,
         "DeviceID" = $2,
         "EventTypeID" = $3,
         "Description" = $4,
-        "Img" = $5,
-        "StartDate" = $6,
-        "FinishDate" = $7,
-        "StaffID" = $8,
-        "Notes" = $9,
-        "NewDeviceStatus" = $10
-      WHERE "ID" = $11`,
+        "Notes" = $5,
+        "Status" = $6,
+        "EventDate" = $7,
+        "StartDate" = $8,
+        "EndDate" = $9,
+        "StaffID" = $10,
+        "RelatedReportID" = $11,
+        "Metadata" = $12,
+        "UpdatedBy" = $13,
+        "UpdatedAt" = CURRENT_TIMESTAMP
+      WHERE "ID" = $14`,
       [
-        event.name || null,
+        event.title || null,
         event.deviceId || null,
-        event.eventTypeId || null,
-        event.description,
-        event.img || null,
+        event.eventTypeId,
+        event.description || null,
+        event.notes || null,
+        event.status || EventStatus.Completed,
+        event.eventDate || null,
         event.startDate || null,
-        event.finishDate,
+        event.endDate || null,
         event.staffId || null,
-        event.notes,
-        event.newDeviceStatus || null,
+        event.relatedReportId || null,
+        event.metadata ? JSON.stringify(event.metadata) : null,
+        event.updatedBy || null,
         event.id
       ]
     );
-
-    // Update device status if NewDeviceStatus is provided
-    if (event.deviceId && event.newDeviceStatus) {
-      await pool.query(
-        `UPDATE "Device" SET "Status" = $1 WHERE "ID" = $2`,
-        [event.newDeviceStatus.toString(), event.deviceId]
-      );
-    }
 
     return event.id;
   }
