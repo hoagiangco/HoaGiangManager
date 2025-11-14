@@ -3,9 +3,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
-import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, StaffVM, Department, DeviceCategory } from '@/types';
-import { format } from 'date-fns';
+import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, StaffVM, Department, DeviceCategory, EventType } from '@/types';
+import { formatDateDisplay, formatDateInput, formatDateRange, formatDateFilename } from '@/lib/utils/dateFormat';
 import FileManager from '@/components/FileManager';
+import DateInput from '@/components/DateInput';
 import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
 
 // Handler Notes Editor Component
@@ -137,6 +138,17 @@ const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false
   );
 };
 
+type CompletionModalState = {
+  show: boolean;
+  report: DamageReportVM | null;
+  eventTypeId?: number;
+  eventTitle: string;
+  eventDescription: string;
+  handlerNotes: string;
+  deviceId?: number;
+  submitting: boolean;
+};
+
 export default function DamageReportsPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [reports, setReports] = useState<DamageReportVM[]>([]);
@@ -186,11 +198,25 @@ export default function DamageReportsPage() {
   // Export Excel modal state
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportDepartment, setExportDepartment] = useState(0);
-  const [exportFromDate, setExportFromDate] = useState(format(new Date(new Date().getFullYear(), 0, 1), 'yyyy-MM-dd')); // Start of year
-  const [exportToDate, setExportToDate] = useState(format(new Date(), 'yyyy-MM-dd')); // Today
+  const [exportFromDate, setExportFromDate] = useState(formatDateInput(new Date(new Date().getFullYear(), 0, 1))); // Start of year
+  const [exportToDate, setExportToDate] = useState(formatDateInput(new Date())); // Today
   const [showImageModal, setShowImageModal] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  const [completionEventTypes, setCompletionEventTypes] = useState<EventType[]>([]);
+  const [loadingCompletionTypes, setLoadingCompletionTypes] = useState(false);
+  const [completionModalError, setCompletionModalError] = useState<string | null>(null);
+  const [completionModal, setCompletionModal] = useState<CompletionModalState>({
+    show: false,
+    report: null,
+    eventTypeId: undefined,
+    eventTitle: '',
+    eventDescription: '',
+    handlerNotes: '',
+    deviceId: undefined,
+    submitting: false,
+  });
 
   // Modal device filter state
   const [modalDeviceCategoryId, setModalDeviceCategoryId] = useState<number>(0);
@@ -208,7 +234,7 @@ export default function DamageReportsPage() {
     reportingDepartmentId: 0,
     handlerId: undefined as number | undefined,
     assignedDate: '',
-    reportDate: format(new Date(), 'yyyy-MM-dd'),
+    reportDate: formatDateInput(new Date()),
     handlingDate: '',
     completedDate: '',
     estimatedCompletionDate: '',
@@ -373,14 +399,13 @@ export default function DamageReportsPage() {
       if (selectedPriority > 0) params.append('priority', selectedPriority.toString());
       if (selectedDevice > 0) params.append('deviceId', selectedDevice.toString());
       if (selectedDepartment > 0) params.append('departmentId', selectedDepartment.toString());
-      if (searchKeyword) params.append('search', searchKeyword);
 
       const response = await api.get(`/damage-reports?${params.toString()}`);
       if (response.data.status) {
         setAllReports(response.data.data || []);
       }
     } catch (error) {
-      toast.error('Lỗi khi tải danh sách báo cáo hư hỏng');
+      toast.error('Lỗi khi tải danh sách báo cáo');
     } finally {
       setLoading(false);
     }
@@ -527,7 +552,15 @@ export default function DamageReportsPage() {
       skipPageResetOnMyWorkToggle.current = false;
       skipPageResetOnMyReportToggle.current = false;
     }
-  }, [selectedStatus, selectedPriority, selectedDevice, selectedDepartment, searchKeyword, myWorkFilter, myReportFilter]);
+  }, [
+    selectedStatus,
+    selectedPriority,
+    selectedDevice,
+    selectedDepartment,
+    searchKeyword,
+    myWorkFilter,
+    myReportFilter,
+  ]);
 
   // Sort and pagination
   useEffect(() => {
@@ -543,12 +576,39 @@ export default function DamageReportsPage() {
       filtered = filtered.filter(report => report.reporterId === currentUserStaffId);
     }
 
+    if (searchKeyword.trim()) {
+      const keyword = searchKeyword.trim().toLowerCase();
+      filtered = filtered.filter((report) => {
+        const idMatch = report.id ? String(report.id).includes(keyword) : false;
+        const candidates = [
+          report.displayLocation,
+          report.damageContent,
+          report.notes,
+          report.handlerNotes,
+          report.reporterName,
+          report.handlerName,
+          report.reporterDepartmentName,
+          report.handlerDepartmentName,
+          report.deviceName,
+          report.deviceSerial,
+        ];
+        const textMatch = candidates.some(
+          (value) => value && value.toLowerCase().includes(keyword)
+        );
+        return idMatch || textMatch;
+      });
+    }
+
     // Sort
     filtered.sort((a, b) => {
       let aValue: any;
       let bValue: any;
 
       switch (sortField) {
+        case 'id':
+          aValue = a.id || 0;
+          bValue = b.id || 0;
+          break;
         case 'createdAt':
           aValue = a.createdAt ? new Date(a.createdAt).getTime() : 0;
           bValue = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -599,7 +659,7 @@ export default function DamageReportsPage() {
       reportingDepartmentId: currentStaff?.departmentId || 0,
       handlerId: undefined,
       assignedDate: '',
-      reportDate: format(new Date(), 'yyyy-MM-dd'),
+      reportDate: formatDateInput(new Date()),
       handlingDate: '',
       completedDate: '',
       estimatedCompletionDate: '',
@@ -642,13 +702,13 @@ export default function DamageReportsPage() {
       // Determine deviceSelection: if deviceId exists and is valid, it's 'device', otherwise 'other'
       const isDevice = selectedReport.deviceId !== null && selectedReport.deviceId !== undefined && selectedReport.deviceId > 0;
       
-      // Convert dates properly
+      // Convert dates properly - use utility function
       const formatDate = (dateStr: any) => {
         if (!dateStr) return '';
         try {
-          const date = new Date(dateStr);
+          const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
           if (isNaN(date.getTime())) return '';
-          return format(date, 'yyyy-MM-dd');
+          return formatDateInput(date);
         } catch {
           return '';
         }
@@ -663,7 +723,7 @@ export default function DamageReportsPage() {
         reportingDepartmentId: Number(selectedReport.reportingDepartmentId) || 0,
         handlerId: selectedReport.handlerId ? Number(selectedReport.handlerId) : undefined,
         assignedDate: formatDate(selectedReport.assignedDate),
-        reportDate: formatDate(selectedReport.reportDate) || format(new Date(), 'yyyy-MM-dd'),
+        reportDate: formatDate(selectedReport.reportDate) || formatDateInput(new Date()),
         handlingDate: formatDate(selectedReport.handlingDate),
         completedDate: formatDate(selectedReport.completedDate),
         estimatedCompletionDate: formatDate(selectedReport.estimatedCompletionDate),
@@ -735,11 +795,11 @@ export default function DamageReportsPage() {
       return;
     }
     if (formData.deviceSelection === 'other' && !formData.damageLocation?.trim()) {
-      toast.error('Vui lòng nhập vị trí hư hỏng');
+      toast.error('Vui lòng nhập vị trí công việc');
       return;
     }
     if (!formData.damageContent?.trim()) {
-      toast.error('Vui lòng nhập nội dung hư hỏng');
+      toast.error('Vui lòng nhập nội dung công việc');
       return;
     }
     if (!formData.reporterId) {
@@ -914,10 +974,62 @@ export default function DamageReportsPage() {
 
   const canUpdateStatusForReport = (report?: DamageReportVM | null): boolean => {
     if (!report) return false;
+    if (report.status === DamageReportStatus.Completed) return false;
     if (!userPermissions.canUpdateStatus) return false;
     if (isAdmin(currentUser?.roles)) return true;
     if (currentUserStaffId === null) return false;
     return report.handlerId === currentUserStaffId;
+  };
+
+  const resetCompletionModal = () => {
+    setCompletionModal({
+      show: false,
+      report: null,
+      eventTypeId: undefined,
+      eventTitle: '',
+      eventDescription: '',
+      handlerNotes: '',
+      deviceId: undefined,
+      submitting: false,
+    });
+    setCompletionModalError(null);
+  };
+
+  const loadCompletionEventTypes = async () => {
+    if (completionEventTypes.length > 0 || loadingCompletionTypes) {
+      return;
+    }
+    try {
+      setLoadingCompletionTypes(true);
+      const response = await api.get('/event-types');
+      if (response.data.status) {
+        const list: EventType[] = response.data.data || [];
+        const filtered = list.filter((type) => !type.isReminder);
+        setCompletionEventTypes(filtered);
+      }
+    } catch (error) {
+      console.error('Error loading completion event types:', error);
+      toast.error('Không thể tải danh sách loại sự kiện');
+    } finally {
+      setLoadingCompletionTypes(false);
+    }
+  };
+
+  const openCompletionModal = async (report: DamageReportVM) => {
+    await loadCompletionEventTypes();
+    setCompletionModal({
+      show: true,
+      report,
+      eventTypeId: undefined,
+      eventTitle: report.deviceName
+        ? `Hoàn thành xử lý - ${report.deviceName}`
+        : 'Hoàn thành xử lý công việc',
+      eventDescription: report.damageContent || '',
+      handlerNotes: report.handlerNotes || '',
+      deviceId: report.deviceId,
+      submitting: false,
+    });
+    setCompletionModalError(null);
   };
 
   const handleStatusChange = async (reportId: number, newStatus: DamageReportStatus) => {
@@ -925,6 +1037,16 @@ export default function DamageReportsPage() {
 
     if (!canUpdateStatusForReport(report)) {
       toast.error('Bạn chỉ có thể cập nhật trạng thái khi là người xử lý báo cáo này');
+      return;
+    }
+
+    if (!report) {
+      toast.error('Không tìm thấy báo cáo');
+      return;
+    }
+
+    if (newStatus === DamageReportStatus.Completed && report?.deviceId) {
+      await openCompletionModal(report);
       return;
     }
 
@@ -957,6 +1079,66 @@ export default function DamageReportsPage() {
       }
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Lỗi khi cập nhật ưu tiên');
+    }
+  };
+
+  const updateCompletionModal = (patch: Partial<CompletionModalState>) => {
+    setCompletionModal((prev) => ({
+      ...prev,
+      ...patch,
+    }));
+  };
+
+  const handleConfirmCompletion = async () => {
+    if (!completionModal.report) {
+      return;
+    }
+
+    if (!completionModal.eventTypeId) {
+      setCompletionModalError('Vui lòng chọn loại xử lý');
+      return;
+    }
+
+    const deviceId = completionModal.deviceId || completionModal.report.deviceId;
+    if (!deviceId) {
+      setCompletionModalError('Báo cáo chưa gắn thiết bị, vui lòng chọn thiết bị để tạo sự kiện');
+      return;
+    }
+
+    setCompletionModalError(null);
+    updateCompletionModal({ submitting: true });
+
+    try {
+      const payload: any = {
+        status: DamageReportStatus.Completed,
+        eventTypeId: completionModal.eventTypeId,
+        eventTitle: completionModal.eventTitle?.trim() || null,
+        eventDescription: completionModal.eventDescription?.trim() || null,
+        eventDeviceId: deviceId,
+      };
+
+      const trimmedHandlerNotes = completionModal.handlerNotes?.trim() ?? '';
+      const originalHandlerNotes = completionModal.report.handlerNotes?.trim() ?? '';
+      if (trimmedHandlerNotes !== originalHandlerNotes) {
+        payload.handlerNotes = trimmedHandlerNotes;
+      }
+
+      const response = await api.put(`/damage-reports/${completionModal.report.id}/status`, payload);
+      if (response.data.status) {
+        toast.success('Cập nhật trạng thái thành công');
+        resetCompletionModal();
+        loadData();
+      } else {
+        const errorMessage = response.data.error || 'Lỗi khi cập nhật trạng thái';
+        setCompletionModalError(errorMessage);
+        toast.error(errorMessage);
+      }
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || error.message || 'Lỗi khi cập nhật trạng thái';
+      setCompletionModalError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      updateCompletionModal({ submitting: false });
     }
   };
 
@@ -1086,7 +1268,7 @@ export default function DamageReportsPage() {
         const deptName = exportDepartment > 0 
           ? (departments.find(d => d.id === exportDepartment)?.name || 'bộ phận đã chọn')
           : 'tất cả bộ phận';
-        const dateRange = `${format(fromDate, 'dd/MM/yyyy')} đến ${format(toDate, 'dd/MM/yyyy')}`;
+        const dateRange = formatDateRange(fromDate, toDate);
         toast.error(`Không có dữ liệu để xuất cho ${deptName} trong khoảng thời gian từ ${dateRange}. Vui lòng chọn khoảng thời gian khác hoặc bộ phận khác.`);
         return;
       }
@@ -1108,7 +1290,7 @@ export default function DamageReportsPage() {
 
       // Get filename from Content-Disposition header or generate one
       const contentDisposition = response.headers['content-disposition'];
-      let fileName = `BaoCaoHuHong_${format(fromDate, 'yyyyMMdd')}_${format(toDate, 'yyyyMMdd')}.xlsx`;
+      let fileName = `BaoCaoHuHong_${formatDateFilename(fromDate)}_${formatDateFilename(toDate)}.xlsx`;
       
       if (contentDisposition) {
         const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
@@ -1181,7 +1363,7 @@ export default function DamageReportsPage() {
       <div className="card">
         <div className="card-header">
           <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
-            <h4 className="mb-0 mb-2 mb-md-0">LIST HƯ HỎNG</h4>
+            <h4 className="mb-0 mb-2 mb-md-0">LIST CÔNG VIỆC</h4>
             <div className="d-flex gap-1 align-items-center" style={{ flexWrap: 'wrap', rowGap: '0.25rem', justifyContent: 'flex-end', marginRight: '1rem' }}>
               <button
                 type="button"
@@ -1449,6 +1631,9 @@ export default function DamageReportsPage() {
                       />
                     </div>
                   </th>
+                  <th style={{ cursor: 'pointer', minWidth: '70px' }} onClick={() => handleSort('id')}>
+                    Mã {getSortIcon('id')}
+                  </th>
                   <th style={{ cursor: 'pointer', minWidth: '150px' }} onClick={() => handleSort('displayLocation')}>
                     Vị trí/Thiết bị {getSortIcon('displayLocation')}
                   </th>
@@ -1462,14 +1647,14 @@ export default function DamageReportsPage() {
                     Ngày b/c {getSortIcon('reportDate')}
                   </th>
                   <th style={{ minWidth: '120px' }}>Người cập nhật</th>
-                  <th style={{ minWidth: '200px' }}>Nội dung hư hỏng</th>
+                  <th style={{ minWidth: '200px' }}>Nội dung</th>
                   <th style={{ minWidth: '200px' }}>Ghi chú người xử lý</th>
                 </tr>
               </thead>
               <tbody>
                 {currentReports.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="text-center py-4">
+                    <td colSpan={12} className="text-center py-4">
                       <span className="text-muted">Không có dữ liệu</span>
                     </td>
                   </tr>
@@ -1500,6 +1685,9 @@ export default function DamageReportsPage() {
                             <i className="fas fa-eye"></i>
                           </button>
                         </div>
+                      </td>
+                      <td>
+                        <span className="badge bg-light text-dark border">{report.id}</span>
                       </td>
                       <td>
                         {report.displayLocation || 'Không xác định'}
@@ -1568,7 +1756,7 @@ export default function DamageReportsPage() {
                       </td>
                       <td>{report.reporterName || 'N/A'}</td>
                       <td>{report.handlerName || 'Chưa phân công'}</td>
-                      <td>{report.reportDate ? format(new Date(report.reportDate), 'dd/MM/yyyy') : 'N/A'}</td>
+                      <td>{report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}</td>
                       <td>{report.updatedByName || '-'}</td>
                       <td>
                         <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1643,7 +1831,7 @@ export default function DamageReportsPage() {
                           <div className="d-flex align-items-center gap-2 flex-wrap">
                             <small className="text-muted" style={{ fontSize: '0.75rem' }}>
                               <i className="fas fa-calendar-alt me-1"></i>
-                              {report.reportDate ? format(new Date(report.reportDate), 'dd/MM/yyyy') : 'N/A'}
+                              {report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}
                             </small>
                             {report.daysSinceReport !== undefined && (
                               <small className="badge bg-light text-dark" style={{ fontSize: '0.7rem' }}>
@@ -1780,7 +1968,7 @@ export default function DamageReportsPage() {
                           <div className="d-flex align-items-center gap-1 mb-1">
                             <i className="fas fa-file-alt text-muted" style={{ fontSize: '0.7rem' }}></i>
                             <label className="small text-muted mb-0" style={{ fontSize: '0.7rem', fontWeight: '500' }}>
-                              Nội dung hư hỏng
+                              Nội dung
                             </label>
                           </div>
                           <div 
@@ -1955,20 +2143,20 @@ export default function DamageReportsPage() {
           <div className="modal-dialog modal-lg modal-dialog-scrollable">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">{isEdit ? 'Sửa báo cáo hư hỏng' : 'Thêm báo cáo hư hỏng'}</h5>
+                <h5 className="modal-title">{isEdit ? 'Sửa báo cáo' : 'Thêm báo cáo'}</h5>
                 <button type="button" className="btn-close" onClick={() => setShowModal(false)}></button>
               </div>
               <div className="modal-body">
                 <div className="row g-3">
                   <div className="col-12">
-                    <label className="form-label mb-1">Loại hư hỏng <span className="text-danger">*</span></label>
+                    <label className="form-label mb-1">Loại công việc <span className="text-danger">*</span></label>
                     <div className="form-check">
                       <input className="form-check-input" type="radio" name="deviceSelection" id="modalDeviceSelDevice" checked={formData.deviceSelection === 'device'} onChange={() => setFormData({ ...formData, deviceSelection: 'device', damageLocation: '' })} />
                       <label className="form-check-label" htmlFor="modalDeviceSelDevice">Chọn thiết bị</label>
                     </div>
                     <div className="form-check">
                       <input className="form-check-input" type="radio" name="deviceSelection" id="modalDeviceSelOther" checked={formData.deviceSelection === 'other'} onChange={() => setFormData({ ...formData, deviceSelection: 'other', deviceId: undefined })} />
-                      <label className="form-check-label" htmlFor="modalDeviceSelOther">Khác (hư hỏng tổng thể)</label>
+                      <label className="form-check-label" htmlFor="modalDeviceSelOther">Khác báo cáo tổng thể)</label>
                     </div>
                   </div>
 
@@ -2087,7 +2275,7 @@ export default function DamageReportsPage() {
                     </div>
                   ) : (
                     <div className="col-12">
-                      <label className="form-label">Vị trí/Mô tả hư hỏng <span className="text-danger">*</span></label>
+                      <label className="form-label">Vị trí/Mô tả công việc <span className="text-danger">*</span></label>
                       <input type="text" className="form-control" value={formData.damageLocation} onChange={(e) => setFormData({ ...formData, damageLocation: e.target.value })} placeholder="Ví dụ: Hệ thống điện, Tường nhà..." />
                     </div>
                   )}
@@ -2120,12 +2308,19 @@ export default function DamageReportsPage() {
 
                   <div className="col-12 col-md-6">
                     <label className="form-label">Ngày báo cáo <span className="text-danger">*</span></label>
-                    <input type="date" className="form-control" value={formData.reportDate} onChange={(e) => setFormData({ ...formData, reportDate: e.target.value })} />
+                    <DateInput
+                      value={formData.reportDate}
+                      onChange={(value) => setFormData({ ...formData, reportDate: value })}
+                      required
+                    />
                   </div>
 
                   <div className="col-12 col-md-6">
                     <label className="form-label">Ngày hoàn thành</label>
-                    <input type="date" className="form-control" value={formData.completedDate} onChange={(e) => setFormData({ ...formData, completedDate: e.target.value })} />
+                    <DateInput
+                      value={formData.completedDate}
+                      onChange={(value) => setFormData({ ...formData, completedDate: value })}
+                    />
                   </div>
 
                   <div className="col-12 col-md-6">
@@ -2150,7 +2345,7 @@ export default function DamageReportsPage() {
                   </div>
 
                   <div className="col-12">
-                    <label className="form-label">Nội dung hư hỏng <span className="text-danger">*</span></label>
+                    <label className="form-label">Nội dung <span className="text-danger">*</span></label>
                     <textarea className="form-control" rows={3} value={formData.damageContent} onChange={(e) => setFormData({ ...formData, damageContent: e.target.value })}></textarea>
                   </div>
 
@@ -2242,7 +2437,7 @@ export default function DamageReportsPage() {
                         <div>
                           <div className="fw-semibold" style={{ fontSize: '1.05rem', lineHeight: 1.25 }}>{quickReport.displayLocation || 'Không xác định'}</div>
                           <div className="text-muted" style={{ fontSize: '.85rem' }}>
-                            Mã: #{quickReport.id} · Ngày báo cáo: {quickReport.reportDate ? format(new Date(quickReport.reportDate), 'dd/MM/yyyy') : '-'}
+                            Mã: #{quickReport.id} · Ngày báo cáo: {formatDateDisplay(quickReport.reportDate) || '-'}
                           </div>
                         </div>
                         <div className="d-flex gap-2 flex-wrap" style={{ justifyContent: 'flex-end' }}>
@@ -2269,11 +2464,11 @@ export default function DamageReportsPage() {
                         </div>
                         <div>
                           <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ngày bắt đầu xử lý</div>
-                          <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{quickReport.handlingDate ? format(new Date(quickReport.handlingDate), 'dd/MM/yyyy') : '-'}</div>
+                          <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{quickReport.handlingDate ? formatDateDisplay(quickReport.handlingDate) : '-'}</div>
                         </div>
                         <div>
                           <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ngày hoàn thành</div>
-                          <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{quickReport.completedDate ? format(new Date(quickReport.completedDate), 'dd/MM/yyyy') : '-'}</div>
+                          <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{formatDateDisplay(quickReport.completedDate) || '-'}</div>
                         </div>
                       </div>
 
@@ -2286,7 +2481,7 @@ export default function DamageReportsPage() {
                         }}
                       >
                         <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
-                          Nội dung hư hỏng
+                          Nội dung
                         </div>
                         <div style={{ fontSize: '.95rem', lineHeight: 1.5 }}>{quickReport.damageContent || '-'}</div>
                       </div>
@@ -2401,13 +2596,192 @@ export default function DamageReportsPage() {
         </div>
       )}
 
+      {/* Completion Classification Modal */}
+      {completionModal.show && completionModal.report && (
+        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Hoàn thành báo cáo</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => {
+                    if (!completionModal.submitting) {
+                      resetCompletionModal();
+                    }
+                  }}
+                  disabled={completionModal.submitting}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <div className="mb-3">
+                  <div className="small text-muted">Báo cáo</div>
+                  <div className="fw-semibold">
+                    #{completionModal.report.id} ·{' '}
+                    {completionModal.report.displayLocation || completionModal.report.damageLocation || 'Không rõ vị trí'}
+                  </div>
+                  <div className="text-muted">
+                    {completionModal.report.damageContent || 'Không có mô tả'}
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label">
+                    Loại xử lý <span className="text-danger">*</span>
+                  </label>
+                  {loadingCompletionTypes ? (
+                    <div className="d-flex align-items-center gap-2">
+                      <div className="spinner-border spinner-border-sm text-primary" role="status">
+                        <span className="visually-hidden">Đang tải...</span>
+                      </div>
+                      <span>Đang tải danh sách loại sự kiện...</span>
+                    </div>
+                  ) : (
+                    <select
+                      className="form-control"
+                      value={completionModal.eventTypeId ?? ''}
+                      onChange={(e) =>
+                        updateCompletionModal({
+                          eventTypeId: e.target.value ? Number(e.target.value) : undefined,
+                        })
+                      }
+                      disabled={completionModal.submitting}
+                    >
+                      <option value="">-- Chọn loại xử lý --</option>
+                      {completionEventTypes.length === 0 && (
+                        <option value="" disabled>
+                          (Chưa có danh mục sự kiện phù hợp)
+                        </option>
+                      )}
+                      {completionEventTypes.map((type) => (
+                        <option key={type.id} value={type.id}>
+                          {type.name}
+                          {type.category ? ` · ${type.category}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label">
+                    Thiết bị liên quan
+                  </label>
+                  <select
+                    className="form-control"
+                    value={completionModal.deviceId ?? completionModal.report.deviceId ?? ''}
+                    onChange={(e) =>
+                      updateCompletionModal({
+                        deviceId: e.target.value ? Number(e.target.value) : undefined,
+                      })
+                    }
+                    disabled={completionModal.submitting}
+                  >
+                    <option value="">-- Chọn thiết bị --</option>
+                    {devices.map((device) => (
+                      <option key={device.id} value={device.id}>
+                        {device.name}
+                        {device.serial ? ` (${device.serial})` : ''}
+                        {device.deviceCategoryName ? ` · ${device.deviceCategoryName}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <small className="text-muted">
+                    Có thể chọn thiết bị khác nếu cần điều chỉnh trước khi hoàn thành.
+                  </small>
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label">Tiêu đề sự kiện</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={completionModal.eventTitle}
+                    onChange={(e) => updateCompletionModal({ eventTitle: e.target.value })}
+                    placeholder="Ví dụ: Hoàn thành sửa chữa thiết bị"
+                    disabled={completionModal.submitting}
+                  />
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label">Nội dung sự kiện</label>
+                  <textarea
+                    className="form-control"
+                    rows={3}
+                    value={completionModal.eventDescription}
+                    onChange={(e) => updateCompletionModal({ eventDescription: e.target.value })}
+                    placeholder="Mô tả ngắn gọn công việc đã thực hiện"
+                    disabled={completionModal.submitting}
+                  />
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label">Ghi chú người xử lý</label>
+                  <textarea
+                    className="form-control"
+                    rows={2}
+                    value={completionModal.handlerNotes}
+                    onChange={(e) => updateCompletionModal({ handlerNotes: e.target.value })}
+                    placeholder="Ghi chú nội bộ cho báo cáo"
+                    disabled={completionModal.submitting}
+                  />
+                  <small className="text-muted">
+                    Nội dung này sẽ được lưu vào mục &quot;Ghi chú người xử lý&quot; của báo cáo và gắn vào sự kiện.
+                  </small>
+                </div>
+
+                {completionModalError && (
+                  <div className="alert alert-danger py-2 px-3" role="alert">
+                    {completionModalError}
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    if (!completionModal.submitting) {
+                      resetCompletionModal();
+                    }
+                  }}
+                  disabled={completionModal.submitting}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleConfirmCompletion}
+                  disabled={
+                    completionModal.submitting ||
+                    loadingCompletionTypes ||
+                    completionEventTypes.length === 0
+                  }
+                >
+                  {completionModal.submitting ? (
+                    <span className="d-inline-flex align-items-center gap-2">
+                      <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                      Đang xử lý...
+                    </span>
+                  ) : (
+                    'Xác nhận hoàn thành'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Export Excel Modal */}
       {showExportModal && (
         <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">Xuất Excel - Báo cáo hư hỏng</h5>
+                <h5 className="modal-title">Xuất Excel - Báo cáo</h5>
                 <button type="button" className="btn-close" onClick={() => setShowExportModal(false)}></button>
               </div>
               <div className="modal-body">
@@ -2427,23 +2801,21 @@ export default function DamageReportsPage() {
                   </div>
                   <div className="col-12 col-md-6">
                     <label className="form-label">Từ ngày <span className="text-danger">*</span></label>
-                    <input
-                      type="date"
-                      className="form-control"
+                    <DateInput
                       value={exportFromDate}
-                      onChange={(e) => setExportFromDate(e.target.value)}
+                      onChange={(value) => setExportFromDate(value)}
                       max={exportToDate}
+                      required
                     />
                   </div>
                   <div className="col-12 col-md-6">
                     <label className="form-label">Đến ngày <span className="text-danger">*</span></label>
-                    <input
-                      type="date"
-                      className="form-control"
+                    <DateInput
                       value={exportToDate}
-                      onChange={(e) => setExportToDate(e.target.value)}
+                      onChange={(value) => setExportToDate(value)}
                       min={exportFromDate}
-                      max={format(new Date(), 'yyyy-MM-dd')}
+                      max={new Date()}
+                      required
                     />
                   </div>
                 </div>

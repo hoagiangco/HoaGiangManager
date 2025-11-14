@@ -5,7 +5,7 @@ import { StaffService } from '@/lib/services/staffService';
 import { DepartmentService } from '@/lib/services/departmentService';
 import { DeviceService } from '@/lib/services/deviceService';
 import { DamageReportStatus, DamageReportPriority } from '@/types';
-import { format } from 'date-fns';
+import { formatDateDisplay, formatDateTime, formatDateRange, formatDateFilename } from '@/lib/utils/dateFormat';
 import { generateExcelFile } from '@/lib/utils/excelGenerator.server';
 
 export async function GET(request: NextRequest) {
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
 
     if (filteredReports.length === 0) {
       const deptName = selectedDeptId > 0 ? `bộ phận "${selectedDeptName}"` : 'tất cả bộ phận';
-      const dateRange = `${format(from, 'dd/MM/yyyy')} đến ${format(to, 'dd/MM/yyyy')}`;
+      const dateRange = formatDateRange(from, to);
       return NextResponse.json(
         { 
           status: false, 
@@ -146,20 +146,20 @@ export async function GET(request: NextRequest) {
 
       return {
         'ID': report.id,
-        'Ngày báo cáo': report.reportDate ? format(new Date(report.reportDate), 'dd/MM/yyyy') : '',
+        'Ngày báo cáo': formatDateDisplay(report.reportDate) || '',
         'Người báo cáo': reporterName,
         'Phòng ban': departmentName,
         'Người xử lý': handlerName,
-        'Ngày phân công': report.assignedDate ? format(new Date(report.assignedDate), 'dd/MM/yyyy') : '',
-        'Ngày xử lý': report.handlingDate ? format(new Date(report.handlingDate), 'dd/MM/yyyy') : '',
-        'Ngày hoàn thành': report.completedDate ? format(new Date(report.completedDate), 'dd/MM/yyyy') : '',
+        'Ngày phân công': formatDateDisplay(report.assignedDate) || '',
+        'Ngày xử lý': formatDateDisplay(report.handlingDate) || '',
+        'Ngày hoàn thành': formatDateDisplay(report.completedDate) || '',
         'Thiết bị/Vị trí': deviceName,
         'Nội dung hư hỏng': report.damageContent || '',
         'Trạng thái': statusMap[report.status] || '',
         'Mức độ ưu tiên': priorityMap[report.priority] || '',
         'Ghi chú': report.notes || '',
         'Ghi chú người xử lý': report.handlerNotes || '',
-        'Ngày tạo': report.createdAt ? format(new Date(report.createdAt), 'dd/MM/yyyy HH:mm') : '',
+        'Ngày tạo': formatDateTime(report.createdAt) || '',
         'Người cập nhật': report.updatedByName || '',
       };
     });
@@ -168,7 +168,7 @@ export async function GET(request: NextRequest) {
     const deptNameForFile = selectedDeptId > 0 
       ? finalDeptName.replace(/[^a-zA-Z0-9]/g, '_')
       : 'TatCa';
-    const fileName = `BaoCaoHuHong_${deptNameForFile}_${format(from, 'yyyyMMdd')}_${format(to, 'yyyyMMdd')}.xlsx`;
+    const fileName = `BaoCaoHuHong_${deptNameForFile}_${formatDateFilename(from)}_${formatDateFilename(to)}.xlsx`;
 
     // Prepare data for Excel generation
     const headers = Object.keys(excelData[0] || []);
@@ -178,7 +178,7 @@ export async function GET(request: NextRequest) {
     const excelBuffer = await generateExcelFile({
       title: 'BÁO CÁO HƯ HỎNG',
       department: finalDeptName,
-      dateRange: `Từ ngày: ${format(from, 'dd/MM/yyyy')} đến ngày: ${format(to, 'dd/MM/yyyy')}`,
+      dateRange: `Từ ngày: ${formatDateRange(from, to)}`,
       headers,
       rows,
       fileName,

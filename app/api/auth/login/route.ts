@@ -35,6 +35,18 @@ export async function POST(request: NextRequest) {
 
     const user = userResult.rows[0];
 
+    const lockoutEnabled = !!user.LockoutEnabled;
+    const lockoutEndRaw = user.LockoutEnd;
+    if (lockoutEnabled && lockoutEndRaw) {
+      const lockoutEnd = new Date(lockoutEndRaw);
+      if (!Number.isNaN(lockoutEnd.getTime()) && lockoutEnd.getTime() > Date.now()) {
+        return NextResponse.json(
+          { status: false, error: 'Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.' },
+          { status: 403 }
+        );
+      }
+    }
+
     // Verify password
     if (!user.PasswordHash) {
       return NextResponse.json(

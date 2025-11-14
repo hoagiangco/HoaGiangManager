@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/auth/middleware';
 import { DamageReportService } from '@/lib/services/damageReportService';
 import { StaffService } from '@/lib/services/staffService';
-import { DamageReportStatus } from '@/types';
+import { EventService } from '@/lib/services/eventService';
+import { DamageReportStatus, EventStatus } from '@/types';
 
 export async function PUT(
   request: NextRequest,
@@ -19,7 +20,15 @@ export async function PUT(
     }
 
     const id = parseInt(params.id);
-    const { status } = await request.json();
+    const body = await request.json();
+    const {
+      status,
+      eventTypeId,
+      eventTitle,
+      eventDescription,
+      eventDeviceId,
+      handlerNotes,
+    } = body || {};
 
     // Admin and User can update status
     const isAdmin = user.roles && user.roles.includes('Admin');
@@ -32,7 +41,16 @@ export async function PUT(
       );
     }
 
-    if (!status || ![1, 2, 3, 4, 5, 6].includes(status)) {
+    if (status === undefined || status === null) {
+      return NextResponse.json(
+        { status: false, error: 'Thiếu trạng thái' },
+        { status: 400 }
+      );
+    }
+
+    const nextStatus = Number(status);
+
+    if (!Object.values(DamageReportStatus).includes(nextStatus)) {
       return NextResponse.json(
         { status: false, error: 'Trạng thái không hợp lệ' },
         { status: 400 }
@@ -61,7 +79,117 @@ export async function PUT(
       }
     }
 
-    await damageReportService.updateStatus(id, status as DamageReportStatus, user.userId);
+    const previousStatus = report.status as DamageReportStatus;
+    const previousCompletedDate = report.completedDate ? new Date(report.completedDate) : null;
+    const previousHandlerNotes = report.handlerNotes || '';
+
+    let parsedEventTypeId: number | null = null;
+    let resolvedDeviceId: number | null = null;
+    const trimmedTitle = typeof eventTitle === 'string' ? eventTitle.trim() : '';
+    const trimmedDescription = typeof eventDescription === 'string' ? eventDescription.trim() : '';
+    const trimmedHandlerNotes =
+      typeof handlerNotes === 'string' ? handlerNotes.trim() : undefined;
+
+    if (nextStatus === DamageReportStatus.Completed) {
+      if (eventDeviceId) {
+        const deviceParsed = Number(eventDeviceId);
+        if (Number.isNaN(deviceParsed) || deviceParsed <= 0) {
+          return NextResponse.json(
+            { status: false, error: 'Thiết bị không hợp lệ' },
+            { status: 400 }
+          );
+        }
+        resolvedDeviceId = deviceParsed;
+      } else if (report.deviceId) {
+        resolvedDeviceId = report.deviceId;
+      }
+
+      if (resolvedDeviceId) {
+        parsedEventTypeId = eventTypeId ? Number(eventTypeId) : NaN;
+        if (!parsedEventTypeId || Number.isNaN(parsedEventTypeId) || parsedEventTypeId <= 0) {
+          return NextResponse.json(
+            { status: false, error: 'Vui lòng chọn loại xử lý khi hoàn thành báo cáo' },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
+    const eventService = new EventService();
+
+    await damageReportService.updateStatus(id, nextStatus as DamageReportStatus, user.userId);
+
+    let handlerNotesUpdated = false;
+    if (
+      trimmedHandlerNotes !== undefined &&
+      trimmedHandlerNotes !== previousHandlerNotes
+    ) {
+      await damageReportService.updateHandlerNotes(id, trimmedHandlerNotes, user.userId);
+      handlerNotesUpdated = true;
+    }
+
+    if (nextStatus === DamageReportStatus.Completed && parsedEventTypeId && resolvedDeviceId) {
+      const completedAt = new Date();
+      try {
+        await damageReportService.updateCompletionDate(id, completedAt, user.userId);
+
+        const metadata = {
+          source: 'damage-report-completion',
+          damageReportId: id,
+          previousStatus,
+          handlerNotes: trimmedHandlerNotes ?? previousHandlerNotes ?? null,
+        };
+
+        await eventService.create({
+          title:
+            trimmedTitle ||
+            (report.deviceName
+              ? `Hoàn thành xử lý - ${report.deviceName}`
+              : `Hoàn thành xử lý báo cáo #${id}`),
+          deviceId: resolvedDeviceId,
+          eventTypeId: parsedEventTypeId,
+          description: trimmedDescription || report.damageContent || '',
+          notes: trimmedHandlerNotes || previousHandlerNotes || null,
+          status: EventStatus.Completed,
+          eventDate: completedAt,
+          startDate: report.handlingDate ? new Date(report.handlingDate) : completedAt,
+          endDate: completedAt,
+          staffId: report.handlerId || null,
+          relatedReportId: id,
+          metadata,
+          createdBy: user.userId,
+          createdAt: completedAt,
+          updatedBy: user.userId,
+          updatedAt: completedAt,
+        });
+      } catch (eventError: any) {
+        // Revert handler notes if updated
+        if (handlerNotesUpdated) {
+          try {
+            await damageReportService.updateHandlerNotes(id, previousHandlerNotes, user.userId);
+          } catch (revertError) {
+            console.error('Failed to revert handler notes after event creation error:', revertError);
+          }
+        }
+        // Revert status and completion date
+        try {
+          await damageReportService.updateStatus(id, previousStatus, user.userId);
+        } catch (revertStatusError) {
+          console.error('Failed to revert status after event creation error:', revertStatusError);
+        }
+        try {
+          await damageReportService.updateCompletionDate(id, previousCompletedDate, user.userId);
+        } catch (revertCompletionError) {
+          console.error('Failed to revert completion date after event creation error:', revertCompletionError);
+        }
+
+        console.error('Failed to create completion event:', eventError);
+        return NextResponse.json(
+          { status: false, error: eventError.message || 'Không thể tạo sự kiện cho thiết bị' },
+          { status: 500 }
+        );
+      }
+    }
 
     return NextResponse.json({
       status: true

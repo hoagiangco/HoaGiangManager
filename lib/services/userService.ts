@@ -1,12 +1,47 @@
 import pool from '../db';
 import { User } from '@/types';
 import bcrypt from 'bcryptjs';
+import { PoolClient } from 'pg';
 
 export interface UserVM extends User {
   roles: string[];
 }
 
 export class UserService {
+  private mapLockState(lockoutEnabled: any, lockoutEnd: any): { lockoutEnabled: boolean; lockoutEnd: Date | null; isLocked: boolean } {
+    const enabled = Boolean(lockoutEnabled);
+    let end: Date | null = null;
+    let locked = false;
+
+    if (lockoutEnd) {
+      const parsed = new Date(lockoutEnd);
+      if (!Number.isNaN(parsed.getTime())) {
+        end = parsed;
+        locked = enabled && parsed.getTime() > Date.now();
+      }
+    }
+
+    return {
+      lockoutEnabled: enabled,
+      lockoutEnd: end,
+      isLocked: locked,
+    };
+  }
+
+  private async hasAnotherAdmin(targetUserId: string, client?: PoolClient): Promise<boolean> {
+    const executor = client || pool;
+    const result = await executor.query(
+      `SELECT 1
+       FROM "AspNetUsers" u
+       INNER JOIN "AspNetUserRoles" ur ON u."Id" = ur."UserId"
+       INNER JOIN "AspNetRoles" r ON ur."RoleId" = r."Id"
+       WHERE r."Name" = 'Admin' AND u."Id" <> $1
+       LIMIT 1`,
+      [targetUserId]
+    );
+    return result.rows.length > 0;
+  }
+
   async getAll(): Promise<UserVM[]> {
     const result = await pool.query(
       `SELECT 
@@ -15,6 +50,8 @@ export class UserService {
         u."Email" as email,
         u."FullName" as "fullName",
         u."CreatedDate" as "createdDate",
+        u."LockoutEnabled" as "lockoutEnabled",
+        u."LockoutEnd" as "lockoutEnd",
         ARRAY_AGG(r."Name") as roles
       FROM "AspNetUsers" u
       LEFT JOIN "AspNetUserRoles" ur ON u."Id" = ur."UserId"
@@ -23,14 +60,20 @@ export class UserService {
       ORDER BY u."CreatedDate" DESC`
     );
 
-    return result.rows.map((row: any) => ({
-      id: row.id,
-      userName: row.userName,
-      email: row.email,
-      fullName: row.fullName,
-      createdDate: row.createdDate,
-      roles: row.roles.filter((r: string) => r !== null) || [],
-    }));
+    return result.rows.map((row: any) => {
+      const lockState = this.mapLockState(row.lockoutEnabled, row.lockoutEnd);
+      return {
+        id: row.id,
+        userName: row.userName,
+        email: row.email,
+        fullName: row.fullName,
+        createdDate: row.createdDate,
+        roles: row.roles.filter((r: string) => r !== null) || [],
+        lockoutEnabled: lockState.lockoutEnabled,
+        lockoutEnd: lockState.lockoutEnd,
+        isLocked: lockState.isLocked,
+      };
+    });
   }
 
   async getById(id: string): Promise<UserVM | null> {
@@ -41,6 +84,8 @@ export class UserService {
         u."Email" as email,
         u."FullName" as "fullName",
         u."CreatedDate" as "createdDate",
+        u."LockoutEnabled" as "lockoutEnabled",
+        u."LockoutEnd" as "lockoutEnd",
         ARRAY_AGG(r."Name") as roles
       FROM "AspNetUsers" u
       LEFT JOIN "AspNetUserRoles" ur ON u."Id" = ur."UserId"
@@ -55,6 +100,7 @@ export class UserService {
     }
 
     const row = result.rows[0];
+    const lockState = this.mapLockState(row.lockoutEnabled, row.lockoutEnd);
     return {
       id: row.id,
       userName: row.userName,
@@ -62,6 +108,9 @@ export class UserService {
       fullName: row.fullName,
       createdDate: row.createdDate,
       roles: row.roles.filter((r: string) => r !== null) || [],
+      lockoutEnabled: lockState.lockoutEnabled,
+      lockoutEnd: lockState.lockoutEnd,
+      isLocked: lockState.isLocked,
     };
   }
 
@@ -198,17 +247,7 @@ export class UserService {
   }
 
   async delete(id: string): Promise<boolean> {
-    // Check if trying to delete the last admin
-    const userResult = await pool.query(
-      `SELECT u."Id"
-       FROM "AspNetUsers" u
-       INNER JOIN "AspNetUserRoles" ur ON u."Id" = ur."UserId"
-       INNER JOIN "AspNetRoles" r ON ur."RoleId" = r."Id"
-       WHERE r."Name" = 'Admin' AND u."Id" != $1`,
-      [id]
-    );
-
-    if (userResult.rows.length === 0) {
+    if (!(await this.hasAnotherAdmin(id))) {
       throw new Error('Không thể xóa user cuối cùng có quyền Admin');
     }
 
@@ -222,6 +261,23 @@ export class UserService {
       'SELECT "Id" as id, "Name" as name FROM "AspNetRoles" ORDER BY "Name"'
     );
     return result.rows;
+  }
+
+  async setLockStatus(id: string, locked: boolean): Promise<void> {
+    if (locked && !(await this.hasAnotherAdmin(id))) {
+      throw new Error('Không thể khóa tài khoản Admin cuối cùng');
+    }
+
+    const lockoutEnd = locked ? new Date('2099-12-31T23:59:59Z') : null;
+
+    await pool.query(
+      `UPDATE "AspNetUsers"
+       SET "LockoutEnabled" = $2,
+           "LockoutEnd" = $3,
+           "AccessFailedCount" = CASE WHEN $2 THEN "AccessFailedCount" ELSE 0 END
+       WHERE "Id" = $1`,
+      [id, locked, lockoutEnd]
+    );
   }
 }
 

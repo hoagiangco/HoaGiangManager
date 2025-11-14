@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
 import { StaffVM, Department } from '@/types';
-import { format } from 'date-fns';
+import { formatDateDisplay, formatDateInput } from '@/lib/utils/dateFormat';
+import DateInput from '@/components/DateInput';
 import AdminRoute from '@/components/AdminRoute';
 
 function StaffPageContent() {
@@ -656,7 +657,7 @@ function StaffPageContent() {
                       <td>{getGenderBadge(staffMember.gender)}</td>
                       <td>
                         {staffMember.birthday 
-                          ? format(new Date(staffMember.birthday), 'dd/MM/yyyy')
+                          ? formatDateDisplay(staffMember.birthday)
                           : <span className="text-muted">-</span>
                         }
                       </td>
@@ -825,13 +826,11 @@ function StaffPageContent() {
 
                 <div className="mb-3">
                   <label className="form-label">Ngày sinh</label>
-                  <input
-                    type="date"
-                    className="form-control"
-                    value={formData.birthday ? format(new Date(formData.birthday), 'yyyy-MM-dd') : ''}
-                    onChange={(e) => setFormData({ 
+                  <DateInput
+                    value={formData.birthday}
+                    onChange={(value) => setFormData({ 
                       ...formData, 
-                      birthday: e.target.value ? new Date(e.target.value) : undefined
+                      birthday: value ? new Date(value) : undefined
                     })}
                   />
                 </div>

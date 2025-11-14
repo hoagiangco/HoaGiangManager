@@ -1,7 +1,33 @@
-import pool from '../db';
 import { Event, EventVM, EventStatus } from '@/types';
+import pool from '../db';
+import { PoolClient } from 'pg';
 
 export class EventService {
+  private async ensureEventSequence(client?: PoolClient): Promise<void> {
+    const executor = client || pool;
+    const maxRes = await executor.query(
+      'SELECT COALESCE(MAX("ID"), 0) AS max_id FROM "Event"'
+    );
+    const seqRes = await executor.query(
+      'SELECT last_value, is_called FROM "Event_ID_seq"'
+    );
+
+    const maxId = Number(maxRes.rows[0]?.max_id || 0);
+    let seqValue = Number(seqRes.rows[0]?.last_value || 0);
+    const isCalled = seqRes.rows[0]?.is_called ?? false;
+
+    if (!isCalled) {
+      seqValue -= 1;
+    }
+
+    if (maxId > seqValue) {
+      await executor.query(
+        'SELECT setval(pg_get_serial_sequence(\'"Event"\', \'ID\'), $1, true)',
+        [maxId]
+      );
+    }
+  }
+
   async getEventByType(eventTypeId: number = 0): Promise<EventVM[]> {
     let query = `
       SELECT 
@@ -153,6 +179,8 @@ export class EventService {
   }
 
   async create(event: Omit<Event, 'id'>): Promise<number> {
+    await this.ensureEventSequence();
+
     const now = new Date();
     const result = await pool.query(
       `INSERT INTO "Event" (
@@ -187,6 +215,8 @@ export class EventService {
   }
 
   async update(event: Event): Promise<number> {
+    await this.ensureEventSequence();
+
     await pool.query(
       `UPDATE "Event" SET
         "Title" = $1,

@@ -111,14 +111,14 @@ export default function DashboardLayout({
       { href: '/dashboard/staff', label: 'Nhân viên', icon: 'fas fa-users' },
       { href: '/dashboard/events', label: 'Sự kiện', icon: 'fas fa-calendar' },
       { href: '/dashboard/event-types', label: 'Loại sự kiện', icon: 'fas fa-tags' },
-      { href: '/dashboard/damage-reports', label: 'Báo cáo hư hỏng', icon: 'fas fa-exclamation-triangle' },
+      { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' },
       { href: '/dashboard/admin', label: 'Quản trị', icon: 'fas fa-cog' }
     );
   } else {
     // User only sees damage reports
     menuItems.push(
       { href: '/dashboard', label: 'Trang chủ', icon: 'fas fa-home' },
-      { href: '/dashboard/damage-reports', label: 'Báo cáo hư hỏng', icon: 'fas fa-exclamation-triangle' }
+      { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' }
     );
   }
 

@@ -4,8 +4,9 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import React from 'react';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
-import { DeviceVM, DeviceStatus, DeviceCategory, Department, DeviceHistorySummary } from '@/types';
-import { format } from 'date-fns';
+import { DeviceVM, DeviceStatus, DeviceCategory, Department, DeviceHistorySummary, EventStatus, DamageReportStatus } from '@/types';
+import { formatDateDisplay, formatDateInput, formatDateTime } from '@/lib/utils/dateFormat';
+import DateInput from '@/components/DateInput';
 import dynamic from 'next/dynamic';
 import FileManager from '@/components/FileManager';
 import AdminRoute from '@/components/AdminRoute';
@@ -382,9 +383,9 @@ function DevicesPageContent() {
         serial: device.serial || '',
         description: device.description || '',
         img: normalizedImg,
-        warrantyDate: device.warrantyDate ? format(new Date(device.warrantyDate), 'yyyy-MM-dd') : '',
-        useDate: device.useDate ? format(new Date(device.useDate), 'yyyy-MM-dd') : '',
-        endDate: device.endDate ? format(new Date(device.endDate), 'yyyy-MM-dd') : '',
+        warrantyDate: formatDateInput(device.warrantyDate),
+        useDate: formatDateInput(device.useDate),
+        endDate: formatDateInput(device.endDate),
         departmentId: device.departmentId,
         deviceCategoryId: device.deviceCategoryId,
         status: device.status,
@@ -459,13 +460,45 @@ function DevicesPageContent() {
     setHistoryData(null);
   };
 
-  const formatDateTime = (value: string | null | undefined) => {
-    if (!value) return '-';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return value;
+  // Use utility function from dateFormat.ts
+  const formatDateTimeLocal = (value: string | null | undefined) => {
+    const result = formatDateTime(value);
+    return result || '-';
+  };
+
+  const getEventStatusBadgeClass = (status: EventStatus): string => {
+    switch (status) {
+      case EventStatus.Planned:
+        return 'badge bg-secondary';
+      case EventStatus.InProgress:
+        return 'badge bg-primary';
+      case EventStatus.Cancelled:
+        return 'badge bg-danger';
+      case EventStatus.Missed:
+        return 'badge bg-warning text-dark';
+      case EventStatus.Completed:
+      default:
+        return 'badge bg-success';
     }
-    return format(date, 'dd/MM/yyyy HH:mm');
+  };
+
+  const getReportStatusBadgeClass = (status: DamageReportStatus): string => {
+    switch (status) {
+      case DamageReportStatus.Pending:
+        return 'badge bg-warning text-dark';
+      case DamageReportStatus.Assigned:
+        return 'badge bg-info text-dark';
+      case DamageReportStatus.InProgress:
+        return 'badge bg-primary';
+      case DamageReportStatus.Completed:
+        return 'badge bg-success';
+      case DamageReportStatus.Cancelled:
+        return 'badge bg-secondary';
+      case DamageReportStatus.Rejected:
+        return 'badge bg-danger';
+      default:
+        return 'badge bg-light text-dark';
+    }
   };
 
   const handleSave = async () => {
@@ -976,12 +1009,12 @@ function DevicesPageContent() {
                       <td>{device.serial || '-'}</td>
                       <td>
                         {device.warrantyDate
-                          ? format(new Date(device.warrantyDate), 'dd/MM/yyyy')
+                          ? formatDateDisplay(device.warrantyDate)
                           : '-'}
                       </td>
                       <td>
                         {device.useDate
-                          ? format(new Date(device.useDate), 'dd/MM/yyyy')
+                          ? formatDateDisplay(device.useDate)
                           : '-'}
                       </td>
                       <td>{device.deviceCategoryName}</td>
@@ -1173,12 +1206,10 @@ function DevicesPageContent() {
                       <div className="col-md-6">
                         <div className="form-group mb-3">
                           <label>Ngày hết BH</label>
-                          <input
-                            type="date"
-                            className="form-control"
+                          <DateInput
                             value={formData.warrantyDate}
-                            onChange={(e) =>
-                              setFormData({ ...formData, warrantyDate: e.target.value })
+                            onChange={(value) =>
+                              setFormData({ ...formData, warrantyDate: value })
                             }
                           />
                         </div>
@@ -1186,12 +1217,10 @@ function DevicesPageContent() {
                       <div className="col-md-6">
                         <div className="form-group mb-3">
                           <label>Ngày sử dụng</label>
-                          <input
-                            type="date"
-                            className="form-control"
+                          <DateInput
                             value={formData.useDate}
-                            onChange={(e) =>
-                              setFormData({ ...formData, useDate: e.target.value })
+                            onChange={(value) =>
+                              setFormData({ ...formData, useDate: value })
                             }
                           />
                         </div>
@@ -1467,85 +1496,123 @@ function DevicesPageContent() {
                     Không có dữ liệu lịch sử.
                   </div>
                 ) : (
-                  <div className="d-flex flex-column" style={{ gap: '1rem' }}>
+                  <div className="d-flex flex-column" style={{ gap: '1.25rem' }}>
                     <div className="border rounded p-3 bg-light">
                       <div className="fw-semibold" style={{ fontSize: '1rem' }}>
                         {historyData.deviceName || 'Thiết bị không xác định'}
                         {historyData.deviceSerial ? ` • Serial: ${historyData.deviceSerial}` : ''}
                       </div>
                       <div className="text-muted small mt-2">
-                        Tổng báo cáo: <strong>{historyData.totalReports}</strong> • Tổng thay đổi: <strong>{historyData.totalHistory}</strong>
+                        Tổng báo cáo: <strong>{historyData.totalReports}</strong>
+                        {' • '}
+                        Tổng sự kiện: <strong>{historyData.totalEvents}</strong>
                       </div>
                     </div>
 
-                    {historyData.reports.length === 0 ? (
-                      <div className="text-center text-muted py-4">
-                        Thiết bị chưa có báo cáo hư hỏng nào.
-                      </div>
-                    ) : (
-                      historyData.reports.map((report) => (
-                        <div className="card" key={report.reportId}>
-                          <div className="card-header bg-light">
-                            <div className="d-flex flex-column flex-lg-row justify-content-between gap-2">
-                              <div>
-                                <div className="fw-semibold">
-                                  Báo cáo #{report.reportId}
-                                </div>
-                                <div className="text-muted small">
-                                  {report.reportDate ? formatDateTime(report.reportDate) : '—'}
-                                  {report.displayLocation ? ` • ${report.displayLocation}` : ''}
-                                </div>
-                                <div className="text-muted small">
-                                  Người báo cáo: <span className="fw-semibold">{report.reporterName || '-'}</span>
-                                  {' • '}
-                                  Người xử lý: <span className="fw-semibold">{report.handlerName || '-'}</span>
-                                </div>
-                              </div>
-                              <div className="d-flex gap-2 align-items-start flex-wrap">
-                                <span className="badge bg-primary">
-                                  {report.statusName}
-                                </span>
-                                <span className="badge bg-secondary">
-                                  {report.priorityName}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="card-body" style={{ backgroundColor: '#fbfbfb' }}>
-                            {report.histories.length === 0 ? (
-                              <div className="text-muted fst-italic">
-                                Chưa ghi nhận thay đổi nào cho báo cáo này.
-                              </div>
-                            ) : (
-                              <div className="list-group list-group-flush">
-                                {report.histories.map((history) => (
-                                  <div key={history.id} className="list-group-item px-0">
-                                    <div className="d-flex justify-content-between align-items-start">
-                                      <div>
-                                        <div className="fw-semibold">{history.fieldLabel}</div>
-                                        <div className="text-muted small">
-                                          {formatDateTime(history.changedAt)} • {history.changedByName || 'Không xác định'}
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div className="mt-2 small">
-                                      <div className="text-muted">Từ:</div>
-                                      <div style={{ whiteSpace: 'pre-wrap' }}>
-                                        {history.oldValue || '—'}
-                                      </div>
-                                      <div className="text-muted mt-2">Đến:</div>
-                                      <div style={{ whiteSpace: 'pre-wrap' }}>
-                                        {history.newValue || '—'}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
+                    <div>
+                      <h6 className="fw-semibold mb-2">Sự kiện của thiết bị</h6>
+                      {historyData.events.length === 0 ? (
+                        <div className="text-muted small">
+                          Chưa ghi nhận sự kiện nào.
                         </div>
-                      ))
-                    )}
+                      ) : (
+                        <div className="table-responsive">
+                          <table className="table table-sm align-middle">
+                            <thead className="table-light">
+                              <tr>
+                                <th>Loại</th>
+                                <th>Tiêu đề</th>
+                                <th>Trạng thái</th>
+                                <th>Ngày báo</th>
+                                <th>Ngày hoàn thành</th>
+                                <th>Báo cáo liên quan</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {historyData.events.map((event) => (
+                                <tr key={event.id}>
+                                  <td>
+                                    {event.eventTypeName ? (
+                                      <span className="badge bg-info text-dark">
+                                        {event.eventTypeName}
+                                      </span>
+                                    ) : (
+                                      <span className="text-muted">—</span>
+                                    )}
+                                  </td>
+                                  <td>{event.title || '—'}</td>
+                                  <td>
+                                    <span className={getEventStatusBadgeClass(event.status)}>
+                                      {event.statusLabel}
+                                    </span>
+                                  </td>
+                                  <td>{formatDateTimeLocal(event.reportedAt)}</td>
+                                  <td>{formatDateTime(event.completedAt)}</td>
+                                  <td>
+                                    {event.relatedReportId ? (
+                                      <div className="d-flex flex-column gap-1">
+                                        <div className="fw-semibold">#{event.relatedReportId}</div>
+                                        <div className="text-muted small">
+                                          {event.reportStatusName || 'Không rõ trạng thái'}
+                                        </div>
+                                        <a
+                                          className="btn btn-link btn-sm p-0 align-self-start"
+                                          href={`/dashboard/damage-reports?reportId=${event.relatedReportId}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                        >
+                                          Xem báo cáo
+                                        </a>
+                                      </div>
+                                    ) : (
+                                      <span className="text-muted">—</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <h6 className="fw-semibold mb-2">Báo cáo hư hỏng</h6>
+                      {historyData.reports.length === 0 ? (
+                        <div className="text-muted small">
+                          Thiết bị chưa có báo cáo hư hỏng nào.
+                        </div>
+                      ) : (
+                        <div className="table-responsive">
+                          <table className="table table-sm align-middle">
+                            <thead className="table-light">
+                              <tr>
+                                <th>Mã</th>
+                                <th>Ngày báo</th>
+                                <th>Ngày hoàn thành</th>
+                                <th>Trạng thái</th>
+                                <th>Phân loại công việc</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {historyData.reports.map((report) => (
+                                <tr key={report.reportId}>
+                                  <td className="fw-semibold">#{report.reportId}</td>
+                                  <td>{formatDateTimeLocal(report.reportDate)}</td>
+                                  <td>{formatDateTime(report.completedDate)}</td>
+                                  <td>
+                                    <span className={getReportStatusBadgeClass(report.status)}>
+                                      {report.statusName}
+                                    </span>
+                                  </td>
+                                  <td>{report.eventTypeName || '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

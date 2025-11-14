@@ -6,6 +6,9 @@ export interface User {
   fullName?: string;
   createdDate?: Date;
   roles: string[];
+  lockoutEnabled?: boolean;
+  lockoutEnd?: Date | null;
+  isLocked?: boolean;
 }
 
 // Department types
@@ -201,16 +204,28 @@ export interface DeviceHistoryEntry {
 
 export interface DeviceHistoryReport {
   reportId: number;
-  displayLocation?: string | null;
-  damageContent?: string | null;
   reportDate?: string | null;
+  completedDate?: string | null;
   status: DamageReportStatus;
   statusName: string;
-  priority: DamageReportPriority;
-  priorityName: string;
-  handlerName?: string | null;
-  reporterName?: string | null;
-  histories: DeviceHistoryEntry[];
+  eventTypeName?: string | null;
+  eventTypeCode?: string | null;
+}
+
+export interface DeviceHistoryEvent {
+  id: number;
+  title?: string | null;
+  eventTypeName?: string | null;
+  eventTypeCode?: string | null;
+  eventTypeCategory?: EventCategory | null;
+  status: EventStatus;
+  statusLabel: string;
+  eventDate?: string | null;
+  reportedAt?: string | null;
+  completedAt?: string | null;
+  relatedReportId?: number | null;
+  reportStatus?: DamageReportStatus | null;
+  reportStatusName?: string | null;
 }
 
 export interface DeviceHistorySummary {
@@ -218,8 +233,9 @@ export interface DeviceHistorySummary {
   deviceName?: string | null;
   deviceSerial?: string | null;
   totalReports: number;
-  totalHistory: number;
+  totalEvents: number;
   reports: DeviceHistoryReport[];
+  events: DeviceHistoryEvent[];
 }
 
 export interface DeviceReminderPlan {

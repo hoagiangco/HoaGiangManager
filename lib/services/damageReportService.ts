@@ -458,6 +458,38 @@ export class DamageReportService {
     return id;
   }
 
+  async updateCompletionDate(id: number, completedDate: Date | null, updatedBy: string): Promise<void> {
+    const currentResult = await pool.query(
+      `SELECT "CompletedDate" FROM "DamageReport" WHERE "ID" = $1`,
+      [id]
+    );
+
+    if (currentResult.rows.length === 0) {
+      throw new Error('Báo cáo không tồn tại');
+    }
+
+    const currentCompleted = currentResult.rows[0].CompletedDate
+      ? new Date(currentResult.rows[0].CompletedDate)
+      : null;
+
+    await pool.query(
+      `UPDATE "DamageReport" SET "CompletedDate" = $1, "UpdatedBy" = $2, "UpdatedAt" = CURRENT_TIMESTAMP WHERE "ID" = $3`,
+      [completedDate ? completedDate : null, updatedBy, id]
+    );
+
+    const beforeValue = currentCompleted ? currentCompleted.toISOString() : '';
+    const afterValue = completedDate ? completedDate.toISOString() : '';
+
+    if (beforeValue !== afterValue) {
+      await this.ensureHistorySequence();
+      await pool.query(
+        `INSERT INTO "DamageReportHistory" ("DamageReportID", "FieldName", "OldValue", "NewValue", "ChangedBy")
+         VALUES ($1, 'CompletedDate', $2, $3, $4)`,
+        [id, beforeValue, afterValue, updatedBy]
+      );
+    }
+  }
+
   async updatePriority(id: number, priority: DamageReportPriority, updatedBy: string): Promise<number> {
     // Get current priority
     const currentResult = await pool.query(

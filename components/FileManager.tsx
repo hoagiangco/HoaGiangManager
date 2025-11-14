@@ -833,13 +833,7 @@ export default function FileManager({
                           </td>
                           <td>{formatFileSize(file.size)}</td>
                           <td>
-                            {new Date(file.modified).toLocaleDateString('vi-VN', {
-                              year: 'numeric',
-                              month: '2-digit',
-                              day: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
+                            {formatDateDisplay(file.modified)}
                           </td>
                           <td>
                             {canManage && (

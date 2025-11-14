@@ -3,8 +3,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
-import { EventStatus, EventType, EventVM } from '@/types';
-import { format } from 'date-fns';
+import { EventStatus, EventType, EventVM, DamageReportVM } from '@/types';
+import { formatDateDisplay, formatDateInput } from '@/lib/utils/dateFormat';
+import DateInput from '@/components/DateInput';
 import AdminRoute from '@/components/AdminRoute';
 
 type EventFormState = {
@@ -13,7 +14,6 @@ type EventFormState = {
   eventTypeId?: number;
   status: EventStatus;
   description: string;
-  notes: string;
   eventDate: string;
   startDate: string;
   endDate: string;
@@ -59,7 +59,6 @@ const createDefaultFormState = (): EventFormState => ({
   eventTypeId: undefined,
   status: EventStatus.Planned,
   description: '',
-  notes: '',
   eventDate: '',
   startDate: '',
   endDate: '',
@@ -68,26 +67,11 @@ const createDefaultFormState = (): EventFormState => ({
   relatedReportId: '',
 });
 
-const formatDateForInput = (value?: string | Date | null): string => {
-  if (!value) {
-    return '';
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-  return format(date, 'yyyy-MM-dd');
-};
-
+// Use utility functions from dateFormat.ts
+const formatDateForInput = formatDateInput;
 const formatDateForDisplay = (value?: string | Date | null): string => {
-  if (!value) {
-    return '-';
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '-';
-  }
-  return format(date, 'dd/MM/yyyy');
+  const result = formatDateDisplay(value);
+  return result || '-';
 };
 
 const getStatusLabel = (status: EventStatus | undefined | null): string => {
@@ -106,7 +90,6 @@ function EventsPageContent() {
   const [statusFilter, setStatusFilter] = useState<'all' | EventStatus>('all');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [sortField, setSortField] = useState<string>('eventDate');
@@ -114,6 +97,17 @@ function EventsPageContent() {
   const [formData, setFormData] = useState<EventFormState>(() => createDefaultFormState());
   const [metadataInput, setMetadataInput] = useState('');
   const [isEdit, setIsEdit] = useState(false);
+  const [reportModal, setReportModal] = useState<{
+    show: boolean;
+    loading: boolean;
+    report: DamageReportVM | null;
+    error: string | null;
+  }>({
+    show: false,
+    loading: false,
+    report: null,
+    error: null,
+  });
 
   const loadData = async (eventTypeId: number = selectedEventType) => {
     try {
@@ -150,7 +144,6 @@ function EventsPageContent() {
 
   useEffect(() => {
     setCurrentPage(1);
-    setSelectedIds([]);
   }, [searchKeyword, statusFilter, selectedEventType, itemsPerPage]);
 
   const filteredEvents = useMemo(() => {
@@ -170,9 +163,9 @@ function EventsPageContent() {
       const keyword = searchKeyword.toLowerCase();
       filtered = filtered.filter((event) => {
         const values: Array<string | undefined | null> = [
+          event.relatedReportId ? String(event.relatedReportId) : undefined,
           event.title,
           event.description,
-          event.notes,
           event.deviceName,
           event.eventTypeName,
           event.staffName,
@@ -283,7 +276,6 @@ function EventsPageContent() {
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
-    setSelectedIds([]);
   };
 
   const handleItemsPerPageChange = (items: number) => {
@@ -291,17 +283,47 @@ function EventsPageContent() {
     setCurrentPage(1);
   };
 
-  const handleCheckboxChange = (id: number) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
+  const closeRelatedReportModal = () => {
+    setReportModal({
+      show: false,
+      loading: false,
+      report: null,
+      error: null,
+    });
   };
 
-  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.checked) {
-      setSelectedIds(currentEvents.map((event) => event.id));
-    } else {
-      setSelectedIds([]);
+  const openRelatedReportModal = async (reportId: number) => {
+    setReportModal({
+      show: true,
+      loading: true,
+      report: null,
+      error: null,
+    });
+
+    try {
+      const response = await api.get(`/damage-reports/${reportId}`);
+      if (response.data.status) {
+        setReportModal({
+          show: true,
+          loading: false,
+          report: response.data.data || null,
+          error: null,
+        });
+      } else {
+        setReportModal({
+          show: true,
+          loading: false,
+          report: null,
+          error: response.data.error || 'Không tải được báo cáo liên quan',
+        });
+      }
+    } catch (error: any) {
+      setReportModal({
+        show: true,
+        loading: false,
+        report: null,
+        error: error.response?.data?.error || 'Lỗi khi tải báo cáo liên quan',
+      });
     }
   };
 
@@ -317,60 +339,6 @@ function EventsPageContent() {
     setMetadataInput('');
     setIsEdit(false);
     setShowModal(true);
-  };
-
-  const handleEdit = () => {
-    if (selectedIds.length !== 1) {
-      toast.warning('Vui lòng chọn đúng 1 sự kiện để sửa');
-      return;
-    }
-
-    const selected = filteredEvents.find((event) => event.id === selectedIds[0]);
-    if (selected) {
-      setFormData({
-        id: selected.id,
-        title: selected.title || '',
-        eventTypeId: selected.eventTypeId,
-        status: selected.status || EventStatus.Planned,
-        description: selected.description || '',
-        notes: selected.notes || '',
-        eventDate: formatDateForInput(selected.eventDate),
-        startDate: formatDateForInput(selected.startDate),
-        endDate: formatDateForInput(selected.endDate),
-        deviceId: selected.deviceId ? String(selected.deviceId) : '',
-        staffId: selected.staffId ? String(selected.staffId) : '',
-        relatedReportId: selected.relatedReportId ? String(selected.relatedReportId) : '',
-      });
-      setMetadataInput(selected.metadata ? JSON.stringify(selected.metadata, null, 2) : '');
-      setIsEdit(true);
-      setShowModal(true);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (selectedIds.length === 0) {
-      toast.warning('Vui lòng chọn ít nhất 1 sự kiện để xóa');
-      return;
-    }
-
-    if (!confirm('Bạn có chắc chắn muốn xóa các sự kiện đã chọn?')) {
-      return;
-    }
-
-    try {
-      for (const id of selectedIds) {
-        const response = await api.delete(`/events/${id}`);
-        if (!response.data.status) {
-          toast.error(response.data.message || 'Không thể xóa sự kiện');
-          return;
-        }
-      }
-      toast.success('Xóa sự kiện thành công');
-      setSelectedIds([]);
-      loadData();
-    } catch (error) {
-      toast.error('Lỗi khi xóa sự kiện');
-    }
   };
 
   const handleSave = async () => {
@@ -394,15 +362,24 @@ function EventsPageContent() {
       }
     }
 
+    // Tự động set endDate khi status = completed
+    const finalStatus = formData.status || EventStatus.Planned;
+    let finalEndDate = formData.endDate || null;
+    
+    if (finalStatus === EventStatus.Completed && !finalEndDate) {
+      // Tự động gán ngày hoàn thành = ngày hiện tại
+      finalEndDate = formatDateInput(new Date());
+    }
+
     const payload = {
       title: formData.title.trim() || null,
       eventTypeId: formData.eventTypeId,
-      status: formData.status || EventStatus.Planned,
+      status: finalStatus,
       description: formData.description.trim() || null,
-      notes: formData.notes.trim() || null,
+      notes: null, // Bỏ trường notes
       eventDate: formData.eventDate || null,
       startDate: formData.startDate || null,
-      endDate: formData.endDate || null,
+      endDate: finalEndDate,
       deviceId: formData.deviceId ? Number(formData.deviceId) : null,
       staffId: formData.staffId ? Number(formData.staffId) : null,
       relatedReportId: formData.relatedReportId ? Number(formData.relatedReportId) : null,
@@ -460,7 +437,33 @@ function EventsPageContent() {
     if (!event.relatedReportId) {
       return '-';
     }
-    return `#${event.relatedReportId}${event.relatedReportSummary ? ` • ${event.relatedReportSummary}` : ''}`;
+
+    const summary = `#${event.relatedReportId}${
+      event.relatedReportSummary ? ` • ${event.relatedReportSummary}` : ''
+    }`;
+    const isSystemEvent =
+      !!event.metadata &&
+      typeof event.metadata === 'object' &&
+      (event.metadata as Record<string, any>).source === 'damage-report-completion';
+
+    return (
+      <div className="d-flex flex-column gap-1">
+        <div className="fw-semibold">{summary}</div>
+        <div className="d-flex flex-wrap align-items-center gap-2">
+          {isSystemEvent && (
+            <span className="badge bg-secondary">Sinh từ báo cáo hư hỏng</span>
+          )}
+          <button
+            type="button"
+            className="btn btn-link btn-sm p-0"
+            onClick={() => openRelatedReportModal(event.relatedReportId!)}
+          >
+            <i className="fas fa-eye me-1" />
+            Xem nhanh
+          </button>
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -495,12 +498,6 @@ function EventsPageContent() {
               </button>
               <button className="btn btn-primary btn-sm" onClick={handleNew} title="Thêm sự kiện">
                 <i className="fas fa-plus" />
-              </button>
-              <button className="btn btn-success btn-sm" onClick={handleEdit} title="Sửa sự kiện">
-                <i className="fas fa-edit" />
-              </button>
-              <button className="btn btn-danger btn-sm" onClick={handleDelete} title="Xóa sự kiện">
-                <i className="fas fa-trash" />
               </button>
               <button className="btn btn-dark btn-sm" onClick={handleRefresh} title="Tải lại">
                 <i className="fas fa-rotate" />
@@ -621,17 +618,6 @@ function EventsPageContent() {
             <table className="table table-striped table-hover mb-0">
               <thead>
                 <tr>
-                  <th style={{ width: '50px' }}>
-                    <input
-                      type="checkbox"
-                      checked={
-                        currentEvents.length > 0 &&
-                        selectedIds.length === currentEvents.length &&
-                        selectedIds.length > 0
-                      }
-                      onChange={handleSelectAll}
-                    />
-                  </th>
                   <th
                     style={{ cursor: 'pointer', userSelect: 'none', minWidth: '220px' }}
                     onClick={() => handleSort('title')}
@@ -700,20 +686,13 @@ function EventsPageContent() {
               <tbody>
                 {currentEvents.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-4 text-muted">
+                    <td colSpan={6} className="text-center py-4 text-muted">
                       Không có dữ liệu
                     </td>
                   </tr>
                 ) : (
                   currentEvents.map((event) => (
                     <tr key={event.id}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.includes(event.id)}
-                          onChange={() => handleCheckboxChange(event.id)}
-                        />
-                      </td>
                       <td>
                         <div className="fw-semibold">
                           {event.title?.trim()
@@ -820,6 +799,128 @@ function EventsPageContent() {
         </div>
       </div>
 
+  {reportModal.show && (
+    <div
+      className="modal show d-block"
+      tabIndex={-1}
+      style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+    >
+      <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div className="modal-content">
+          <div className="modal-header">
+            <h5 className="modal-title">
+              {reportModal.report
+                ? `Báo cáo hư hỏng #${reportModal.report.id}`
+                : 'Báo cáo hư hỏng'}
+            </h5>
+            <button
+              type="button"
+              className="btn-close"
+              onClick={closeRelatedReportModal}
+              disabled={reportModal.loading}
+            ></button>
+          </div>
+          <div className="modal-body">
+            {reportModal.loading ? (
+              <div className="text-center py-4">
+                <div className="spinner-border text-primary" role="status">
+                  <span className="visually-hidden">Đang tải...</span>
+                </div>
+              </div>
+            ) : reportModal.error ? (
+              <div className="alert alert-danger" role="alert">
+                {reportModal.error}
+              </div>
+            ) : reportModal.report ? (
+              <div className="row g-3">
+                <div className="col-md-6">
+                  <label className="form-label small text-muted">Thiết bị</label>
+                  <div className="fw-semibold">
+                    {reportModal.report.deviceName ||
+                      reportModal.report.damageLocation ||
+                      'Không rõ'}
+                  </div>
+                  {reportModal.report.deviceSerial && (
+                    <div className="text-muted small">
+                      Mã/Serial: {reportModal.report.deviceSerial}
+                    </div>
+                  )}
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label small text-muted">Trạng thái</label>
+                  <div className="fw-semibold">{reportModal.report.statusName || '-'}</div>
+                  <div className="text-muted small">
+                    Ưu tiên: {reportModal.report.priorityName || '-'}
+                  </div>
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label small text-muted">Ngày báo cáo</label>
+                  <div className="fw-semibold">
+                    {formatDateForDisplay(reportModal.report.reportDate)}
+                  </div>
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label small text-muted">Ngày hoàn thành</label>
+                  <div className="fw-semibold">
+                    {reportModal.report.completedDate
+                      ? formatDateForDisplay(reportModal.report.completedDate)
+                      : '-'}
+                  </div>
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label small text-muted">Người báo cáo</label>
+                  <div className="fw-semibold">
+                    {reportModal.report.reporterName || '-'}
+                  </div>
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label small text-muted">Người xử lý</label>
+                  <div className="fw-semibold">
+                    {reportModal.report.handlerName || '-'}
+                  </div>
+                </div>
+                <div className="col-12">
+                  <label className="form-label small text-muted">Mô tả hư hỏng</label>
+                  <div className="border rounded p-2 bg-light">
+                    {reportModal.report.damageContent || 'Không có mô tả'}
+                  </div>
+                </div>
+                {reportModal.report.notes && (
+                  <div className="col-12">
+                    <label className="form-label small text-muted">Ghi chú</label>
+                    <div className="border rounded p-2 bg-light">
+                      {reportModal.report.notes}
+                    </div>
+                  </div>
+                )}
+                {reportModal.report.handlerNotes && (
+                  <div className="col-12">
+                    <label className="form-label small text-muted">Ghi chú người xử lý</label>
+                    <div className="border rounded p-2 bg-light">
+                      {reportModal.report.handlerNotes}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center text-muted">Không có dữ liệu báo cáo</div>
+            )}
+          </div>
+          <div className="modal-footer">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={closeRelatedReportModal}
+              disabled={reportModal.loading}
+            >
+              Đóng
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )}
+
       {showModal && (
         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog modal-lg">
@@ -866,12 +967,20 @@ function EventsPageContent() {
                     <select
                       className="form-control"
                       value={formData.status}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          status: e.target.value as EventStatus,
-                        }))
-                      }
+                      onChange={(e) => {
+                        const newStatus = e.target.value as EventStatus;
+                        setFormData((prev) => {
+                          // Tự động set endDate khi status = completed
+                          const updated = {
+                            ...prev,
+                            status: newStatus,
+                          };
+                          if (newStatus === EventStatus.Completed && !prev.endDate) {
+                            updated.endDate = formatDateInput(new Date());
+                          }
+                          return updated;
+                        });
+                      }}
                     >
                       {STATUS_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -907,47 +1016,30 @@ function EventsPageContent() {
                       placeholder="Ghi lại nội dung sự kiện, tình trạng, kết quả..."
                     />
                   </div>
-                  <div className="col-12">
-                    <label className="form-label">Ghi chú bổ sung</label>
-                    <textarea
-                      className="form-control"
-                      rows={2}
-                      value={formData.notes}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, notes: e.target.value }))
-                      }
-                    />
-                  </div>
                   <div className="col-12 col-md-4">
                     <label className="form-label">Ngày diễn ra</label>
-                    <input
-                      type="date"
-                      className="form-control"
+                    <DateInput
                       value={formData.eventDate}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, eventDate: e.target.value }))
+                      onChange={(value) =>
+                        setFormData((prev) => ({ ...prev, eventDate: value }))
                       }
                     />
                   </div>
                   <div className="col-12 col-md-4">
                     <label className="form-label">Ngày bắt đầu</label>
-                    <input
-                      type="date"
-                      className="form-control"
+                    <DateInput
                       value={formData.startDate}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, startDate: e.target.value }))
+                      onChange={(value) =>
+                        setFormData((prev) => ({ ...prev, startDate: value }))
                       }
                     />
                   </div>
                   <div className="col-12 col-md-4">
                     <label className="form-label">Ngày kết thúc</label>
-                    <input
-                      type="date"
-                      className="form-control"
+                    <DateInput
                       value={formData.endDate}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, endDate: e.target.value }))
+                      onChange={(value) =>
+                        setFormData((prev) => ({ ...prev, endDate: value }))
                       }
                     />
                   </div>

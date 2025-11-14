@@ -1,5 +1,15 @@
+import {
+  Device,
+  DeviceVM,
+  DeviceStatus,
+  DamageReportStatus,
+  DeviceHistorySummary,
+  DeviceHistoryReport,
+  DeviceHistoryEvent,
+  EventStatus,
+} from '@/types';
 import pool from '../db';
-import { Device, DeviceVM, DeviceStatus, DamageReportStatus, DamageReportPriority, DeviceHistorySummary, DeviceHistoryReport, DeviceHistoryEntry } from '@/types';
+import { PoolClient } from 'pg';
 
 export class DeviceService {
   async getDeviceByCategory(categoryId: number = 0): Promise<DeviceVM[]> {
@@ -76,7 +86,34 @@ export class DeviceService {
     };
   }
 
+  private async ensureDeviceSequence(client?: PoolClient): Promise<void> {
+    const executor = client || pool;
+    const maxRes = await executor.query(
+      'SELECT COALESCE(MAX("ID"), 0) AS max_id FROM "Device"'
+    );
+    const seqRes = await executor.query(
+      'SELECT last_value, is_called FROM "Device_ID_seq"'
+    );
+
+    const maxId = Number(maxRes.rows[0]?.max_id || 0);
+    let seqValue = Number(seqRes.rows[0]?.last_value || 0);
+    const isCalled = seqRes.rows[0]?.is_called ?? false;
+
+    if (!isCalled) {
+      seqValue -= 1;
+    }
+
+    if (maxId > seqValue) {
+      await executor.query(
+        'SELECT setval(pg_get_serial_sequence(\'"Device"\', \'ID\'), $1, true)',
+        [maxId]
+      );
+    }
+  }
+
   async create(device: Omit<Device, 'id'>): Promise<number> {
+    await this.ensureDeviceSequence();
+
     const result = await pool.query(
       `INSERT INTO "Device" (
         "Name", "Serial", "Description", "Img", "WarrantyDate", 
@@ -94,7 +131,7 @@ export class DeviceService {
         device.endDate || null,
         device.departmentId,
         device.deviceCategoryId,
-        device.status || DeviceStatus.DangSuDung
+        (device.status ?? DeviceStatus.DangSuDung).toString()
       ]
     );
 
@@ -102,6 +139,8 @@ export class DeviceService {
   }
 
   async update(device: Device): Promise<number> {
+    await this.ensureDeviceSequence();
+
     await pool.query(
       `UPDATE "Device" SET
         "Name" = $1,
@@ -125,7 +164,7 @@ export class DeviceService {
         device.endDate || null,
         device.departmentId,
         device.deviceCategoryId,
-        device.status,
+        (device.status ?? DeviceStatus.DangSuDung).toString(),
         device.id
       ]
     );
@@ -161,130 +200,124 @@ export class DeviceService {
         `
         SELECT
           dr."ID" as "id",
-          dr."DamageLocation" as "damageLocation",
-          dr."DamageContent" as "damageContent",
           dr."ReportDate" as "reportDate",
-          dr."Status" as "status",
-          dr."Priority" as "priority",
-          COALESCE(dr."DamageLocation", d."Name") as "displayLocation",
-          reporter."Name" as "reporterName",
-          handler."Name" as "handlerName"
+          dr."CompletedDate" as "completedDate",
+          dr."Status" as "status"
         FROM "DamageReport" dr
-        LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
-        LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
-        LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
         WHERE dr."DeviceID" = $1
         ORDER BY dr."ReportDate" DESC, dr."ID" DESC
         `,
         [deviceId]
       );
 
-      if (!reportsResult.rows || reportsResult.rows.length === 0) {
-        return {
-          deviceId,
-          deviceName: deviceRow?.Name || deviceRow?.name || null,
-          deviceSerial: deviceRow?.Serial || deviceRow?.serial || null,
-          totalReports: 0,
-          totalHistory: 0,
-          reports: [],
-        };
-      }
-
       const reportMap = new Map<number, DeviceHistoryReport>();
-      const reportIds: number[] = [];
 
       for (const row of reportsResult.rows) {
         const reportId: number = row.id ?? row.ID;
         if (!reportId) {
           continue;
         }
-        reportIds.push(reportId);
 
         const rawStatus = row.status ?? row.Status ?? '';
-        const statusNumber = parseInt(rawStatus, 10);
+        const statusNumber = parseInt(String(rawStatus), 10);
         const statusEnum: DamageReportStatus = Number.isNaN(statusNumber)
           ? DamageReportStatus.Pending
           : (statusNumber as DamageReportStatus);
 
-        const rawPriority = row.priority ?? row.Priority ?? '';
-        const priorityNumber = parseInt(rawPriority, 10);
-        const priorityEnum: DamageReportPriority = Number.isNaN(priorityNumber)
-          ? DamageReportPriority.Normal
-          : (priorityNumber as DamageReportPriority);
+        const reportDateIso = this.toIsoString(row.reportDate ?? row.ReportDate ?? null);
+        const completedDateIso = this.toIsoString(row.completedDate ?? row.CompletedDate ?? null);
 
-        const reportDateValue = row.reportDate ?? row.ReportDate ?? null;
-        const reportDateIso = reportDateValue
-          ? new Date(reportDateValue).toISOString()
-          : null;
-
-        const reportData: DeviceHistoryReport = {
+        reportMap.set(reportId, {
           reportId,
-          displayLocation: row.displayLocation ?? row.damageLocation ?? row.damageContent ?? null,
-          damageContent: row.damageContent ?? null,
           reportDate: reportDateIso,
+          completedDate: completedDateIso,
           status: statusEnum,
           statusName: this.getDamageReportStatusName(statusEnum),
-          priority: priorityEnum,
-          priorityName: this.getDamageReportPriorityName(priorityEnum),
-          handlerName: row.handlerName ?? null,
-          reporterName: row.reporterName ?? null,
-          histories: [],
-        };
-
-        reportMap.set(reportId, reportData);
+          eventTypeName: null,
+          eventTypeCode: null,
+        });
       }
 
-      let totalHistory = 0;
+      const eventsResult = await client.query(
+        `
+        SELECT
+          e."ID" as "id",
+          e."Title" as "title",
+          e."EventTypeID" as "eventTypeId",
+          et."Name" as "eventTypeName",
+          et."Code" as "eventTypeCode",
+          et."Category" as "eventTypeCategory",
+          e."Status" as "status",
+          e."EventDate" as "eventDate",
+          e."EndDate" as "endDate",
+          e."CreatedAt" as "createdAt",
+          e."RelatedReportID" as "relatedReportId",
+          dr."ReportDate" as "reportDate",
+          dr."CompletedDate" as "reportCompletedDate",
+          dr."Status" as "reportStatus"
+        FROM "Event" e
+        LEFT JOIN "EventType" et ON e."EventTypeID" = et."ID"
+        LEFT JOIN "DamageReport" dr ON e."RelatedReportID" = dr."ID"
+        WHERE e."DeviceID" = $1
+        ORDER BY COALESCE(dr."ReportDate", e."EventDate", e."CreatedAt") DESC NULLS LAST, e."ID" DESC
+        `,
+        [deviceId]
+      );
 
-      if (reportIds.length > 0) {
-        const historyResult = await client.query(
-          `
-          SELECT
-            h."ID" as "id",
-            h."DamageReportID" as "damageReportId",
-            h."FieldName" as "fieldName",
-            h."OldValue" as "oldValue",
-            h."NewValue" as "newValue",
-            h."ChangedBy" as "changedBy",
-            h."ChangedAt" as "changedAt",
-            staff."Name" as "staffName",
-            users."FullName" as "userFullName"
-          FROM "DamageReportHistory" h
-          LEFT JOIN "Staff" staff ON staff."UserId" = h."ChangedBy"
-          LEFT JOIN "AspNetUsers" users ON users."Id" = h."ChangedBy"
-          WHERE h."DamageReportID" = ANY($1::int[])
-          ORDER BY h."ChangedAt" DESC, h."ID" DESC
-          `,
-          [reportIds]
-        );
+      const events: DeviceHistoryEvent[] = [];
 
-        for (const row of historyResult.rows as any[]) {
-          const reportId: number = row.damageReportId ?? row.DamageReportID;
-          const report = reportMap.get(reportId);
-          if (!report) {
-            continue;
+      for (const row of eventsResult.rows) {
+        const statusValue = this.normalizeEventStatus(row.status ?? row.Status ?? EventStatus.Completed);
+        const eventDateIso = this.toIsoString(row.eventDate ?? row.EventDate ?? null);
+        const reportedAtIso =
+          this.toIsoString(row.reportDate ?? row.ReportDate ?? null) || eventDateIso;
+        const completedAtIso =
+          this.toIsoString(row.reportCompletedDate ?? row.reportcompleteddate ?? null) ||
+          this.toIsoString(row.endDate ?? row.EndDate ?? null) ||
+          eventDateIso;
+
+        let reportStatusEnum: DamageReportStatus | null = null;
+        const rawReportStatus = row.reportStatus ?? row.ReportStatus ?? null;
+        if (rawReportStatus !== null && rawReportStatus !== undefined) {
+          const parsed = parseInt(String(rawReportStatus), 10);
+          if (!Number.isNaN(parsed)) {
+            reportStatusEnum = parsed as DamageReportStatus;
           }
+        }
 
-          const fieldName: string = row.fieldName ?? row.FieldName ?? '';
-          const changedAtRaw = row.changedAt ?? row.ChangedAt ?? null;
-          const changedAtIso = changedAtRaw
-            ? new Date(changedAtRaw).toISOString()
-            : new Date().toISOString();
+        const eventSummary: DeviceHistoryEvent = {
+          id: row.id ?? row.ID,
+          title: row.title ?? row.Title ?? null,
+          eventTypeName: row.eventTypeName ?? row.EventTypeName ?? null,
+          eventTypeCode: row.eventTypeCode ?? row.EventTypeCode ?? null,
+          eventTypeCategory: row.eventTypeCategory ?? row.EventTypeCategory ?? null,
+          status: statusValue,
+          statusLabel: this.getEventStatusLabel(statusValue),
+          eventDate: eventDateIso,
+          reportedAt: reportedAtIso,
+          completedAt: completedAtIso,
+          relatedReportId: row.relatedReportId ?? row.RelatedReportID ?? null,
+          reportStatus: reportStatusEnum,
+          reportStatusName: reportStatusEnum !== null ? this.getDamageReportStatusName(reportStatusEnum) : null,
+        };
 
-          const entry: DeviceHistoryEntry = {
-            id: row.id ?? row.ID,
-            damageReportId: reportId,
-            fieldName,
-            fieldLabel: this.getHistoryFieldLabel(fieldName),
-            oldValue: this.formatHistoryValue(fieldName, row.oldValue ?? row.OldValue ?? null),
-            newValue: this.formatHistoryValue(fieldName, row.newValue ?? row.NewValue ?? null),
-            changedBy: row.changedBy ?? row.ChangedBy ?? null,
-            changedByName: row.staffName ?? row.userFullName ?? row.changedBy ?? row.ChangedBy ?? null,
-            changedAt: changedAtIso,
-          };
+        events.push(eventSummary);
 
-          report.histories.push(entry);
-          totalHistory += 1;
+        if (eventSummary.relatedReportId) {
+          const report = reportMap.get(eventSummary.relatedReportId);
+          if (report) {
+            if (eventSummary.eventTypeName) {
+              report.eventTypeName = eventSummary.eventTypeName;
+              report.eventTypeCode = eventSummary.eventTypeCode ?? null;
+            }
+            if (!report.completedDate && completedAtIso) {
+              report.completedDate = completedAtIso;
+            }
+            if (eventSummary.reportStatus !== null) {
+              report.status = eventSummary.reportStatus;
+              report.statusName = this.getDamageReportStatusName(eventSummary.reportStatus);
+            }
+          }
         }
       }
 
@@ -293,8 +326,9 @@ export class DeviceService {
         deviceName: deviceRow?.Name || deviceRow?.name || null,
         deviceSerial: deviceRow?.Serial || deviceRow?.serial || null,
         totalReports: reportMap.size,
-        totalHistory,
+        totalEvents: events.length,
         reports: Array.from(reportMap.values()),
+        events,
       };
     } catch (error: any) {
       console.error('DeviceService.getDamageHistory error:', error);
@@ -338,59 +372,50 @@ export class DeviceService {
     }
   }
 
-  private getDamageReportPriorityName(priority: DamageReportPriority): string {
-    switch (priority) {
-      case DamageReportPriority.Low:
-        return 'Thấp';
-      case DamageReportPriority.Normal:
-        return 'Bình thường';
-      case DamageReportPriority.High:
-        return 'Cao';
-      case DamageReportPriority.Urgent:
-        return 'Khẩn cấp';
+  private normalizeEventStatus(value: any): EventStatus {
+    const normalized = String(value || '').toLowerCase();
+    switch (normalized) {
+      case EventStatus.Planned:
+        return EventStatus.Planned;
+      case EventStatus.InProgress:
+      case 'inprogress':
+      case 'in-progress':
+        return EventStatus.InProgress;
+      case EventStatus.Cancelled:
+        return EventStatus.Cancelled;
+      case EventStatus.Missed:
+        return EventStatus.Missed;
+      case EventStatus.Completed:
       default:
-        return 'Không xác định';
+        return EventStatus.Completed;
     }
   }
 
-  private getHistoryFieldLabel(fieldName: string): string {
-    switch (fieldName) {
-      case 'Status':
-        return 'Trạng thái';
-      case 'Priority':
-        return 'Mức ưu tiên';
-      case 'HandlerNotes':
-        return 'Ghi chú người xử lý';
+  private getEventStatusLabel(status: EventStatus): string {
+    switch (status) {
+      case EventStatus.Planned:
+        return 'Đã lên kế hoạch';
+      case EventStatus.InProgress:
+        return 'Đang thực hiện';
+      case EventStatus.Cancelled:
+        return 'Đã hủy';
+      case EventStatus.Missed:
+        return 'Bỏ lỡ';
+      case EventStatus.Completed:
       default:
-        return fieldName || 'Không xác định';
+        return 'Hoàn thành';
     }
   }
 
-  private formatHistoryValue(fieldName: string, value: string | null): string | null {
-    if (value === null || value === undefined) {
+  private toIsoString(value: any): string | null {
+    if (!value) {
       return null;
     }
-
-    switch (fieldName) {
-      case 'Status': {
-        const numeric = parseInt(value, 10);
-        if (Number.isNaN(numeric)) {
-          return value;
-        }
-        return this.getDamageReportStatusName(numeric as DamageReportStatus);
-      }
-      case 'Priority': {
-        const numeric = parseInt(value, 10);
-        if (Number.isNaN(numeric)) {
-          return value;
-        }
-        return this.getDamageReportPriorityName(numeric as DamageReportPriority);
-      }
-      case 'HandlerNotes':
-        return value;
-      default:
-        return value;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return null;
     }
+    return date.toISOString();
   }
 }
 
