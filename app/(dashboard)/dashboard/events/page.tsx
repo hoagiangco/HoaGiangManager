@@ -972,7 +972,7 @@ function EventsPageContent() {
                         setFormData((prev) => {
                           // Tự động set endDate khi status = completed
                           const updated = {
-                            ...prev,
+                          ...prev,
                             status: newStatus,
                           };
                           if (newStatus === EventStatus.Completed && !prev.endDate) {

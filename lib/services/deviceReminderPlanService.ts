@@ -47,6 +47,7 @@ export class DeviceReminderPlanService {
       SELECT
         p."ID" as id,
         p."DeviceID" as "deviceId",
+        d."Name" as "deviceName",
         p."ReminderType" as "reminderType",
         p."EventTypeID" as "eventTypeId",
         et."Name" as "eventTypeName",
@@ -66,6 +67,7 @@ export class DeviceReminderPlanService {
         p."UpdatedBy" as "updatedBy",
         p."UpdatedAt" as "updatedAt"
       FROM "DeviceReminderPlan" p
+      LEFT JOIN "Device" d ON p."DeviceID" = d."ID"
       LEFT JOIN "EventType" et ON p."EventTypeID" = et."ID"
       ${whereClause}
       ORDER BY p."IsActive" DESC, p."NextDueDate" NULLS LAST, p."ID" DESC
@@ -73,7 +75,11 @@ export class DeviceReminderPlanService {
       params
     );
 
-    return result.rows.map(parsePlanRow);
+    return result.rows.map((row: any) => ({
+      ...parsePlanRow(row),
+      deviceName: row.deviceName || undefined,
+      eventTypeName: row.eventTypeName || undefined,
+    }));
   }
 
   async getById(id: number): Promise<DeviceReminderPlan | null> {

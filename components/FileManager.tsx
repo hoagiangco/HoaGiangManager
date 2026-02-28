@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
 import imageCompression from 'browser-image-compression';
+import { formatDateDisplay } from '@/lib/utils/dateFormat';
 
 interface FileItem {
   name: string;

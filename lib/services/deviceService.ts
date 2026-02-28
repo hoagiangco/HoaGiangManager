@@ -60,6 +60,97 @@ export class DeviceService {
     }
   }
 
+  async getDevicesByIds(deviceIds: number[]): Promise<DeviceVM[]> {
+    try {
+      if (!deviceIds || deviceIds.length === 0) {
+        return [];
+      }
+
+      const placeholders = deviceIds.map((_, index) => `$${index + 1}`).join(',');
+      const query = `
+        SELECT 
+          d."ID" as id,
+          d."Name" as name,
+          d."Serial" as serial,
+          d."Description" as description,
+          d."Img" as img,
+          d."WarrantyDate" as "warrantyDate",
+          d."UseDate" as "useDate",
+          d."EndDate" as "endDate",
+          d."DepartmentID" as "departmentId",
+          dep."Name" as "departmentName",
+          d."DeviceCategoryID" as "deviceCategoryId",
+          dc."Name" as "deviceCategoryName",
+          CAST(d."Status"::text AS INTEGER) as status
+        FROM "Device" d
+        INNER JOIN "DeviceCategory" dc ON d."DeviceCategoryID" = dc."ID"
+        INNER JOIN "Department" dep ON d."DepartmentID" = dep."ID"
+        WHERE d."ID" IN (${placeholders})
+        ORDER BY d."Name"
+      `;
+
+      const result = await pool.query(query, deviceIds);
+
+      if (!result.rows || result.rows.length === 0) {
+        return [];
+      }
+
+      return result.rows.map((row: any) => ({
+        ...row,
+        status: row.status ? parseInt(row.status) as DeviceStatus : DeviceStatus.DangSuDung,
+        statusName: this.getStatusName(row.status ? parseInt(row.status) : DeviceStatus.DangSuDung)
+      }));
+    } catch (error: any) {
+      console.error('DeviceService.getDevicesByIds error:', error);
+      throw error;
+    }
+  }
+
+  async getDevicesByDepartment(departmentId: number): Promise<DeviceVM[]> {
+    try {
+      if (!departmentId || departmentId <= 0) {
+        return [];
+      }
+
+      const query = `
+        SELECT 
+          d."ID" as id,
+          d."Name" as name,
+          d."Serial" as serial,
+          d."Description" as description,
+          d."Img" as img,
+          d."WarrantyDate" as "warrantyDate",
+          d."UseDate" as "useDate",
+          d."EndDate" as "endDate",
+          d."DepartmentID" as "departmentId",
+          dep."Name" as "departmentName",
+          d."DeviceCategoryID" as "deviceCategoryId",
+          dc."Name" as "deviceCategoryName",
+          CAST(d."Status"::text AS INTEGER) as status
+        FROM "Device" d
+        INNER JOIN "DeviceCategory" dc ON d."DeviceCategoryID" = dc."ID"
+        INNER JOIN "Department" dep ON d."DepartmentID" = dep."ID"
+        WHERE d."DepartmentID" = $1
+        ORDER BY d."Name"
+      `;
+
+      const result = await pool.query(query, [departmentId]);
+
+      if (!result.rows || result.rows.length === 0) {
+        return [];
+      }
+
+      return result.rows.map((row: any) => ({
+        ...row,
+        status: row.status ? parseInt(row.status) as DeviceStatus : DeviceStatus.DangSuDung,
+        statusName: this.getStatusName(row.status ? parseInt(row.status) : DeviceStatus.DangSuDung)
+      }));
+    } catch (error: any) {
+      console.error('DeviceService.getDevicesByDepartment error:', error);
+      throw error;
+    }
+  }
+
   async getById(id: number): Promise<Device | null> {
     const result = await pool.query(
       `SELECT * FROM "Device" WHERE "ID" = $1`,
@@ -313,7 +404,7 @@ export class DeviceService {
             if (!report.completedDate && completedAtIso) {
               report.completedDate = completedAtIso;
             }
-            if (eventSummary.reportStatus !== null) {
+            if (eventSummary.reportStatus !== null && eventSummary.reportStatus !== undefined) {
               report.status = eventSummary.reportStatus;
               report.statusName = this.getDamageReportStatusName(eventSummary.reportStatus);
             }

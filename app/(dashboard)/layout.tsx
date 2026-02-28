@@ -109,6 +109,7 @@ export default function DashboardLayout({
       { href: '/dashboard/departments', label: 'Phòng ban', icon: 'fas fa-building' },
       { href: '/dashboard/device-categories', label: 'Danh mục thiết bị', icon: 'fas fa-box' },
       { href: '/dashboard/staff', label: 'Nhân viên', icon: 'fas fa-users' },
+      { href: '/dashboard/maintenance', label: 'Bảo trì', icon: 'fas fa-wrench' },
       { href: '/dashboard/events', label: 'Sự kiện', icon: 'fas fa-calendar' },
       { href: '/dashboard/event-types', label: 'Loại sự kiện', icon: 'fas fa-tags' },
       { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' },

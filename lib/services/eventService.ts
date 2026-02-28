@@ -196,7 +196,7 @@ export class EventService {
         event.deviceId || null,
         event.eventTypeId,
         event.description || null,
-        event.notes || null,
+        event.notes || '', // Notes column is NOT NULL, so use empty string instead of null
         event.status || EventStatus.Completed,
         event.eventDate || null,
         event.startDate || null,
@@ -239,7 +239,7 @@ export class EventService {
         event.deviceId || null,
         event.eventTypeId,
         event.description || null,
-        event.notes || null,
+        event.notes || '', // Notes column is NOT NULL, so use empty string instead of null
         event.status || EventStatus.Completed,
         event.eventDate || null,
         event.startDate || null,

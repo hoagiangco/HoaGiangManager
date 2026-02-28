@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 4000",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 4000",
     "lint": "next lint",
     "db:migrate": "node scripts/compile-migrations.js migrate",
     "db:seed": "node scripts/compile-migrations.js seed",
@@ -15,7 +15,9 @@
     "db:create": "npx tsx scripts/create-db.ts",
     "test:api": "npx tsx scripts/test-api.ts",
     "test:api-auth": "npx tsx scripts/test-api-with-auth.ts",
-    "migrate:data": "npx tsx scripts/migrate-data.ts"
+    "migrate:data": "npx tsx scripts/migrate-data.ts",
+    "migrate:maintenance-batch": "npx tsx scripts/run-migration.ts",
+    "check-reminders": "npx tsx scripts/check-maintenance-reminders.ts"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.1.0",

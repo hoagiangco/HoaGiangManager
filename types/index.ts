@@ -156,6 +156,7 @@ export interface DamageReport {
   notes?: string;                       // Ghi chú chung
   handlerNotes?: string;                // Ghi chú của người xử lý
   rejectionReason?: string;             // Lý do từ chối/hủy
+  maintenanceBatchId?: string;          // ID của batch bảo trì (nếu phiếu này liên quan đến bảo trì)
   createdBy?: string;                   // User tạo báo cáo
   updatedBy?: string;                   // User cập nhật cuối
   createdAt?: Date;                     // Thời gian tạo

@@ -64,8 +64,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate JWT token
-    const roles = user.roles.filter((r: string) => r !== null);
+    // Generate JWT token (roles can be null when user has no roles - ARRAY_AGG returns null)
+    const roles = Array.isArray(user.roles) ? user.roles.filter((r: string) => r != null) : [];
     const token = generateToken({
       userId: user.Id,
       email: user.Email,
@@ -78,16 +78,47 @@ export async function POST(request: NextRequest) {
         token,
         user: {
           id: user.Id,
-          email: user.Email,
-          fullName: user.FullName,
-          roles: roles
+          email: user.Email ?? '',
+          fullName: user.FullName ?? user.Email ?? '',
+          roles
         }
       }
     });
-  } catch (error: any) {
-    console.error('Login error:', error);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    const stack = error instanceof Error ? error.stack : undefined;
+
+    const anyErr = error as any;
+    const aggregateErrors: any[] = Array.isArray(anyErr?.errors) ? anyErr.errors : [];
+    const isDbConnError =
+      message.includes('ECONNREFUSED') ||
+      message.includes('ENOTFOUND') ||
+      message.includes('ETIMEDOUT') ||
+      anyErr?.code === 'ECONNREFUSED' ||
+      anyErr?.code === 'ENOTFOUND' ||
+      anyErr?.code === 'ETIMEDOUT' ||
+      aggregateErrors.some((e) => typeof e?.code === 'string' && ['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT'].includes(e.code));
+
+    console.error('Login error:', message, stack);
+
+    if (isDbConnError) {
+      return NextResponse.json(
+        {
+          status: false,
+          error:
+            process.env.NODE_ENV === 'development'
+              ? `Database connection error: ${message}`
+              : 'Không kết nối được cơ sở dữ liệu. Vui lòng kiểm tra PostgreSQL.'
+        },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
-      { status: false, error: 'Đã xảy ra lỗi khi đăng nhập' },
+      {
+        status: false,
+        error: process.env.NODE_ENV === 'development' ? message : 'Đã xảy ra lỗi khi đăng nhập'
+      },
       { status: 500 }
     );
   }

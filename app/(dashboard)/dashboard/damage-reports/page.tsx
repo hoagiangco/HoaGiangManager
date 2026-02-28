@@ -207,6 +207,10 @@ export default function DamageReportsPage() {
   const [completionEventTypes, setCompletionEventTypes] = useState<EventType[]>([]);
   const [loadingCompletionTypes, setLoadingCompletionTypes] = useState(false);
   const [completionModalError, setCompletionModalError] = useState<string | null>(null);
+  const [maintenanceBatches, setMaintenanceBatches] = useState<Array<{ batchId: string; title: string }>>([]);
+  const [loadingBatches, setLoadingBatches] = useState(false);
+  const [showMaintenanceConfirmModal, setShowMaintenanceConfirmModal] = useState(false);
+  const [pendingMaintenanceReport, setPendingMaintenanceReport] = useState<DamageReportVM | null>(null);
   const [completionModal, setCompletionModal] = useState<CompletionModalState>({
     show: false,
     report: null,
@@ -229,7 +233,7 @@ export default function DamageReportsPage() {
     id: 0,
     deviceId: undefined as number | undefined,
     damageLocation: '',
-    deviceSelection: 'device' as 'device' | 'other', // 'device' or 'other'
+    deviceSelection: 'device' as 'device' | 'other' | 'maintenance', // 'device', 'other', or 'maintenance'
     reporterId: 0,
     reportingDepartmentId: 0,
     handlerId: undefined as number | undefined,
@@ -245,6 +249,7 @@ export default function DamageReportsPage() {
     notes: '',
     handlerNotes: '',
     rejectionReason: '',
+    maintenanceBatchId: undefined as string | undefined,
   });
   const [isEdit, setIsEdit] = useState(false);
 
@@ -455,6 +460,25 @@ export default function DamageReportsPage() {
     }
   };
 
+  const loadMaintenanceBatches = async () => {
+    try {
+      setLoadingBatches(true);
+      const response = await api.get('/events/maintenance-batches');
+      if (response.data.status) {
+        const batches = (response.data.data || []).map((batch: any) => ({
+          batchId: batch.batchId,
+          title: batch.title || `Batch ${batch.batchId}`,
+        }));
+        setMaintenanceBatches(batches);
+      }
+    } catch (error) {
+      console.error('Error loading maintenance batches:', error);
+      // Don't show error toast, just log it - batches are optional
+    } finally {
+      setLoadingBatches(false);
+    }
+  };
+
   const handlePrevImage = () => {
     if (selectedImages.length === 0) return;
     setCurrentImageIndex((prev) => (prev === 0 ? selectedImages.length - 1 : prev - 1));
@@ -646,7 +670,7 @@ export default function DamageReportsPage() {
     setReports(filtered);
   }, [allReports, sortField, sortDirection, myWorkFilter, myReportFilter, currentUserStaffId]);
 
-  const handleNew = () => {
+  const handleNew = async () => {
     // Get current user's staff info
     const currentStaff = currentUserStaffId ? staff.find(s => s.id === currentUserStaffId) : null;
     
@@ -670,6 +694,7 @@ export default function DamageReportsPage() {
       notes: '',
       handlerNotes: '',
       rejectionReason: '',
+      maintenanceBatchId: undefined,
     });
     setIsEdit(false);
     setShowModal(true);
@@ -686,6 +711,8 @@ export default function DamageReportsPage() {
       if (devices.length === 0) await loadDevices();
       if (staff.length === 0) await loadStaff();
       if (departments.length === 0) await loadDepartments();
+      // Load maintenance batches for edit
+      await loadMaintenanceBatches();
 
       // Load full data from API to ensure all fields are available
       const response = await api.get(`/damage-reports/${selectedIds[0]}`);
@@ -714,11 +741,19 @@ export default function DamageReportsPage() {
         }
       };
       
+      // Determine deviceSelection based on maintenanceBatchId and deviceId
+      let deviceSelection: 'device' | 'other' | 'maintenance' = 'other';
+      if (selectedReport.maintenanceBatchId) {
+        deviceSelection = 'maintenance';
+      } else if (isDevice) {
+        deviceSelection = 'device';
+      }
+      
       const formDataToSet = {
         id: selectedReport.id,
         deviceId: isDevice && selectedReport.deviceId ? Number(selectedReport.deviceId) : undefined,
         damageLocation: selectedReport.damageLocation || '',
-        deviceSelection: (isDevice ? 'device' : 'other') as 'device' | 'other',
+        deviceSelection: deviceSelection,
         reporterId: Number(selectedReport.reporterId) || 0,
         reportingDepartmentId: Number(selectedReport.reportingDepartmentId) || 0,
         handlerId: selectedReport.handlerId ? Number(selectedReport.handlerId) : undefined,
@@ -734,6 +769,7 @@ export default function DamageReportsPage() {
         notes: selectedReport.notes || '',
         handlerNotes: selectedReport.handlerNotes || '',
         rejectionReason: selectedReport.rejectionReason || '',
+        maintenanceBatchId: selectedReport.maintenanceBatchId || undefined,
       };
       
       if (process.env.NODE_ENV === 'development') {
@@ -798,6 +834,10 @@ export default function DamageReportsPage() {
       toast.error('Vui lòng nhập vị trí công việc');
       return;
     }
+    if (formData.deviceSelection === 'maintenance' && !formData.maintenanceBatchId) {
+      toast.error('Vui lòng chọn đợt bảo trì');
+      return;
+    }
     if (!formData.damageContent?.trim()) {
       toast.error('Vui lòng nhập nội dung công việc');
       return;
@@ -832,6 +872,7 @@ export default function DamageReportsPage() {
         notes: null, // Bỏ ghi chú chung
         handlerNotes: formData.handlerNotes || null,
         rejectionReason: formData.rejectionReason || null,
+        maintenanceBatchId: formData.maintenanceBatchId || null,
       };
 
       if (isEdit) {
@@ -1045,6 +1086,13 @@ export default function DamageReportsPage() {
       return;
     }
 
+    // If completing a maintenance report, show confirmation dialog
+    if (newStatus === DamageReportStatus.Completed && report?.maintenanceBatchId) {
+      setPendingMaintenanceReport(report);
+      setShowMaintenanceConfirmModal(true);
+      return;
+    }
+
     if (newStatus === DamageReportStatus.Completed && report?.deviceId) {
       await openCompletionModal(report);
       return;
@@ -1087,6 +1135,66 @@ export default function DamageReportsPage() {
       ...prev,
       ...patch,
     }));
+  };
+
+  const handleMaintenanceCompletion = async () => {
+    if (!pendingMaintenanceReport || !pendingMaintenanceReport.maintenanceBatchId) {
+      return;
+    }
+
+    try {
+      // Load event types to find maintenance type
+      await loadCompletionEventTypes();
+      const maintenanceEventType = completionEventTypes.find(
+        (type) => type.category === 'maintenance' || type.name?.toLowerCase().includes('bảo trì')
+      );
+
+      if (!maintenanceEventType) {
+        toast.error('Không tìm thấy loại sự kiện bảo trì. Vui lòng liên hệ quản trị viên.');
+        setShowMaintenanceConfirmModal(false);
+        setPendingMaintenanceReport(null);
+        return;
+      }
+
+      // Get deviceId from maintenance batch plans
+      // We need to get the batch details to find devices
+      const batchResponse = await api.get(`/events/maintenance-batches`);
+      if (!batchResponse.data.status) {
+        throw new Error('Không thể tải thông tin đợt bảo trì');
+      }
+
+      const batch = batchResponse.data.data.find(
+        (b: any) => b.batchId === pendingMaintenanceReport.maintenanceBatchId
+      );
+
+      if (!batch) {
+        throw new Error('Không tìm thấy đợt bảo trì');
+      }
+
+      // Complete the damage report with maintenance event type
+      // Note: For maintenance reports, deviceId may be null, but we still create the event
+      const payload: any = {
+        status: DamageReportStatus.Completed,
+        eventTypeId: maintenanceEventType.id,
+        eventTitle: `Bảo trì định kỳ - ${batch.title || pendingMaintenanceReport.maintenanceBatchId}`,
+        eventDescription: pendingMaintenanceReport.damageContent || '',
+        eventDeviceId: pendingMaintenanceReport.deviceId || null, // May be null for maintenance reports
+      };
+
+      const response = await api.put(`/damage-reports/${pendingMaintenanceReport.id}/status`, payload);
+      
+      if (response.data.status) {
+        toast.success('Đã hoàn thành bảo trì và đồng bộ lên hệ thống');
+        setShowMaintenanceConfirmModal(false);
+        setPendingMaintenanceReport(null);
+        loadData();
+      } else {
+        throw new Error(response.data.error || 'Lỗi khi hoàn thành bảo trì');
+      }
+    } catch (error: any) {
+      console.error('Error completing maintenance:', error);
+      toast.error(error.response?.data?.error || error.message || 'Lỗi khi hoàn thành bảo trì');
+    }
   };
 
   const handleConfirmCompletion = async () => {
@@ -1631,21 +1739,26 @@ export default function DamageReportsPage() {
                       />
                     </div>
                   </th>
-                  <th style={{ cursor: 'pointer', minWidth: '70px' }} onClick={() => handleSort('id')}>
+                  {/* Ẩn cột Mã nhưng vẫn tìm kiếm được */}
+                  {/* <th style={{ cursor: 'pointer', minWidth: '70px' }} onClick={() => handleSort('id')}>
                     Mã {getSortIcon('id')}
+                  </th> */}
+                  <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reportDate')}>
+                    Ngày b/c {getSortIcon('reportDate')}
                   </th>
                   <th style={{ cursor: 'pointer', minWidth: '150px' }} onClick={() => handleSort('displayLocation')}>
                     Vị trí/Thiết bị {getSortIcon('displayLocation')}
                   </th>
-                  <th style={{ minWidth: '100px' }}>Trạng thái</th>
-                  <th style={{ minWidth: '100px' }}>Ưu tiên</th>
+                  <th style={{ cursor: 'pointer', minWidth: '100px' }} onClick={() => handleSort('status')}>
+                    Trạng thái {getSortIcon('status')}
+                  </th>
+                  <th style={{ cursor: 'pointer', minWidth: '100px' }} onClick={() => handleSort('priority')}>
+                    Ưu tiên {getSortIcon('priority')}
+                  </th>
                   <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reporterName')}>
                     Người b/c {getSortIcon('reporterName')}
                   </th>
                   <th style={{ minWidth: '120px' }}>Người xử lý</th>
-                  <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reportDate')}>
-                    Ngày b/c {getSortIcon('reportDate')}
-                  </th>
                   <th style={{ minWidth: '120px' }}>Người cập nhật</th>
                   <th style={{ minWidth: '200px' }}>Nội dung</th>
                   <th style={{ minWidth: '200px' }}>Ghi chú người xử lý</th>
@@ -1654,7 +1767,7 @@ export default function DamageReportsPage() {
               <tbody>
                 {currentReports.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="text-center py-4">
+                    <td colSpan={11} className="text-center py-4">
                       <span className="text-muted">Không có dữ liệu</span>
                     </td>
                   </tr>
@@ -1686,9 +1799,11 @@ export default function DamageReportsPage() {
                           </button>
                         </div>
                       </td>
-                      <td>
+                      {/* Ẩn cột Mã nhưng vẫn tìm kiếm được */}
+                      {/* <td>
                         <span className="badge bg-light text-dark border">{report.id}</span>
-                      </td>
+                      </td> */}
+                      <td>{report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}</td>
                       <td>
                         {report.displayLocation || 'Không xác định'}
                         {report.isOverdue && (
@@ -1756,7 +1871,6 @@ export default function DamageReportsPage() {
                       </td>
                       <td>{report.reporterName || 'N/A'}</td>
                       <td>{report.handlerName || 'Chưa phân công'}</td>
-                      <td>{report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}</td>
                       <td>{report.updatedByName || '-'}</td>
                       <td>
                         <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2151,12 +2265,27 @@ export default function DamageReportsPage() {
                   <div className="col-12">
                     <label className="form-label mb-1">Loại công việc <span className="text-danger">*</span></label>
                     <div className="form-check">
-                      <input className="form-check-input" type="radio" name="deviceSelection" id="modalDeviceSelDevice" checked={formData.deviceSelection === 'device'} onChange={() => setFormData({ ...formData, deviceSelection: 'device', damageLocation: '' })} />
+                      <input className="form-check-input" type="radio" name="deviceSelection" id="modalDeviceSelDevice" checked={formData.deviceSelection === 'device'} onChange={() => setFormData({ ...formData, deviceSelection: 'device', damageLocation: '', maintenanceBatchId: undefined })} />
                       <label className="form-check-label" htmlFor="modalDeviceSelDevice">Chọn thiết bị</label>
                     </div>
                     <div className="form-check">
-                      <input className="form-check-input" type="radio" name="deviceSelection" id="modalDeviceSelOther" checked={formData.deviceSelection === 'other'} onChange={() => setFormData({ ...formData, deviceSelection: 'other', deviceId: undefined })} />
-                      <label className="form-check-label" htmlFor="modalDeviceSelOther">Khác báo cáo tổng thể)</label>
+                      <input className="form-check-input" type="radio" name="deviceSelection" id="modalDeviceSelOther" checked={formData.deviceSelection === 'other'} onChange={() => setFormData({ ...formData, deviceSelection: 'other', deviceId: undefined, maintenanceBatchId: undefined })} />
+                      <label className="form-check-label" htmlFor="modalDeviceSelOther">Khác (báo cáo tổng thể)</label>
+                    </div>
+                    <div className="form-check">
+                      <input 
+                        className="form-check-input" 
+                        type="radio" 
+                        name="deviceSelection" 
+                        id="modalDeviceSelMaintenance" 
+                        checked={formData.deviceSelection === 'maintenance'} 
+                        onChange={async () => {
+                          // Load batches when selecting maintenance
+                          await loadMaintenanceBatches();
+                          setFormData({ ...formData, deviceSelection: 'maintenance', deviceId: undefined, damageLocation: '' });
+                        }} 
+                      />
+                      <label className="form-check-label" htmlFor="modalDeviceSelMaintenance">Bảo trì định kỳ</label>
                     </div>
                   </div>
 
@@ -2273,6 +2402,24 @@ export default function DamageReportsPage() {
                         </div>
                       </div>
                     </div>
+                  ) : formData.deviceSelection === 'maintenance' ? (
+                    <div className="col-12">
+                      <label className="form-label mb-1">Đợt bảo trì <span className="text-danger">*</span></label>
+                      <select 
+                        className="form-control" 
+                        value={formData.maintenanceBatchId || ''} 
+                        onChange={(e) => setFormData({ ...formData, maintenanceBatchId: e.target.value || undefined })}
+                        disabled={loadingBatches}
+                      >
+                        <option value="">-- Chọn đợt bảo trì --</option>
+                        {maintenanceBatches.map((batch) => (
+                          <option key={batch.batchId} value={batch.batchId}>
+                            {batch.title}
+                          </option>
+                        ))}
+                      </select>
+                      {loadingBatches && <small className="text-muted">Đang tải...</small>}
+                    </div>
                   ) : (
                     <div className="col-12">
                       <label className="form-label">Vị trí/Mô tả công việc <span className="text-danger">*</span></label>
@@ -2343,6 +2490,7 @@ export default function DamageReportsPage() {
                       <option value={DamageReportStatus.Rejected}>Từ chối</option>
                     </select>
                   </div>
+
 
                   <div className="col-12">
                     <label className="form-label">Nội dung <span className="text-danger">*</span></label>
@@ -2768,6 +2916,69 @@ export default function DamageReportsPage() {
                   ) : (
                     'Xác nhận hoàn thành'
                   )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Maintenance Completion Confirmation Modal */}
+      {showMaintenanceConfirmModal && pendingMaintenanceReport && (
+        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">
+                  <i className="fas fa-exclamation-triangle text-warning me-2"></i>
+                  Xác nhận hoàn thành bảo trì
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => {
+                    setShowMaintenanceConfirmModal(false);
+                    setPendingMaintenanceReport(null);
+                  }}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <div className="alert alert-info mb-3">
+                  <i className="fas fa-info-circle me-2"></i>
+                  <strong>Bạn có chắc đã hoàn thành bảo trì này không?</strong>
+                  <br />
+                  <small>Dữ liệu sẽ được đồng bộ lên hệ thống ngay bây giờ.</small>
+                </div>
+                <div className="mb-3">
+                  <div className="small text-muted">Báo cáo</div>
+                  <div className="fw-semibold">
+                    #{pendingMaintenanceReport.id} · {pendingMaintenanceReport.damageContent || 'Bảo trì định kỳ'}
+                  </div>
+                  {pendingMaintenanceReport.maintenanceBatchId && (
+                    <div className="text-muted small mt-1">
+                      Đợt bảo trì: {pendingMaintenanceReport.maintenanceBatchId}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setShowMaintenanceConfirmModal(false);
+                    setPendingMaintenanceReport(null);
+                  }}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleMaintenanceCompletion}
+                >
+                  <i className="fas fa-check me-2"></i>
+                  Đồng ý
                 </button>
               </div>
             </div>

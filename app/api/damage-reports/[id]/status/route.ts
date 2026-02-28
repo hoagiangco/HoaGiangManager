@@ -4,6 +4,7 @@ import { DamageReportService } from '@/lib/services/damageReportService';
 import { StaffService } from '@/lib/services/staffService';
 import { EventService } from '@/lib/services/eventService';
 import { DamageReportStatus, EventStatus } from '@/types';
+import pool from '@/lib/db';
 
 export async function PUT(
   request: NextRequest,
@@ -91,6 +92,9 @@ export async function PUT(
       typeof handlerNotes === 'string' ? handlerNotes.trim() : undefined;
 
     if (nextStatus === DamageReportStatus.Completed) {
+      // For maintenance reports, allow completion without deviceId
+      const isMaintenanceReport = !!report.maintenanceBatchId;
+      
       if (eventDeviceId) {
         const deviceParsed = Number(eventDeviceId);
         if (Number.isNaN(deviceParsed) || deviceParsed <= 0) {
@@ -104,7 +108,8 @@ export async function PUT(
         resolvedDeviceId = report.deviceId;
       }
 
-      if (resolvedDeviceId) {
+      // For maintenance reports, eventTypeId is required but deviceId is optional
+      if (resolvedDeviceId || isMaintenanceReport) {
         parsedEventTypeId = eventTypeId ? Number(eventTypeId) : NaN;
         if (!parsedEventTypeId || Number.isNaN(parsedEventTypeId) || parsedEventTypeId <= 0) {
           return NextResponse.json(
@@ -119,6 +124,19 @@ export async function PUT(
 
     await damageReportService.updateStatus(id, nextStatus as DamageReportStatus, user.userId);
 
+    // Khi chuyển từ Pending (1) sang InProgress (3), tự động gán ngày bắt đầu là ngày hiện tại
+    if (previousStatus === DamageReportStatus.Pending && nextStatus === DamageReportStatus.InProgress) {
+      const handlingDate = new Date();
+      await damageReportService.updateHandlingDate(id, handlingDate, user.userId);
+    }
+
+    // Khi đổi status thành Completed, tự động gán ngày hoàn thành là ngày hiện tại
+    let completedAt: Date | null = null;
+    if (nextStatus === DamageReportStatus.Completed) {
+      completedAt = new Date();
+      await damageReportService.updateCompletionDate(id, completedAt, user.userId);
+    }
+
     let handlerNotesUpdated = false;
     if (
       trimmedHandlerNotes !== undefined &&
@@ -128,40 +146,108 @@ export async function PUT(
       handlerNotesUpdated = true;
     }
 
-    if (nextStatus === DamageReportStatus.Completed && parsedEventTypeId && resolvedDeviceId) {
-      const completedAt = new Date();
+    // For maintenance reports, allow creating event without deviceId
+    const isMaintenanceReport = !!report.maintenanceBatchId;
+    
+    if (nextStatus === DamageReportStatus.Completed && parsedEventTypeId && (resolvedDeviceId || isMaintenanceReport)) {
+      // completedAt đã được set ở trên
+      if (!completedAt) {
+        completedAt = new Date();
+      }
       try {
-        await damageReportService.updateCompletionDate(id, completedAt, user.userId);
 
-        const metadata = {
+        const metadata: any = {
           source: 'damage-report-completion',
           damageReportId: id,
           previousStatus,
           handlerNotes: trimmedHandlerNotes ?? previousHandlerNotes ?? null,
         };
 
-        await eventService.create({
-          title:
-            trimmedTitle ||
-            (report.deviceName
-              ? `Hoàn thành xử lý - ${report.deviceName}`
-              : `Hoàn thành xử lý báo cáo #${id}`),
-          deviceId: resolvedDeviceId,
-          eventTypeId: parsedEventTypeId,
-          description: trimmedDescription || report.damageContent || '',
-          notes: trimmedHandlerNotes || previousHandlerNotes || null,
-          status: EventStatus.Completed,
-          eventDate: completedAt,
-          startDate: report.handlingDate ? new Date(report.handlingDate) : completedAt,
-          endDate: completedAt,
-          staffId: report.handlerId || null,
-          relatedReportId: id,
-          metadata,
-          createdBy: user.userId,
-          createdAt: completedAt,
-          updatedBy: user.userId,
-          updatedAt: completedAt,
-        });
+        // Nếu damage report có maintenanceBatchId, thêm vào metadata của event
+        if (report.maintenanceBatchId) {
+          metadata.maintenanceBatchId = report.maintenanceBatchId;
+        }
+
+        // For maintenance reports, create events for all devices in the batch
+        if (isMaintenanceReport && report.maintenanceBatchId) {
+          // Get all active plans in this batch
+          const plansResult = await pool.query(
+            `
+            SELECT 
+              drp."DeviceID" as "deviceId",
+              drp."Title" as title,
+              d."Name" as "deviceName"
+            FROM "DeviceReminderPlan" drp
+            LEFT JOIN "Device" d ON drp."DeviceID" = d."ID"
+            WHERE drp."Metadata" IS NOT NULL
+              AND (
+                drp."Metadata"::text LIKE '%"maintenanceBatchId":"' || $1 || '"%'
+                OR (drp."Metadata"::jsonb ? 'maintenanceBatchId' 
+                    AND (drp."Metadata"->>'maintenanceBatchId') = $1)
+              )
+              AND drp."IsActive" = true
+            `,
+            [report.maintenanceBatchId]
+          );
+
+          const plans = plansResult.rows || [];
+          
+          if (plans.length === 0) {
+            throw new Error('Không tìm thấy thiết bị nào trong đợt bảo trì này');
+          }
+
+          // Create event for each device in the batch
+          const eventPromises = plans.map((plan: any) => {
+            return eventService.create({
+              title:
+                trimmedTitle ||
+                (plan.deviceName
+                  ? `Bảo trì định kỳ - ${plan.deviceName}`
+                  : `Bảo trì định kỳ - ${plan.title || report.damageContent || 'Bảo trì'}`),
+              deviceId: plan.deviceId,
+              eventTypeId: parsedEventTypeId,
+              description: trimmedDescription || report.damageContent || plan.title || '',
+              notes: trimmedHandlerNotes || previousHandlerNotes || '', // Ensure notes is never null
+              status: EventStatus.Completed,
+              eventDate: completedAt,
+              startDate: report.handlingDate ? new Date(report.handlingDate) : completedAt,
+              endDate: completedAt,
+              staffId: report.handlerId || null,
+              relatedReportId: id,
+              metadata,
+              createdBy: user.userId,
+              createdAt: completedAt,
+              updatedBy: user.userId,
+              updatedAt: completedAt,
+            });
+          });
+
+          await Promise.all(eventPromises);
+        } else {
+          // For regular reports, create a single event
+          await eventService.create({
+            title:
+              trimmedTitle ||
+              (report.deviceName
+                ? `Hoàn thành xử lý - ${report.deviceName}`
+                : `Hoàn thành xử lý báo cáo #${id}`),
+            deviceId: resolvedDeviceId || null,
+            eventTypeId: parsedEventTypeId,
+            description: trimmedDescription || report.damageContent || '',
+            notes: trimmedHandlerNotes || previousHandlerNotes || '', // Ensure notes is never null
+            status: EventStatus.Completed,
+            eventDate: completedAt,
+            startDate: report.handlingDate ? new Date(report.handlingDate) : completedAt,
+            endDate: completedAt,
+            staffId: report.handlerId || null,
+            relatedReportId: id,
+            metadata,
+            createdBy: user.userId,
+            createdAt: completedAt,
+            updatedBy: user.userId,
+            updatedAt: completedAt,
+          });
+        }
       } catch (eventError: any) {
         // Revert handler notes if updated
         if (handlerNotesUpdated) {

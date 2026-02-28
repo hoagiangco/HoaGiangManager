@@ -77,6 +77,7 @@ export class DamageReportService {
         dr."Notes" as notes,
         dr."HandlerNotes" as "handlerNotes",
         dr."RejectionReason" as "rejectionReason",
+        dr."MaintenanceBatchId" as "maintenanceBatchId",
         dr."CreatedBy" as "createdBy",
         dr."UpdatedBy" as "updatedBy",
         dr."CreatedAt" as "createdAt",
@@ -88,7 +89,17 @@ export class DamageReportService {
         reporter_dept."Name" as "reporterDepartmentName",
         handler."Name" as "handlerName",
         handler_dept."Name" as "handlerDepartmentName",
-        updated_user."FullName" as "updatedByName"
+        updated_user."FullName" as "updatedByName",
+        (SELECT drp."Title" 
+         FROM "DeviceReminderPlan" drp 
+         WHERE drp."Metadata" IS NOT NULL
+           AND (
+             drp."Metadata"::text LIKE '%"maintenanceBatchId":"' || dr."MaintenanceBatchId" || '"%'
+             OR (drp."Metadata"::jsonb ? 'maintenanceBatchId' 
+                 AND (drp."Metadata"->>'maintenanceBatchId') = dr."MaintenanceBatchId")
+           )
+         LIMIT 1
+        ) as "maintenanceBatchTitle"
       FROM "DamageReport" dr
       LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
       LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
@@ -194,7 +205,7 @@ export class DamageReportService {
         daysSinceReport,
         daysInProgress,
         isOverdue,
-        displayLocation: row.deviceName || row.damageLocation || 'Không xác định',
+        displayLocation: row.deviceName || row.maintenanceBatchTitle || row.damageLocation || 'Không xác định',
       } as DamageReportVM;
     });
   }
@@ -220,6 +231,7 @@ export class DamageReportService {
         dr."Notes" as notes,
         dr."HandlerNotes" as "handlerNotes",
         dr."RejectionReason" as "rejectionReason",
+        dr."MaintenanceBatchId" as "maintenanceBatchId",
         dr."CreatedBy" as "createdBy",
         dr."UpdatedBy" as "updatedBy",
         dr."CreatedAt" as "createdAt",
@@ -231,7 +243,17 @@ export class DamageReportService {
         reporter_dept."Name" as "reporterDepartmentName",
         handler."Name" as "handlerName",
         handler_dept."Name" as "handlerDepartmentName",
-        updated_user."FullName" as "updatedByName"
+        updated_user."FullName" as "updatedByName",
+        (SELECT drp."Title" 
+         FROM "DeviceReminderPlan" drp 
+         WHERE drp."Metadata" IS NOT NULL
+           AND (
+             drp."Metadata"::text LIKE '%"maintenanceBatchId":"' || dr."MaintenanceBatchId" || '"%'
+             OR (drp."Metadata"::jsonb ? 'maintenanceBatchId' 
+                 AND (drp."Metadata"->>'maintenanceBatchId') = dr."MaintenanceBatchId")
+           )
+         LIMIT 1
+        ) as "maintenanceBatchTitle"
       FROM "DamageReport" dr
       LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
       LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
@@ -283,13 +305,13 @@ export class DamageReportService {
       daysSinceReport,
       daysInProgress,
       isOverdue,
-      displayLocation: row.deviceName || row.damageLocation || 'Không xác định',
+      displayLocation: row.deviceName || row.maintenanceBatchTitle || row.damageLocation || 'Không xác định',
     } as DamageReportVM;
   }
 
   async create(report: Omit<DamageReport, 'id'>): Promise<number> {
-    // Validate: Must have deviceId OR damageLocation
-    if (!report.deviceId && (!report.damageLocation || report.damageLocation.trim() === '')) {
+    // Validate: Must have deviceId OR damageLocation OR maintenanceBatchId
+    if (!report.deviceId && (!report.damageLocation || report.damageLocation.trim() === '') && !report.maintenanceBatchId) {
       throw new Error('Phải chọn thiết bị hoặc nhập vị trí hư hỏng');
     }
 
@@ -298,9 +320,9 @@ export class DamageReportService {
         "DeviceID", "DamageLocation", "ReporterID", "ReportingDepartmentID",
         "HandlerID", "AssignedDate", "ReportDate", "HandlingDate", "CompletedDate",
         "EstimatedCompletionDate", "DamageContent", "Images", "Status", "Priority",
-        "Notes", "HandlerNotes", "RejectionReason", "CreatedBy", "UpdatedBy"
+        "Notes", "HandlerNotes", "RejectionReason", "MaintenanceBatchId", "CreatedBy", "UpdatedBy"
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING "ID"`,
       [
         report.deviceId || null,
@@ -320,6 +342,7 @@ export class DamageReportService {
         report.notes || null,
         report.handlerNotes || null,
         report.rejectionReason || null,
+        report.maintenanceBatchId || null,
         report.createdBy || null,
         report.updatedBy || null,
       ]
@@ -329,8 +352,8 @@ export class DamageReportService {
   }
 
   async update(report: DamageReport): Promise<number> {
-    // Validate: Must have deviceId OR damageLocation
-    if (!report.deviceId && (!report.damageLocation || report.damageLocation.trim() === '')) {
+    // Validate: Must have deviceId OR damageLocation OR maintenanceBatchId
+    if (!report.deviceId && (!report.damageLocation || report.damageLocation.trim() === '') && !report.maintenanceBatchId) {
       throw new Error('Phải chọn thiết bị hoặc nhập vị trí hư hỏng');
     }
 
@@ -362,9 +385,10 @@ export class DamageReportService {
         "Notes" = $15,
         "HandlerNotes" = $16,
         "RejectionReason" = $17,
-        "UpdatedBy" = $18,
+        "MaintenanceBatchId" = $18,
+        "UpdatedBy" = $19,
         "UpdatedAt" = CURRENT_TIMESTAMP
-      WHERE "ID" = $19`,
+      WHERE "ID" = $20`,
       [
         report.deviceId || null,
         report.damageLocation || null,
@@ -383,6 +407,7 @@ export class DamageReportService {
         report.notes || null,
         report.handlerNotes || null,
         report.rejectionReason || null,
+        report.maintenanceBatchId || null,
         report.updatedBy || null,
         report.id,
       ]
@@ -456,6 +481,22 @@ export class DamageReportService {
     }
 
     return id;
+  }
+
+  async updateHandlingDate(id: number, handlingDate: Date | null, updatedBy: string): Promise<void> {
+    const currentResult = await pool.query(
+      `SELECT "HandlingDate" FROM "DamageReport" WHERE "ID" = $1`,
+      [id]
+    );
+
+    if (currentResult.rows.length === 0) {
+      throw new Error('Báo cáo không tồn tại');
+    }
+
+    await pool.query(
+      `UPDATE "DamageReport" SET "HandlingDate" = $1, "UpdatedBy" = $2, "UpdatedAt" = CURRENT_TIMESTAMP WHERE "ID" = $3`,
+      [handlingDate ? handlingDate : null, updatedBy, id]
+    );
   }
 
   async updateCompletionDate(id: number, completedDate: Date | null, updatedBy: string): Promise<void> {
