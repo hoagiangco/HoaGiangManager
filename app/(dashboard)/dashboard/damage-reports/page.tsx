@@ -10,9 +10,9 @@ import DateInput from '@/components/DateInput';
 import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
 
 // Handler Notes Editor Component
-const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false, canEdit = true }: { 
-  reportId: number; 
-  value: string; 
+const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false, canEdit = true }: {
+  reportId: number;
+  value: string;
   onChange: (value: string) => void;
   onClick?: (e: React.MouseEvent) => void;
   isCard?: boolean;
@@ -37,13 +37,21 @@ const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false
 
   const handleBlur = async () => {
     if (editValue !== value && !isSaving) {
-      setIsSaving(true);
-      try {
-        await onChange(editValue);
-      } catch (error) {
-        // Error handled by parent
-      } finally {
-        setIsSaving(false);
+      // Show confirmation dialog to avoid accidental saves
+      const confirmed = window.confirm('Bạn có muốn lưu ghi chú này không?');
+      if (confirmed) {
+        setIsSaving(true);
+        try {
+          await onChange(editValue);
+        } catch (error) {
+          // Error handled by parent
+        } finally {
+          setIsSaving(false);
+          setIsEditing(false);
+        }
+      } else {
+        // Revert to original value
+        setEditValue(value);
         setIsEditing(false);
       }
     } else {
@@ -179,22 +187,22 @@ export default function DamageReportsPage() {
   const skipPageResetOnMyReportToggle = useRef(false);
   const [showModal, setShowModal] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  
+
   // View mode state: 'table' or 'card', default to 'card' on mobile
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
-  
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  
+
   // Sort state
   const [sortField, setSortField] = useState<string>('reportDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  
+
   // File Manager state
   const [showFileManager, setShowFileManager] = useState(false);
   const [fileManagerMode, setFileManagerMode] = useState<'image' | 'all'>('image');
-  
+
   // Export Excel modal state
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportDepartment, setExportDepartment] = useState(0);
@@ -207,7 +215,7 @@ export default function DamageReportsPage() {
   const [completionEventTypes, setCompletionEventTypes] = useState<EventType[]>([]);
   const [loadingCompletionTypes, setLoadingCompletionTypes] = useState(false);
   const [completionModalError, setCompletionModalError] = useState<string | null>(null);
-  const [maintenanceBatches, setMaintenanceBatches] = useState<Array<{ batchId: string; title: string }>>([]);
+  const [maintenanceBatches, setMaintenanceBatches] = useState<Array<{ batchId: string; title: string; nextDueDate: string | null; isCancelled?: boolean }>>([]);
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [showMaintenanceConfirmModal, setShowMaintenanceConfirmModal] = useState(false);
   const [pendingMaintenanceReport, setPendingMaintenanceReport] = useState<DamageReportVM | null>(null);
@@ -227,7 +235,7 @@ export default function DamageReportsPage() {
   const [modalDeviceSearch, setModalDeviceSearch] = useState('');
   const [isDeviceDropdownOpen, setIsDeviceDropdownOpen] = useState(false);
   const deviceDropdownRef = useRef<HTMLDivElement | null>(null);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     id: 0,
@@ -379,7 +387,7 @@ export default function DamageReportsPage() {
         window.addEventListener('resize', onResize);
         return () => window.removeEventListener('resize', onResize);
       }
-      return () => {};
+      return () => { };
     };
 
     const cleanup = init();
@@ -463,11 +471,13 @@ export default function DamageReportsPage() {
   const loadMaintenanceBatches = async () => {
     try {
       setLoadingBatches(true);
-      const response = await api.get('/events/maintenance-batches');
+      const response = await api.get('/events/maintenance-batches?all=true');
       if (response.data.status) {
         const batches = (response.data.data || []).map((batch: any) => ({
-          batchId: batch.batchId,
+          batchId: String(batch.batchId),
           title: batch.title || `Batch ${batch.batchId}`,
+          nextDueDate: batch.nextDueDate || null,
+          isCancelled: batch.isCancelled || false,
         }));
         setMaintenanceBatches(batches);
       }
@@ -530,21 +540,21 @@ export default function DamageReportsPage() {
 
     // Try by userId keys (exact match)
     let me = staff.find((s) => s.userId && possibleUserIds.some(uid => uid && s.userId === uid));
-    
+
     // Try case-insensitive userId match
     if (!me) {
-      me = staff.find((s) => s.userId && possibleUserIds.some(uid => 
+      me = staff.find((s) => s.userId && possibleUserIds.some(uid =>
         uid && s.userId && s.userId.toLowerCase() === uid.toLowerCase()
       ));
     }
-    
+
     // Try by userId with trimmed whitespace
     if (!me) {
-      me = staff.find((s) => s.userId && possibleUserIds.some(uid => 
+      me = staff.find((s) => s.userId && possibleUserIds.some(uid =>
         uid && s.userId && s.userId.trim() === uid.trim()
       ));
     }
-    
+
     // Fallback by email (case-insensitive, trimmed)
     if (!me && currentEmail) {
       me = staff.find((s) => {
@@ -673,7 +683,7 @@ export default function DamageReportsPage() {
   const handleNew = async () => {
     // Get current user's staff info
     const currentStaff = currentUserStaffId ? staff.find(s => s.id === currentUserStaffId) : null;
-    
+
     setFormData({
       id: 0,
       deviceId: undefined,
@@ -725,10 +735,10 @@ export default function DamageReportsPage() {
       if (process.env.NODE_ENV === 'development') {
         console.log('Loaded report data:', selectedReport); // Debug log
       }
-      
+
       // Determine deviceSelection: if deviceId exists and is valid, it's 'device', otherwise 'other'
       const isDevice = selectedReport.deviceId !== null && selectedReport.deviceId !== undefined && selectedReport.deviceId > 0;
-      
+
       // Convert dates properly - use utility function
       const formatDate = (dateStr: any) => {
         if (!dateStr) return '';
@@ -740,7 +750,7 @@ export default function DamageReportsPage() {
           return '';
         }
       };
-      
+
       // Determine deviceSelection based on maintenanceBatchId and deviceId
       let deviceSelection: 'device' | 'other' | 'maintenance' = 'other';
       if (selectedReport.maintenanceBatchId) {
@@ -748,7 +758,7 @@ export default function DamageReportsPage() {
       } else if (isDevice) {
         deviceSelection = 'device';
       }
-      
+
       const formDataToSet = {
         id: selectedReport.id,
         deviceId: isDevice && selectedReport.deviceId ? Number(selectedReport.deviceId) : undefined,
@@ -771,14 +781,14 @@ export default function DamageReportsPage() {
         rejectionReason: selectedReport.rejectionReason || '',
         maintenanceBatchId: selectedReport.maintenanceBatchId || undefined,
       };
-      
+
       if (process.env.NODE_ENV === 'development') {
         console.log('Form data to set:', formDataToSet); // Debug log
         console.log('Available devices:', devices.map(d => ({ id: d.id, name: d.name }))); // Debug
         console.log('Available staff:', staff.map(s => ({ id: s.id, name: s.name }))); // Debug
         console.log('Available departments:', departments.map(d => ({ id: d.id, name: d.name }))); // Debug
       }
-      
+
       // Check if the IDs exist in the loaded options
       if (process.env.NODE_ENV === 'development') {
         if (formDataToSet.deviceId && !devices.find(d => d.id === formDataToSet.deviceId)) {
@@ -791,7 +801,7 @@ export default function DamageReportsPage() {
           console.warn(`Handler ID ${formDataToSet.handlerId} not found in staff list`);
         }
       }
-      
+
       // Set form data immediately
       setFormData(formDataToSet);
       setIsEdit(true);
@@ -834,9 +844,25 @@ export default function DamageReportsPage() {
       toast.error('Vui lòng nhập vị trí công việc');
       return;
     }
-    if (formData.deviceSelection === 'maintenance' && !formData.maintenanceBatchId) {
-      toast.error('Vui lòng chọn đợt bảo trì');
-      return;
+    if (formData.deviceSelection === 'maintenance') {
+      if (!formData.maintenanceBatchId) {
+        toast.error('Vui lòng chọn đợt bảo trì');
+        return;
+      }
+
+      const batch = maintenanceBatches.find(b => b.batchId === formData.maintenanceBatchId);
+      if (batch && batch.nextDueDate) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const dueDate = new Date(batch.nextDueDate);
+        dueDate.setHours(0, 0, 0, 0);
+
+        // If not due and this is a NEW report (not editing an existing valid selection)
+        if (dueDate > today && !isEdit) {
+          toast.error(`Đợt bảo trì này chưa tới hạn (Đến hạn ngày: ${formatDateDisplay(batch.nextDueDate)})`);
+          return;
+        }
+      }
     }
     if (!formData.damageContent?.trim()) {
       toast.error('Vui lòng nhập nội dung công việc');
@@ -936,7 +962,7 @@ export default function DamageReportsPage() {
     if (sortField !== field) {
       return <i className="fas fa-sort text-muted" style={{ fontSize: '0.8rem' }}></i>;
     }
-    return sortDirection === 'asc' 
+    return sortDirection === 'asc'
       ? <i className="fas fa-sort-up text-primary"></i>
       : <i className="fas fa-sort-down text-primary"></i>;
   };
@@ -952,8 +978,8 @@ export default function DamageReportsPage() {
   };
 
   const handleCheckboxChange = (id: number) => {
-    setSelectedIds(prev => 
-      prev.includes(id) 
+    setSelectedIds(prev =>
+      prev.includes(id)
         ? prev.filter(i => i !== id)
         : [...prev, id]
     );
@@ -1158,7 +1184,7 @@ export default function DamageReportsPage() {
 
       // Get deviceId from maintenance batch plans
       // We need to get the batch details to find devices
-      const batchResponse = await api.get(`/events/maintenance-batches`);
+      const batchResponse = await api.get(`/events/maintenance-batches?all=true`);
       if (!batchResponse.data.status) {
         throw new Error('Không thể tải thông tin đợt bảo trì');
       }
@@ -1182,7 +1208,7 @@ export default function DamageReportsPage() {
       };
 
       const response = await api.put(`/damage-reports/${pendingMaintenanceReport.id}/status`, payload);
-      
+
       if (response.data.status) {
         toast.success('Đã hoàn thành bảo trì và đồng bộ lên hệ thống');
         setShowMaintenanceConfirmModal(false);
@@ -1260,10 +1286,10 @@ export default function DamageReportsPage() {
       const response = await api.put(`/damage-reports/${reportId}/handler-notes`, { handlerNotes: newHandlerNotes });
       if (response.data.status) {
         // Update local state immediately for better UX
-        setReports(prev => prev.map(r => 
+        setReports(prev => prev.map(r =>
           r.id === reportId ? { ...r, handlerNotes: newHandlerNotes } : r
         ));
-        setAllReports(prev => prev.map(r => 
+        setAllReports(prev => prev.map(r =>
           r.id === reportId ? { ...r, handlerNotes: newHandlerNotes } : r
         ));
         toast.success('Cập nhật ghi chú thành công');
@@ -1357,7 +1383,7 @@ export default function DamageReportsPage() {
         if (exportDepartment > 0 && report.reportingDepartmentId !== exportDepartment) {
           return false;
         }
-        
+
         // Check date range
         if (report.reportDate) {
           const reportDate = new Date(report.reportDate);
@@ -1368,12 +1394,12 @@ export default function DamageReportsPage() {
         } else {
           return false; // Skip reports without reportDate
         }
-        
+
         return true;
       });
 
       if (!hasData) {
-        const deptName = exportDepartment > 0 
+        const deptName = exportDepartment > 0
           ? (departments.find(d => d.id === exportDepartment)?.name || 'bộ phận đã chọn')
           : 'tất cả bộ phận';
         const dateRange = formatDateRange(fromDate, toDate);
@@ -1399,7 +1425,7 @@ export default function DamageReportsPage() {
       // Get filename from Content-Disposition header or generate one
       const contentDisposition = response.headers['content-disposition'];
       let fileName = `BaoCaoHuHong_${formatDateFilename(fromDate)}_${formatDateFilename(toDate)}.xlsx`;
-      
+
       if (contentDisposition) {
         const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
         if (fileNameMatch && fileNameMatch[1]) {
@@ -1417,7 +1443,7 @@ export default function DamageReportsPage() {
       const blob = new Blob([response.data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       });
-      
+
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -1426,12 +1452,12 @@ export default function DamageReportsPage() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      
+
       setShowExportModal(false);
       toast.success('Xuất Excel thành công!');
     } catch (error: any) {
       console.error('Export error:', error);
-      
+
       // Try to get error message from response
       let errorMessage = 'Lỗi khi xuất Excel';
       if (error.response?.data) {
@@ -1442,12 +1468,12 @@ export default function DamageReportsPage() {
           errorMessage = json.error || errorMessage;
         } catch (e) {
           // If response is not JSON, use default message
-          errorMessage = error.response.status === 403 
-            ? 'Bạn không có quyền xuất Excel' 
+          errorMessage = error.response.status === 403
+            ? 'Bạn không có quyền xuất Excel'
             : errorMessage;
         }
       }
-      
+
       toast.error(errorMessage);
     }
   };
@@ -1469,10 +1495,10 @@ export default function DamageReportsPage() {
   const __view = (
     <div className="container-fluid" style={{ marginLeft: 0, marginRight: 0, paddingLeft: 0, paddingRight: 0 }}>
       <div className="card">
-        <div className="card-header">
-          <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
-            <h4 className="mb-0 mb-2 mb-md-0">LIST CÔNG VIỆC</h4>
-            <div className="d-flex gap-1 align-items-center" style={{ flexWrap: 'wrap', rowGap: '0.25rem', justifyContent: 'flex-end', marginRight: '1rem' }}>
+        <div className="card-header" style={{ padding: '0.75rem' }}>
+          <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap" style={{ gap: '0.5rem' }}>
+            <h4 className="mb-0" style={{ fontSize: 'clamp(1rem, 4vw, 1.5rem)', whiteSpace: 'nowrap' }}>LIST CÔNG VIỆC</h4>
+            <div className="d-flex gap-1 align-items-center" style={{ flexWrap: 'wrap', rowGap: '0.25rem', justifyContent: 'flex-end' }}>
               <button
                 type="button"
                 className="btn btn-outline-secondary btn-sm d-md-none"
@@ -1482,7 +1508,7 @@ export default function DamageReportsPage() {
               >
                 <i className={`fas ${filtersOpen ? 'fa-chevron-up' : 'fa-filter'}`}></i>
               </button>
-              <button 
+              <button
                 className={`btn btn-sm ${myWorkFilter ? 'btn-info' : 'btn-outline-info'}`}
                 onClick={() => {
                   if (currentUserStaffId === null) {
@@ -1501,7 +1527,7 @@ export default function DamageReportsPage() {
                 <i className="fas fa-user-tie"></i>
                 <span className="d-none d-md-inline ms-1">{myWorkFilter ? 'All' : 'My Work'}</span>
               </button>
-              <button 
+              <button
                 className={`btn btn-sm ${myReportFilter ? 'btn-success' : 'btn-outline-success'}`}
                 onClick={() => {
                   if (currentUserStaffId === null) {
@@ -1521,7 +1547,7 @@ export default function DamageReportsPage() {
                 <span className="d-none d-md-inline ms-1">{myReportFilter ? 'All' : 'My Report'}</span>
               </button>
               {isAdmin(currentUser?.roles) && (
-                <button 
+                <button
                   className="btn btn-success btn-sm d-none d-md-inline-flex"
                   onClick={handleOpenExportModal}
                   title="Xuất Excel"
@@ -1530,16 +1556,16 @@ export default function DamageReportsPage() {
                   <span className="ms-1">Xuất Excel</span>
                 </button>
               )}
-              <button 
-                className="btn btn-primary btn-sm" 
+              <button
+                className="btn btn-primary btn-sm"
                 onClick={handleNew}
                 title="Thêm mới"
               >
                 <i className="fas fa-plus"></i>
               </button>
               {userPermissions.canEdit && (
-                <button 
-                  className="btn btn-success btn-sm" 
+                <button
+                  className="btn btn-success btn-sm"
                   onClick={handleEdit}
                   title="Sửa"
                 >
@@ -1547,8 +1573,8 @@ export default function DamageReportsPage() {
                 </button>
               )}
               {userPermissions.canDelete && (
-                <button 
-                  className="btn btn-danger btn-sm" 
+                <button
+                  className="btn btn-danger btn-sm"
                   onClick={handleDelete}
                   title="Xóa"
                 >
@@ -1557,7 +1583,7 @@ export default function DamageReportsPage() {
               )}
             </div>
           </div>
-          
+
           {/* Filter Section */}
           <div className={`card mb-3 filter-card ${filtersOpen ? 'filter-open' : 'filter-collapsed'}`} style={{ backgroundColor: '#f8f9fa' }}>
             <div className="card-body py-2">
@@ -1651,14 +1677,13 @@ export default function DamageReportsPage() {
               </div>
             </div>
           </div>
-          <div className="d-flex justify-content-between align-items-center" style={{ flexWrap: 'nowrap', gap: '0.5rem' }}>
+          <div className="d-flex justify-content-between align-items-center" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
             <div className="d-flex align-items-center gap-2" style={{ flexWrap: 'nowrap', flexShrink: 0 }}>
               <div className="d-flex align-items-center gap-1" style={{ flexWrap: 'nowrap' }}>
-                <span className="d-none d-sm-inline" style={{ whiteSpace: 'nowrap' }}>Hiển thị:</span>
-                <span className="d-sm-none" style={{ whiteSpace: 'nowrap' }}>Hiện:</span>
+                <span style={{ whiteSpace: 'nowrap', fontSize: '0.8rem' }}>Hiện:</span>
                 <select
                   className="form-control form-control-sm"
-                  style={{ width: '60px', padding: '0.25rem 0.5rem' }}
+                  style={{ width: '55px', padding: '0.2rem 0.35rem', fontSize: '0.8rem' }}
                   value={itemsPerPage}
                   onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
                 >
@@ -1667,31 +1692,30 @@ export default function DamageReportsPage() {
                   <option value="50">50</option>
                   <option value="100">100</option>
                 </select>
-                <span className="d-none d-sm-inline" style={{ whiteSpace: 'nowrap' }}>dòng/trang</span>
               </div>
-              <div className="btn-group" role="group" style={{ marginLeft: '0.5rem' }}>
+              <div className="btn-group" role="group">
                 <button
                   type="button"
                   className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-outline-primary'}`}
                   onClick={() => setViewMode('table')}
                   title="Xem dạng bảng"
+                  style={{ padding: '0.25rem 0.4rem' }}
                 >
                   <i className="fas fa-table"></i>
-                  <span className="d-none d-md-inline ms-1">Bảng</span>
                 </button>
                 <button
                   type="button"
                   className={`btn btn-sm ${viewMode === 'card' ? 'btn-primary' : 'btn-outline-primary'}`}
                   onClick={() => setViewMode('card')}
                   title="Xem dạng card"
+                  style={{ padding: '0.25rem 0.4rem' }}
                 >
                   <i className="fas fa-th-large"></i>
-                  <span className="d-none d-md-inline ms-1">Card</span>
                 </button>
               </div>
             </div>
-            <div style={{ flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              <span style={{ fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+            <div style={{ flexShrink: 1, minWidth: 0 }}>
+              <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', color: '#6c757d' }}>
                 Hiển thị {startIndex + 1}-{Math.min(endIndex, reports.length)} của {reports.length} báo cáo
               </span>
             </div>
@@ -1712,8 +1736,8 @@ export default function DamageReportsPage() {
               <div className="table-scroll-hint" style={{ textAlign: 'center', padding: '0.5rem', fontSize: '0.875rem', color: '#6c757d' }}>
                 <i className="fas fa-arrows-alt-h"></i> Cuộn ngang để xem thêm
               </div>
-              <div 
-                className="table-responsive" 
+              <div
+                className="table-responsive"
                 id="damage-reports-table-responsive"
                 style={{
                   overflowX: 'scroll',
@@ -1726,172 +1750,172 @@ export default function DamageReportsPage() {
                   touchAction: 'pan-x',
                 }}
               >
-            <table className="table table-bordered table-hover align-middle" style={{ marginBottom: 0, minWidth: '1200px' }}>
-              <thead>
-                <tr>
-                  <th style={{ width: '60px' }}>
-                    <div className="d-flex align-items-center gap-1">
-                      <input
-                        type="checkbox"
-                        checked={currentReports.length > 0 && selectedIds.length === currentReports.length}
-                        onChange={handleSelectAll}
-                        style={{ transform: 'scale(1.25)', transformOrigin: 'left center' }}
-                      />
-                    </div>
-                  </th>
-                  {/* Ẩn cột Mã nhưng vẫn tìm kiếm được */}
-                  {/* <th style={{ cursor: 'pointer', minWidth: '70px' }} onClick={() => handleSort('id')}>
-                    Mã {getSortIcon('id')}
-                  </th> */}
-                  <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reportDate')}>
-                    Ngày b/c {getSortIcon('reportDate')}
-                  </th>
-                  <th style={{ cursor: 'pointer', minWidth: '150px' }} onClick={() => handleSort('displayLocation')}>
-                    Vị trí/Thiết bị {getSortIcon('displayLocation')}
-                  </th>
-                  <th style={{ cursor: 'pointer', minWidth: '100px' }} onClick={() => handleSort('status')}>
-                    Trạng thái {getSortIcon('status')}
-                  </th>
-                  <th style={{ cursor: 'pointer', minWidth: '100px' }} onClick={() => handleSort('priority')}>
-                    Ưu tiên {getSortIcon('priority')}
-                  </th>
-                  <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reporterName')}>
-                    Người b/c {getSortIcon('reporterName')}
-                  </th>
-                  <th style={{ minWidth: '120px' }}>Người xử lý</th>
-                  <th style={{ minWidth: '120px' }}>Người cập nhật</th>
-                  <th style={{ minWidth: '200px' }}>Nội dung</th>
-                  <th style={{ minWidth: '200px' }}>Ghi chú người xử lý</th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentReports.length === 0 ? (
-                  <tr>
-                    <td colSpan={11} className="text-center py-4">
-                      <span className="text-muted">Không có dữ liệu</span>
-                    </td>
-                  </tr>
-                ) : (
-                  currentReports.map((report) => (
-                    <tr
-                      key={report.id}
-                      style={{
-                        cursor: report.id && selectedIds.includes(report.id) ? 'pointer' : 'default',
-                        verticalAlign: 'middle',
-                      }}
-                    >
-                      <td>
-                        <div className="d-flex align-items-center gap-2">
+                <table className="table table-bordered table-hover align-middle" style={{ marginBottom: 0, minWidth: '1200px' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: '60px' }}>
+                        <div className="d-flex align-items-center gap-1">
                           <input
                             type="checkbox"
-                            checked={selectedIds.includes(report.id)}
-                            onChange={() => handleCheckboxChange(report.id)}
+                            checked={currentReports.length > 0 && selectedIds.length === currentReports.length}
+                            onChange={handleSelectAll}
                             style={{ transform: 'scale(1.25)', transformOrigin: 'left center' }}
                           />
-                          <button
-                            type="button"
-                            className="btn btn-outline-secondary btn-sm"
-                            title="Xem nhanh"
-                            onClick={(e) => { e.stopPropagation(); openQuickView(report.id); }}
-                            style={{ padding: '0.15rem 0.35rem', lineHeight: 1 }}
-                          >
-                            <i className="fas fa-eye"></i>
-                          </button>
                         </div>
-                      </td>
+                      </th>
                       {/* Ẩn cột Mã nhưng vẫn tìm kiếm được */}
-                      {/* <td>
+                      {/* <th style={{ cursor: 'pointer', minWidth: '70px' }} onClick={() => handleSort('id')}>
+                    Mã {getSortIcon('id')}
+                  </th> */}
+                      <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reportDate')}>
+                        Ngày b/c {getSortIcon('reportDate')}
+                      </th>
+                      <th style={{ cursor: 'pointer', minWidth: '150px' }} onClick={() => handleSort('displayLocation')}>
+                        Vị trí/Thiết bị {getSortIcon('displayLocation')}
+                      </th>
+                      <th style={{ cursor: 'pointer', minWidth: '100px' }} onClick={() => handleSort('status')}>
+                        Trạng thái {getSortIcon('status')}
+                      </th>
+                      <th style={{ cursor: 'pointer', minWidth: '100px' }} onClick={() => handleSort('priority')}>
+                        Ưu tiên {getSortIcon('priority')}
+                      </th>
+                      <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reporterName')}>
+                        Người b/c {getSortIcon('reporterName')}
+                      </th>
+                      <th style={{ minWidth: '120px' }}>Người xử lý</th>
+                      <th style={{ minWidth: '120px' }}>Người cập nhật</th>
+                      <th style={{ minWidth: '200px' }}>Nội dung</th>
+                      <th style={{ minWidth: '200px' }}>Ghi chú người xử lý</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {currentReports.length === 0 ? (
+                      <tr>
+                        <td colSpan={11} className="text-center py-4">
+                          <span className="text-muted">Không có dữ liệu</span>
+                        </td>
+                      </tr>
+                    ) : (
+                      currentReports.map((report) => (
+                        <tr
+                          key={report.id}
+                          style={{
+                            cursor: report.id && selectedIds.includes(report.id) ? 'pointer' : 'default',
+                            verticalAlign: 'middle',
+                          }}
+                        >
+                          <td>
+                            <div className="d-flex align-items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.includes(report.id)}
+                                onChange={() => handleCheckboxChange(report.id)}
+                                style={{ transform: 'scale(1.25)', transformOrigin: 'left center' }}
+                              />
+                              <button
+                                type="button"
+                                className="btn btn-outline-secondary btn-sm"
+                                title="Xem nhanh"
+                                onClick={(e) => { e.stopPropagation(); openQuickView(report.id); }}
+                                style={{ padding: '0.15rem 0.35rem', lineHeight: 1 }}
+                              >
+                                <i className="fas fa-eye"></i>
+                              </button>
+                            </div>
+                          </td>
+                          {/* Ẩn cột Mã nhưng vẫn tìm kiếm được */}
+                          {/* <td>
                         <span className="badge bg-light text-dark border">{report.id}</span>
                       </td> */}
-                      <td>{report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}</td>
-                      <td>
-                        {report.displayLocation || 'Không xác định'}
-                        {report.isOverdue && (
-                          <i className="fas fa-exclamation-triangle text-danger ms-1" title="Quá hạn"></i>
-                        )}
-                      </td>
-                      <td style={{ padding: '0.5rem 0.25rem' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
-                          <select
-                            className="form-control form-control-sm damage-report-status-select"
-                            value={report.status}
-                            onChange={(e) => handleStatusChange(report.id, Number(e.target.value) as DamageReportStatus)}
-                            disabled={!canUpdateStatusForReport(report)}
-                            style={{
-                              width: 'auto',
-                              minWidth: '80px',
-                              maxWidth: '100px',
-                              fontSize: '0.7rem',
-                              fontWeight: '500',
-                              padding: '0.125rem 0.375rem',
-                              height: '1.75rem',
-                              lineHeight: '1.25',
-                              borderWidth: '1.5px',
-                              borderRadius: '4px',
-                              display: 'inline-block',
-                              ...getStatusStyle(report.status)
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.7rem' }}>Chờ xử lý</option>
-                            <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.7rem' }}>Đang xử lý</option>
-                            <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.7rem' }}>Hoàn thành</option>
-                            <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.7rem' }}>Đã hủy</option>
-                            <option value={DamageReportStatus.Rejected} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.7rem' }}>Từ chối</option>
-                          </select>
-                        </div>
-                      </td>
-                      <td style={{ padding: '0.5rem 0.25rem' }}>
-                        <select
-                          className="form-control form-control-sm damage-report-priority-select"
-                          value={report.priority}
-                          onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
-                          disabled={!userPermissions.canEdit}
-                          style={{
-                            width: 'auto',
-                            minWidth: '80px',
-                            maxWidth: '100px',
-                            fontSize: '0.7rem',
-                            fontWeight: '500',
-                            padding: '0.125rem 0.375rem',
-                            height: '1.75rem',
-                            lineHeight: '1.25',
-                            borderWidth: '1.5px',
-                            borderRadius: '4px',
-                            display: 'inline-block',
-                            ...getPriorityStyle(report.priority)
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <option value={DamageReportPriority.Low} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.7rem' }}>Thấp</option>
-                          <option value={DamageReportPriority.Normal} style={{ backgroundColor: '#cfe2ff', color: '#0a58ca', fontSize: '0.7rem' }}>Bình thường</option>
-                          <option value={DamageReportPriority.High} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.7rem' }}>Cao</option>
-                          <option value={DamageReportPriority.Urgent} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.7rem' }}>Khẩn cấp</option>
-                        </select>
-                      </td>
-                      <td>{report.reporterName || 'N/A'}</td>
-                      <td>{report.handlerName || 'Chưa phân công'}</td>
-                      <td>{report.updatedByName || '-'}</td>
-                      <td>
-                        <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {report.damageContent || 'N/A'}
-                        </div>
-                      </td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        <HandlerNotesEditor
-                          reportId={report.id}
-                          value={report.handlerNotes || ''}
-                          onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
-                          canEdit={userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)}
-                        />
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          </div>
+                          <td>{report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}</td>
+                          <td>
+                            {report.displayLocation || 'Không xác định'}
+                            {report.isOverdue && (
+                              <i className="fas fa-exclamation-triangle text-danger ms-1" title="Quá hạn"></i>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.5rem 0.25rem' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
+                              <select
+                                className="form-control form-control-sm damage-report-status-select"
+                                value={report.status}
+                                onChange={(e) => handleStatusChange(report.id, Number(e.target.value) as DamageReportStatus)}
+                                disabled={!canUpdateStatusForReport(report)}
+                                style={{
+                                  width: 'auto',
+                                  minWidth: '80px',
+                                  maxWidth: '100px',
+                                  fontSize: '0.7rem',
+                                  fontWeight: '500',
+                                  padding: '0.125rem 0.375rem',
+                                  height: '1.75rem',
+                                  lineHeight: '1.25',
+                                  borderWidth: '1.5px',
+                                  borderRadius: '4px',
+                                  display: 'inline-block',
+                                  ...getStatusStyle(report.status)
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.7rem' }}>Chờ xử lý</option>
+                                <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.7rem' }}>Đang xử lý</option>
+                                <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.7rem' }}>Hoàn thành</option>
+                                <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.7rem' }}>Đã hủy</option>
+                                <option value={DamageReportStatus.Rejected} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.7rem' }}>Từ chối</option>
+                              </select>
+                            </div>
+                          </td>
+                          <td style={{ padding: '0.5rem 0.25rem' }}>
+                            <select
+                              className="form-control form-control-sm damage-report-priority-select"
+                              value={report.priority}
+                              onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
+                              disabled={!userPermissions.canEdit}
+                              style={{
+                                width: 'auto',
+                                minWidth: '80px',
+                                maxWidth: '100px',
+                                fontSize: '0.7rem',
+                                fontWeight: '500',
+                                padding: '0.125rem 0.375rem',
+                                height: '1.75rem',
+                                lineHeight: '1.25',
+                                borderWidth: '1.5px',
+                                borderRadius: '4px',
+                                display: 'inline-block',
+                                ...getPriorityStyle(report.priority)
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <option value={DamageReportPriority.Low} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.7rem' }}>Thấp</option>
+                              <option value={DamageReportPriority.Normal} style={{ backgroundColor: '#cfe2ff', color: '#0a58ca', fontSize: '0.7rem' }}>Bình thường</option>
+                              <option value={DamageReportPriority.High} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.7rem' }}>Cao</option>
+                              <option value={DamageReportPriority.Urgent} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.7rem' }}>Khẩn cấp</option>
+                            </select>
+                          </td>
+                          <td>{report.reporterName || 'N/A'}</td>
+                          <td>{report.handlerName || 'Chưa phân công'}</td>
+                          <td>{report.updatedByName || '-'}</td>
+                          <td>
+                            <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {report.damageContent || 'N/A'}
+                            </div>
+                          </td>
+                          <td onClick={(e) => e.stopPropagation()}>
+                            <HandlerNotesEditor
+                              reportId={report.id}
+                              value={report.handlerNotes || ''}
+                              onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
+                              canEdit={userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)}
+                            />
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
 
           {/* Card View */}
@@ -1904,9 +1928,9 @@ export default function DamageReportsPage() {
               ) : (
                 currentReports.map((report) => (
                   <div key={report.id} className="col-12 col-md-6 col-lg-4">
-                    <div 
-                      className="card h-100 shadow-sm damage-report-card" 
-                      style={{ 
+                    <div
+                      className="card h-100 shadow-sm damage-report-card"
+                      style={{
                         borderLeft: `4px solid ${getPriorityStyle(report.priority).borderColor || '#dee2e6'}`,
                         borderBottom: `3px solid ${getPriorityStyle(report.priority).borderColor || '#dee2e6'}`,
                         cursor: 'default',
@@ -1916,10 +1940,10 @@ export default function DamageReportsPage() {
                       }}
                     >
                       {/* Card Header */}
-                      <div 
-                        className="card-header p-3" 
-                        style={{ 
-                          backgroundColor: '#f0f2f5', 
+                      <div
+                        className="card-header p-3"
+                        style={{
+                          backgroundColor: '#f0f2f5',
                           borderBottom: '2px solid #e9ecef',
                           display: 'flex',
                           justifyContent: 'space-between',
@@ -1930,8 +1954,8 @@ export default function DamageReportsPage() {
                         onClick={() => handleCheckboxChange(report.id)}
                       >
                         <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                          <h6 className="mb-1" style={{ 
-                            fontSize: '0.95rem', 
+                          <h6 className="mb-1" style={{
+                            fontSize: '0.95rem',
                             fontWeight: '600',
                             color: '#212529',
                             lineHeight: '1.3',
@@ -1960,7 +1984,7 @@ export default function DamageReportsPage() {
                             checked={selectedIds.includes(report.id)}
                             onChange={() => handleCheckboxChange(report.id)}
                             onClick={(e) => e.stopPropagation()}
-                            style={{ 
+                            style={{
                               marginTop: '0.25rem',
                               cursor: 'pointer',
                               transform: 'scale(1.7)',
@@ -1972,7 +1996,7 @@ export default function DamageReportsPage() {
                             className="btn btn-outline-secondary btn-sm"
                             title="Xem nhanh"
                             onClick={(e) => { e.stopPropagation(); openQuickView(report.id); }}
-                            style={{ 
+                            style={{
                               padding: '0.28rem 0.35rem',
                               lineHeight: 1,
                               marginTop: '0.25rem',
@@ -2085,8 +2109,8 @@ export default function DamageReportsPage() {
                               Nội dung
                             </label>
                           </div>
-                          <div 
-                            style={{ 
+                          <div
+                            style={{
                               fontSize: '0.8rem',
                               color: '#495057',
                               lineHeight: '1.5',
@@ -2273,17 +2297,17 @@ export default function DamageReportsPage() {
                       <label className="form-check-label" htmlFor="modalDeviceSelOther">Khác (báo cáo tổng thể)</label>
                     </div>
                     <div className="form-check">
-                      <input 
-                        className="form-check-input" 
-                        type="radio" 
-                        name="deviceSelection" 
-                        id="modalDeviceSelMaintenance" 
-                        checked={formData.deviceSelection === 'maintenance'} 
+                      <input
+                        className="form-check-input"
+                        type="radio"
+                        name="deviceSelection"
+                        id="modalDeviceSelMaintenance"
+                        checked={formData.deviceSelection === 'maintenance'}
                         onChange={async () => {
                           // Load batches when selecting maintenance
                           await loadMaintenanceBatches();
                           setFormData({ ...formData, deviceSelection: 'maintenance', deviceId: undefined, damageLocation: '' });
-                        }} 
+                        }}
                       />
                       <label className="form-check-label" htmlFor="modalDeviceSelMaintenance">Bảo trì định kỳ</label>
                     </div>
@@ -2405,20 +2429,47 @@ export default function DamageReportsPage() {
                   ) : formData.deviceSelection === 'maintenance' ? (
                     <div className="col-12">
                       <label className="form-label mb-1">Đợt bảo trì <span className="text-danger">*</span></label>
-                      <select 
-                        className="form-control" 
-                        value={formData.maintenanceBatchId || ''} 
+                      <select
+                        className="form-control"
+                        value={formData.maintenanceBatchId || ''}
                         onChange={(e) => setFormData({ ...formData, maintenanceBatchId: e.target.value || undefined })}
                         disabled={loadingBatches}
                       >
                         <option value="">-- Chọn đợt bảo trì --</option>
-                        {maintenanceBatches.map((batch) => (
-                          <option key={batch.batchId} value={batch.batchId}>
-                            {batch.title}
-                          </option>
-                        ))}
+                        {maintenanceBatches.filter(b => !b.isCancelled).map((batch) => {
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+                          const dueDate = batch.nextDueDate ? new Date(batch.nextDueDate) : null;
+                          if (dueDate) dueDate.setHours(0, 0, 0, 0);
+
+                          const isCurrentlySelected = formData.maintenanceBatchId === batch.batchId;
+                          const isDue = !dueDate || dueDate <= today || isCurrentlySelected;
+                          const diffTime = dueDate ? (dueDate.getTime() - today.getTime()) : 0;
+                          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                          let dueText = '';
+                          if (dueDate) {
+                            if (diffDays === 0) dueText = ' (Đến hạn hôm nay)';
+                            else if (diffDays < 0) dueText = ` (Quá hạn ${Math.abs(diffDays)} ngày)`;
+                            else dueText = ` (Còn ${diffDays} ngày)`;
+                          }
+
+                          return (
+                            <option
+                              key={batch.batchId}
+                              value={batch.batchId}
+                              disabled={!isDue && !isCurrentlySelected}
+                              className={(!isDue && !isCurrentlySelected) ? 'text-muted' : ''}
+                            >
+                              {batch.title}{dueText}
+                            </option>
+                          );
+                        })}
                       </select>
-                      {loadingBatches && <small className="text-muted">Đang tải...</small>}
+                      {loadingBatches && <small className="text-sm text-info ms-2"><i className="fas fa-spinner fa-spin me-1"></i>Đang tải...</small>}
+                      <div className="form-text small text-muted mt-1">
+                        Lưu ý: Chỉ các đợt đã đến hạn mới có thể được chọn để lập báo cáo.
+                      </div>
                     </div>
                   ) : (
                     <div className="col-12">
@@ -2429,9 +2480,9 @@ export default function DamageReportsPage() {
 
                   <div className="col-12 col-md-6">
                     <label className="form-label">Người báo cáo <span className="text-danger">*</span></label>
-                    <select 
-                      className="form-control" 
-                      value={formData.reporterId} 
+                    <select
+                      className="form-control"
+                      value={formData.reporterId}
                       onChange={(e) => setFormData({ ...formData, reporterId: Number(e.target.value) })}
                       disabled={currentUserStaffId !== null}
                     >
@@ -2505,8 +2556,8 @@ export default function DamageReportsPage() {
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center justify-content-between">
                       <span>Hình ảnh</span>
-                      <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => { 
-                        setFileManagerMode('image'); 
+                      <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => {
+                        setFileManagerMode('image');
                         setShowFileManager(true);
                       }}>Chọn hình</button>
                     </label>
@@ -3046,24 +3097,24 @@ export default function DamageReportsPage() {
 
       {/* Image Lightbox Modal */}
       {showImageModal && selectedImages.length > 0 && (
-        <div 
-          className="modal show d-block" 
-          style={{ 
-            backgroundColor: 'rgba(0, 0, 0, 0.9)', 
+        <div
+          className="modal show d-block"
+          style={{
+            backgroundColor: 'rgba(0, 0, 0, 0.9)',
             zIndex: 9999,
             position: 'fixed',
             top: 0,
             left: 0,
             right: 0,
             bottom: 0
-          }} 
+          }}
           tabIndex={-1}
           onClick={() => setShowImageModal(false)}
         >
-          <div 
-            className="d-flex align-items-center justify-content-center" 
-            style={{ 
-              width: '100%', 
+          <div
+            className="d-flex align-items-center justify-content-center"
+            style={{
+              width: '100%',
               height: '100%',
               position: 'relative'
             }}
@@ -3122,9 +3173,9 @@ export default function DamageReportsPage() {
             )}
 
             {/* Image Container */}
-            <div 
-              style={{ 
-                maxWidth: '90%', 
+            <div
+              style={{
+                maxWidth: '90%',
                 maxHeight: '90%',
                 display: 'flex',
                 flexDirection: 'column',
@@ -3143,10 +3194,10 @@ export default function DamageReportsPage() {
                   boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)'
                 }}
               />
-              
+
               {/* Image Counter */}
               {selectedImages.length > 1 && (
-                <div 
+                <div
                   className="text-white mt-3"
                   style={{
                     fontSize: '1rem',

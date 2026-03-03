@@ -24,11 +24,13 @@ interface MaintenanceBatch {
   batchId: string;
   title: string;
   totalDevices: number;
+  activePlansCount: number;
   completed: number;
   inProgress: number;
   planned: number;
   cancelled: number;
   progressPercentage: number;
+  isCancelled?: boolean;
 }
 
 interface MaintenancePlanForm {
@@ -106,7 +108,7 @@ function MaintenancePageContent() {
   const [allPlans, setAllPlans] = useState<DeviceReminderPlanVM[]>([]);
   const [planEvents, setPlanEvents] = useState<Record<number, BatchEvent>>({}); // Map planId -> latest event
   const [loading, setLoading] = useState(false);
-  
+
   // Modals
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
@@ -119,7 +121,7 @@ function MaintenancePageContent() {
   const [selectedRound, setSelectedRound] = useState<{ batchId: string; roundDate: string } | null>(null);
   const [roundDetail, setRoundDetail] = useState<any>(null);
   const [loadingRoundDetail, setLoadingRoundDetail] = useState(false);
-  
+
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showEditIntervalModal, setShowEditIntervalModal] = useState(false);
@@ -135,7 +137,7 @@ function MaintenancePageContent() {
     title: string;
     plans: DeviceReminderPlanVM[];
   } | null>(null);
-  
+
   // Batch actions
   const [showBatchRescheduleModal, setShowBatchRescheduleModal] = useState(false);
   const [showBatchCancelModal, setShowBatchCancelModal] = useState(false);
@@ -151,7 +153,7 @@ function MaintenancePageContent() {
   const [batchRescheduleDate, setBatchRescheduleDate] = useState('');
   const [batchRescheduleReason, setBatchRescheduleReason] = useState('');
   const [batchCancelReason, setBatchCancelReason] = useState('');
-  
+
   // Add/Remove devices
   const [showAddDevicesModal, setShowAddDevicesModal] = useState(false);
   const [showRemoveDevicesModal, setShowRemoveDevicesModal] = useState(false);
@@ -163,7 +165,7 @@ function MaintenancePageContent() {
   } | null>(null);
   const [devicesToAdd, setDevicesToAdd] = useState<DeviceVM[]>([]);
   const [devicesToRemove, setDevicesToRemove] = useState<DeviceVM[]>([]);
-  
+
   // Complete maintenance modal
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<BatchEvent | null>(null);
@@ -171,12 +173,12 @@ function MaintenancePageContent() {
   const [completeNotes, setCompleteNotes] = useState('');
   const [completeStaffId, setCompleteStaffId] = useState<number | null>(null);
   const [staffList, setStaffList] = useState<Array<{ id: number; name: string }>>([]);
-  
+
   // Start maintenance modal
   const [showStartModal, setShowStartModal] = useState(false);
   const [startStaffId, setStartStaffId] = useState<number | null>(null);
   const [startNotes, setStartNotes] = useState('');
-  
+
   // Device selection modal
   const [showDeviceModal, setShowDeviceModal] = useState(false);
   const [allDevices, setAllDevices] = useState<DeviceVM[]>([]);
@@ -186,7 +188,7 @@ function MaintenancePageContent() {
   const [categoryDevices, setCategoryDevices] = useState<DeviceVM[]>([]);
   const [loadingDevices, setLoadingDevices] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  
+
   // Form data
   const [categories, setCategories] = useState<DeviceCategory[]>([]);
   const [eventTypes, setEventTypes] = useState<EventType[]>([]);
@@ -281,9 +283,9 @@ function MaintenancePageContent() {
     setLoadingDevices(true);
     try {
       const response = await api.get(`/devices?cateId=${categoryId}`);
-        if (response.data.status) {
+      if (response.data.status) {
         setCategoryDevices(response.data.data || []);
-        } else {
+      } else {
         toast.error(response.data.error || 'Lỗi khi tải danh sách thiết bị');
         setCategoryDevices([]);
       }
@@ -301,14 +303,14 @@ function MaintenancePageContent() {
       setSelectedDevices([]);
       return;
     }
-    
+
     setLoadingDevices(true);
     try {
       // Load all devices first
       const response = await api.get('/devices?cateId=0');
       if (response.data.status) {
         const allDevs = response.data.data || [];
-        const selected = allDevs.filter((device: DeviceVM) => 
+        const selected = allDevs.filter((device: DeviceVM) =>
           formData.deviceIds.includes(device.id)
         );
         setSelectedDevices(selected);
@@ -329,7 +331,7 @@ function MaintenancePageContent() {
         setAllDevices(devices);
         setFilteredDevices(devices);
         // Pre-select devices that are already selected
-        const preSelected = devices.filter((device: DeviceVM) => 
+        const preSelected = devices.filter((device: DeviceVM) =>
           formData.deviceIds.includes(device.id)
         );
         setSelectedDevices(preSelected);
@@ -384,11 +386,11 @@ function MaintenancePageContent() {
   const loadData = async () => {
     setLoading(true);
     try {
-        const response = await api.get('/events/maintenance-batches');
-        if (response.data.status) {
-          setBatches(response.data.data || []);
-        } else {
-          toast.error(response.data.error || 'Lỗi khi tải dữ liệu');
+      const response = await api.get('/events/maintenance-batches?all=true');
+      if (response.data.status) {
+        setBatches(response.data.data || []);
+      } else {
+        toast.error(response.data.error || 'Lỗi khi tải dữ liệu');
       }
     } catch (error: any) {
       console.error('Error loading maintenance data:', error);
@@ -405,29 +407,29 @@ function MaintenancePageContent() {
       if (response.data.status) {
         const plans = response.data.data || [];
         setAllPlans(plans);
-        
+
         // Load events for these plans
         try {
           const eventsResponse = await api.get('/events?eventTypeId=0');
           if (eventsResponse.data.status) {
             const allEvents = eventsResponse.data.data || [];
-            
+
             // Create a map of planId -> latest event
             // Match events with plans by deviceId, eventTypeId, and maintenanceBatchId
             const eventsMap: Record<number, BatchEvent> = {};
-            
+
             plans.forEach((plan: DeviceReminderPlanVM) => {
               const planBatchId = plan.metadata?.maintenanceBatchId;
-              
+
               // Find all matching events for this plan
               const matchingEvents = allEvents.filter((event: any) => {
                 const eventBatchId = event.metadata?.maintenanceBatchId;
                 return event.deviceId === plan.deviceId &&
-                       event.eventTypeId === plan.eventTypeId &&
-                       eventBatchId === planBatchId &&
-                       (event.status === 'planned' || event.status === 'in_progress' || event.status === 'completed');
+                  event.eventTypeId === plan.eventTypeId &&
+                  eventBatchId === planBatchId &&
+                  (event.status === 'planned' || event.status === 'in_progress' || event.status === 'completed');
               });
-              
+
               if (matchingEvents.length > 0) {
                 // Get the most recent event (by eventDate or createdAt) - for current status
                 const latestEvent = matchingEvents.sort((a: any, b: any) => {
@@ -435,9 +437,9 @@ function MaintenancePageContent() {
                   const dateB = b.eventDate ? new Date(b.eventDate).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
                   return dateB - dateA;
                 })[0];
-                
+
                 eventsMap[plan.id] = latestEvent;
-                
+
                 // Find the last completed event for this plan
                 const completedEvents = matchingEvents
                   .filter((e: any) => e.status === 'completed')
@@ -446,7 +448,7 @@ function MaintenancePageContent() {
                     const dateB = b.endDate ? new Date(b.endDate).getTime() : (b.eventDate ? new Date(b.eventDate).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0));
                     return dateB - dateA;
                   });
-                
+
                 if (completedEvents.length > 0) {
                   const lastCompleted = completedEvents[0];
                   plan.lastCompletedEvent = {
@@ -457,7 +459,7 @@ function MaintenancePageContent() {
                 }
               }
             });
-            
+
             setPlanEvents(eventsMap);
           }
         } catch (error) {
@@ -477,11 +479,11 @@ function MaintenancePageContent() {
   // Group plans by maintenanceBatchId
   const groupedPlans = React.useMemo(() => {
     // Filter plans based on activeTab
-    const filteredPlans = activeTab === 'plans' 
+    const filteredPlans = activeTab === 'plans'
       ? allPlans.filter(p => p.isActive)
       : activeTab === 'cancelled'
-      ? allPlans.filter(p => !p.isActive)
-      : allPlans;
+        ? allPlans.filter(p => !p.isActive)
+        : allPlans;
 
     const groups: Record<string, {
       batchId: string;
@@ -504,7 +506,7 @@ function MaintenancePageContent() {
     filteredPlans.forEach((plan) => {
       const batchId = plan.metadata?.maintenanceBatchId || 'no-batch';
       const title = plan.title || 'Kế hoạch không có tiêu đề';
-      
+
       if (!groups[batchId]) {
         groups[batchId] = {
           batchId,
@@ -519,12 +521,12 @@ function MaintenancePageContent() {
           canModifyDevices: true, // Will be updated below
           lastMaintenanceDate: null,
           nextMaintenanceDate: null,
+          isCancelledBatch: false, // Default to false
         };
       }
-      
+
       groups[batchId].plans.push(plan);
       groups[batchId].totalDevices++;
-      // Chỉ đếm từ filteredPlans (đã được lọc theo activeTab)
       if (plan.isActive) {
         groups[batchId].activeCount++;
       } else {
@@ -532,11 +534,17 @@ function MaintenancePageContent() {
       }
     });
 
+    // Determine if a batch is cancelled (all plans are inactive)
+    Object.values(groups).forEach(group => {
+      // @ts-ignore - Dynamic property for UI
+      (group as any).isCancelledBatch = group.totalDevices > 0 && group.activeCount === 0;
+    });
+
     // Tính toán lastMaintenanceDate và nextMaintenanceDate cho mỗi group
     Object.values(groups).forEach((group) => {
       // Tìm ngày bảo trì trước (last completed event) - lấy ngày mới nhất
       const completedDates: Date[] = [];
-      
+
       group.plans.forEach((plan) => {
         // Lấy từ lastCompletedEvent nếu có
         if (plan.lastCompletedEvent?.endDate) {
@@ -550,7 +558,7 @@ function MaintenancePageContent() {
             }
           }
         }
-        
+
         // Nếu không có lastCompletedEvent, kiểm tra event hiện tại
         const currentEvent = planEvents[plan.id];
         if (currentEvent && currentEvent.status === 'completed' && currentEvent.endDate) {
@@ -563,7 +571,7 @@ function MaintenancePageContent() {
           }
         }
       });
-      
+
       if (completedDates.length > 0) {
         group.lastMaintenanceDate = completedDates.sort((a, b) => b.getTime() - a.getTime())[0];
       }
@@ -583,7 +591,7 @@ function MaintenancePageContent() {
           return false;
         })
         .map(d => d instanceof Date ? d : new Date(d));
-      
+
       if (nextDates.length > 0) {
         group.nextMaintenanceDate = nextDates.sort((a, b) => a.getTime() - b.getTime())[0];
       }
@@ -607,7 +615,7 @@ function MaintenancePageContent() {
 
     // Lọc groups dựa trên activeTab
     let finalGroups = Object.values(groups);
-    
+
     if (activeTab === 'plans') {
       // Chỉ hiển thị groups có ít nhất 1 plan active
       finalGroups = finalGroups.filter(group => group.activeCount > 0);
@@ -615,7 +623,7 @@ function MaintenancePageContent() {
       // Chỉ hiển thị groups có ít nhất 1 plan inactive
       finalGroups = finalGroups.filter(group => group.inactiveCount > 0);
     }
-    
+
     return finalGroups;
   }, [allPlans, activeTab, planEvents]);
 
@@ -833,7 +841,7 @@ function MaintenancePageContent() {
             // Tính từ startFrom với chu kỳ mới
             const startFrom = new Date(plan.startFrom);
             newNextDueDate = new Date(startFrom);
-            
+
             switch (editIntervalUnit) {
               case 'day':
                 newNextDueDate.setDate(newNextDueDate.getDate() + editIntervalValue);
@@ -916,7 +924,7 @@ function MaintenancePageContent() {
 
       for (const plan of selectedGroup.plans) {
         if (!plan.isActive) continue; // Skip inactive plans
-        
+
         try {
           const response = await api.post(`/device-reminder-plans/${plan.id}/reschedule`, {
             newDate: batchRescheduleDate,
@@ -967,7 +975,7 @@ function MaintenancePageContent() {
 
       for (const plan of selectedGroup.plans) {
         if (!plan.isActive) continue; // Skip already inactive plans
-        
+
         try {
           const response = await api.post(`/device-reminder-plans/${plan.id}/cancel`, {
             reason: batchCancelReason.trim(),
@@ -1016,7 +1024,7 @@ function MaintenancePageContent() {
 
       for (const plan of selectedGroup.plans) {
         if (!plan.isActive) continue; // Skip inactive plans
-        
+
         try {
           // Check if event already exists
           const existingEvent = planEvents[plan.id];
@@ -1041,7 +1049,7 @@ function MaintenancePageContent() {
               notes: batchCompleteNotes.trim() || null,
               metadata: eventMetadata,
             };
-            
+
             const createResponse = await api.post('/events', eventData);
             if (createResponse.data.status) {
               eventId = createResponse.data.data.id;
@@ -1075,7 +1083,7 @@ function MaintenancePageContent() {
           if (plan.intervalValue && plan.intervalUnit) {
             const completionDate = new Date(batchCompleteDate);
             completionDate.setHours(0, 0, 0, 0);
-            
+
             // Calculate next due date from completion date
             const nextDueDate = new Date(completionDate);
             if (plan.intervalUnit === 'day') {
@@ -1087,7 +1095,7 @@ function MaintenancePageContent() {
             } else if (plan.intervalUnit === 'year') {
               nextDueDate.setFullYear(nextDueDate.getFullYear() + plan.intervalValue);
             }
-            
+
             // Update plan's nextDueDate
             try {
               await api.put(`/device-reminder-plans/${plan.id}`, {
@@ -1118,7 +1126,7 @@ function MaintenancePageContent() {
 
       if (successCount > 0) {
         toast.success(`Đã ghi nhận hoàn thành thành công ${successCount} kế hoạch`);
-        
+
         // Cập nhật nextDueDate trong state local ngay lập tức để ẩn nút "Đã xong"
         if (selectedGroup) {
           setAllPlans(prevPlans => {
@@ -1128,7 +1136,7 @@ function MaintenancePageContent() {
               if (planInBatch && plan.isActive && plan.intervalValue && plan.intervalUnit) {
                 const completionDate = new Date(batchCompleteDate);
                 completionDate.setHours(0, 0, 0, 0);
-                
+
                 // Tính toán nextDueDate mới
                 const nextDueDate = new Date(completionDate);
                 if (plan.intervalUnit === 'day') {
@@ -1140,7 +1148,7 @@ function MaintenancePageContent() {
                 } else if (plan.intervalUnit === 'year') {
                   nextDueDate.setFullYear(nextDueDate.getFullYear() + plan.intervalValue);
                 }
-                
+
                 return {
                   ...plan,
                   nextDueDate: nextDueDate,
@@ -1229,9 +1237,9 @@ function MaintenancePageContent() {
       const activePlans = selectedGroupForDevices.plans.filter(p => p.isActive && p.nextDueDate);
       const earliestDate = activePlans.length > 0
         ? activePlans
-            .map(p => p.nextDueDate ? new Date(p.nextDueDate) : null)
-            .filter(d => d !== null)
-            .sort((a, b) => (a?.getTime() || 0) - (b?.getTime() || 0))[0]
+          .map(p => p.nextDueDate ? new Date(p.nextDueDate) : null)
+          .filter(d => d !== null)
+          .sort((a, b) => (a?.getTime() || 0) - (b?.getTime() || 0))[0]
         : new Date();
 
       if (!earliestDate) {
@@ -1340,7 +1348,7 @@ function MaintenancePageContent() {
         setSelectedEvent(null);
         setStartNotes('');
         setStartStaffId(null);
-        
+
         // Reload data
         if (selectedBatchId) {
           loadBatchDetails(selectedBatchId);
@@ -1365,7 +1373,7 @@ function MaintenancePageContent() {
 
     try {
       let eventId = selectedEvent.id;
-      
+
       // If event doesn't exist yet (id = 0), create it directly with status 'completed'
       if (eventId === 0 && selectedPlan) {
         const eventData = {
@@ -1381,7 +1389,7 @@ function MaintenancePageContent() {
           notes: completeNotes.trim() || null,
           metadata: selectedPlan.metadata || {},
         };
-        
+
         const createResponse = await api.post('/events', eventData);
         if (!createResponse.data.status) {
           toast.error('Lỗi khi tạo event');
@@ -1407,7 +1415,7 @@ function MaintenancePageContent() {
       if (selectedPlan && selectedPlan.intervalValue && selectedPlan.intervalUnit) {
         const completionDate = new Date(completeDate);
         completionDate.setHours(0, 0, 0, 0);
-        
+
         // Calculate next due date from completion date
         const nextDueDate = new Date(completionDate);
         if (selectedPlan.intervalUnit === 'day') {
@@ -1419,7 +1427,7 @@ function MaintenancePageContent() {
         } else if (selectedPlan.intervalUnit === 'year') {
           nextDueDate.setFullYear(nextDueDate.getFullYear() + selectedPlan.intervalValue);
         }
-        
+
         // Update plan's nextDueDate
         try {
           await api.put(`/device-reminder-plans/${selectedPlan.id}`, {
@@ -1448,7 +1456,7 @@ function MaintenancePageContent() {
       setCompleteDate('');
       setCompleteNotes('');
       setCompleteStaffId(null);
-      
+
       // Reload data
       if (selectedBatchId) {
         loadBatchDetails(selectedBatchId);
@@ -1475,7 +1483,7 @@ function MaintenancePageContent() {
 
     try {
       const deviceIdsToRemove = devicesToRemove.map(d => d.id);
-      const plansToRemove = selectedGroupForDevices.plans.filter(p => 
+      const plansToRemove = selectedGroupForDevices.plans.filter(p =>
         deviceIdsToRemove.includes(p.deviceId)
       );
 
@@ -1520,16 +1528,16 @@ function MaintenancePageContent() {
     return 'text-success';
   };
 
-  const getProgressColor = (percentage: number): string => {
-    if (percentage >= 80) return 'bg-success';
-    if (percentage >= 50) return 'bg-info';
-    if (percentage >= 25) return 'bg-warning';
-    return 'bg-danger';
+  const getProgressColor = (percent: number, isCancelled: boolean = false) => {
+    if (isCancelled) return 'bg-secondary';
+    if (percent === 100) return 'bg-success';
+    if (percent >= 50) return 'bg-info';
+    return 'bg-warning';
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validation
     if (!formData.eventTypeId || formData.eventTypeId <= 0) {
       toast.error('Vui lòng chọn loại sự kiện');
@@ -1560,8 +1568,8 @@ function MaintenancePageContent() {
     if (formData.selectionType === 'devices') {
       console.log('Validating devices:', { deviceIds: formData.deviceIds, length: formData.deviceIds?.length }); // Debug log
       if (!formData.deviceIds || !Array.isArray(formData.deviceIds) || formData.deviceIds.length === 0) {
-      toast.error('Vui lòng chọn ít nhất một thiết bị');
-      return;
+        toast.error('Vui lòng chọn ít nhất một thiết bị');
+        return;
       }
     }
 
@@ -1658,135 +1666,211 @@ function MaintenancePageContent() {
     <>
       <div className="container-fluid">
         <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2 className="mb-0">
-          <i className="fas fa-wrench me-2"></i>
-          Quản Lý Bảo Trì
-        </h2>
-      </div>
-
-      {/* Tabs */}
-      <ul className="nav nav-tabs mb-4">
-        <li className="nav-item">
-          <button
-            className={`nav-link ${activeTab === 'create' ? 'active' : ''}`}
-            onClick={() => setActiveTab('create')}
-          >
-            <i className="fas fa-plus-circle me-2"></i>
-            Tạo Kế Hoạch
-          </button>
-        </li>
-        <li className="nav-item">
-          <button
-            className={`nav-link ${activeTab === 'batches' ? 'active' : ''}`}
-            onClick={() => setActiveTab('batches')}
-          >
-            <i className="fas fa-layer-group me-2"></i>
-            Batch Bảo Trì
-          </button>
-        </li>
-        <li className="nav-item">
-          <button
-            className={`nav-link ${activeTab === 'plans' ? 'active' : ''}`}
-            onClick={() => setActiveTab('plans')}
-          >
-            <i className="fas fa-list-alt me-2"></i>
-            Đang Hoạt Động
-          </button>
-        </li>
-        <li className="nav-item">
-          <button
-            className={`nav-link ${activeTab === 'cancelled' ? 'active' : ''}`}
-            onClick={() => setActiveTab('cancelled')}
-          >
-            <i className="fas fa-ban me-2"></i>
-            Đã Hủy
-          </button>
-        </li>
-      </ul>
-
-      {/* Content */}
-      {loading ? (
-        <div className="text-center py-5">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Đang tải...</span>
-          </div>
+          <h2 className="mb-0">
+            <i className="fas fa-wrench me-2"></i>
+            Quản Lý Bảo Trì
+          </h2>
         </div>
-      ) : activeTab === 'create' ? (
-        <div className="card">
-          <div className="card-header">
-            <h5 className="mb-0">
+
+        {/* Tabs */}
+        <ul className="nav nav-tabs mb-4">
+          <li className="nav-item">
+            <button
+              className={`nav-link ${activeTab === 'create' ? 'active' : ''}`}
+              onClick={() => setActiveTab('create')}
+            >
               <i className="fas fa-plus-circle me-2"></i>
-              Tạo Kế Hoạch Bảo Trì Mới
-            </h5>
+              Tạo Kế Hoạch
+            </button>
+          </li>
+          <li className="nav-item">
+            <button
+              className={`nav-link ${activeTab === 'batches' ? 'active' : ''}`}
+              onClick={() => setActiveTab('batches')}
+            >
+              <i className="fas fa-layer-group me-2"></i>
+              Batch Bảo Trì
+            </button>
+          </li>
+          <li className="nav-item">
+            <button
+              className={`nav-link ${activeTab === 'plans' ? 'active' : ''}`}
+              onClick={() => setActiveTab('plans')}
+            >
+              <i className="fas fa-list-alt me-2"></i>
+              Đang Hoạt Động
+            </button>
+          </li>
+          <li className="nav-item">
+            <button
+              className={`nav-link ${activeTab === 'cancelled' ? 'active' : ''}`}
+              onClick={() => setActiveTab('cancelled')}
+            >
+              <i className="fas fa-ban me-2"></i>
+              Đã Hủy
+            </button>
+          </li>
+        </ul>
+
+        {/* Content */}
+        {loading ? (
+          <div className="text-center py-5">
+            <div className="spinner-border text-primary" role="status">
+              <span className="visually-hidden">Đang tải...</span>
+            </div>
           </div>
-          <div className="card-body">
-            <form onSubmit={handleSubmit}>
-              {/* Selection Type */}
-              <div className="row mb-3">
-                <div className="col-md-12">
-                  <label className="form-label">Chọn thiết bị theo:</label>
-                  <div className="btn-group w-100" role="group">
-                    <input
-                      type="radio"
-                      className="btn-check"
-                      name="selectionType"
-                      id="selectionCategory"
-                      checked={formData.selectionType === 'category'}
-                      onChange={() => setFormData({ ...formData, selectionType: 'category' })}
-                    />
-                    <label className="btn btn-outline-primary" htmlFor="selectionCategory">
-                      Danh mục
-                    </label>
-
-                    <input
-                      type="radio"
-                      className="btn-check"
-                      name="selectionType"
-                      id="selectionDevices"
-                      checked={formData.selectionType === 'devices'}
-                      onChange={() => setFormData({ ...formData, selectionType: 'devices' })}
-                    />
-                    <label className="btn btn-outline-primary" htmlFor="selectionDevices">
-                      Danh sách thiết bị
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              {/* Selection Field */}
-              {formData.selectionType === 'category' && (
-                <>
+        ) : activeTab === 'create' ? (
+          <div className="card">
+            <div className="card-header">
+              <h5 className="mb-0">
+                <i className="fas fa-plus-circle me-2"></i>
+                Tạo Kế Hoạch Bảo Trì Mới
+              </h5>
+            </div>
+            <div className="card-body">
+              <form onSubmit={handleSubmit}>
+                {/* Selection Type */}
                 <div className="row mb-3">
                   <div className="col-md-12">
-                    <label className="form-label">Danh mục thiết bị <span className="text-danger">*</span></label>
-                    <select
-                      className="form-select"
-                      value={formData.categoryId}
-                      onChange={(e) => setFormData({ ...formData, categoryId: parseInt(e.target.value) })}
-                      required
-                    >
-                      <option value="0">-- Chọn danh mục --</option>
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
-                    </select>
+                    <label className="form-label">Chọn thiết bị theo:</label>
+                    <div className="btn-group w-100" role="group">
+                      <input
+                        type="radio"
+                        className="btn-check"
+                        name="selectionType"
+                        id="selectionCategory"
+                        checked={formData.selectionType === 'category'}
+                        onChange={() => setFormData({ ...formData, selectionType: 'category' })}
+                      />
+                      <label className="btn btn-outline-primary" htmlFor="selectionCategory">
+                        Danh mục
+                      </label>
+
+                      <input
+                        type="radio"
+                        className="btn-check"
+                        name="selectionType"
+                        id="selectionDevices"
+                        checked={formData.selectionType === 'devices'}
+                        onChange={() => setFormData({ ...formData, selectionType: 'devices' })}
+                      />
+                      <label className="btn btn-outline-primary" htmlFor="selectionDevices">
+                        Danh sách thiết bị
+                      </label>
+                    </div>
                   </div>
                 </div>
 
-                  {/* Show devices in selected category */}
-                  {formData.categoryId > 0 && (
-                <div className="row mb-3">
-                  <div className="col-md-12">
-                        <label className="form-label">Danh sách thiết bị trong danh mục:</label>
-                        {loadingDevices ? (
-                          <div className="text-center py-3">
-                            <div className="spinner-border spinner-border-sm text-primary" role="status">
-                              <span className="visually-hidden">Đang tải...</span>
+                {/* Selection Field */}
+                {formData.selectionType === 'category' && (
+                  <>
+                    <div className="row mb-3">
+                      <div className="col-md-12">
+                        <label className="form-label">Danh mục thiết bị <span className="text-danger">*</span></label>
+                        <select
+                          className="form-select"
+                          value={formData.categoryId}
+                          onChange={(e) => setFormData({ ...formData, categoryId: parseInt(e.target.value) })}
+                          required
+                        >
+                          <option value="0">-- Chọn danh mục --</option>
+                          {categories.map((cat) => (
+                            <option key={cat.id} value={cat.id}>
+                              {cat.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Show devices in selected category */}
+                    {formData.categoryId > 0 && (
+                      <div className="row mb-3">
+                        <div className="col-md-12">
+                          <label className="form-label">Danh sách thiết bị trong danh mục:</label>
+                          {loadingDevices ? (
+                            <div className="text-center py-3">
+                              <div className="spinner-border spinner-border-sm text-primary" role="status">
+                                <span className="visually-hidden">Đang tải...</span>
+                              </div>
                             </div>
-                          </div>
-                        ) : categoryDevices.length > 0 ? (
+                          ) : categoryDevices.length > 0 ? (
+                            <div className="card">
+                              <div className="card-body">
+                                <div className="table-responsive" style={{ maxHeight: '300px' }}>
+                                  <table className="table table-sm table-hover mb-0">
+                                    <thead className="table-light sticky-top">
+                                      <tr>
+                                        <th style={{ width: '50px' }}>ID</th>
+                                        <th>Tên thiết bị</th>
+                                        <th>Serial</th>
+                                        <th>Phòng ban</th>
+                                        <th>Trạng thái</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {categoryDevices.map((device) => (
+                                        <tr key={device.id}>
+                                          <td>{device.id}</td>
+                                          <td>{device.name || '-'}</td>
+                                          <td>{device.serial || '-'}</td>
+                                          <td>{device.departmentName || '-'}</td>
+                                          <td>
+                                            {device.status === 1 && <span className="badge bg-success">Đang sử dụng</span>}
+                                            {device.status === 2 && <span className="badge bg-warning">Đang sửa chữa</span>}
+                                            {device.status === 3 && <span className="badge bg-danger">Hư hỏng</span>}
+                                            {device.status === 4 && <span className="badge bg-secondary">Đã thanh lý</span>}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <div className="mt-2 text-muted small">
+                                  Tổng cộng: <strong>{categoryDevices.length}</strong> thiết bị
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="alert alert-info mb-0">
+                              <i className="fas fa-info-circle me-2"></i>
+                              Không có thiết bị nào trong danh mục này
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {formData.selectionType === 'devices' && (
+                  <>
+                    <div className="row mb-3">
+                      <div className="col-md-12">
+                        <label className="form-label">Chọn thiết bị <span className="text-danger">*</span></label>
+                        <div>
+                          <button
+                            type="button"
+                            className="btn btn-outline-primary"
+                            onClick={handleOpenDeviceModal}
+                          >
+                            <i className="fas fa-search me-2"></i>
+                            Tìm kiếm và chọn thiết bị
+                          </button>
+                          {formData.deviceIds.length > 0 && (
+                            <span className="ms-3 text-muted">
+                              Đã chọn: <strong>{formData.deviceIds.length}</strong> thiết bị
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Show selected devices */}
+                    {selectedDevices.length > 0 && (
+                      <div className="row mb-3">
+                        <div className="col-md-12">
+                          <label className="form-label">Danh sách thiết bị đã chọn:</label>
                           <div className="card">
                             <div className="card-body">
                               <div className="table-responsive" style={{ maxHeight: '300px' }}>
@@ -1796,16 +1880,19 @@ function MaintenancePageContent() {
                                       <th style={{ width: '50px' }}>ID</th>
                                       <th>Tên thiết bị</th>
                                       <th>Serial</th>
+                                      <th>Danh mục</th>
                                       <th>Phòng ban</th>
                                       <th>Trạng thái</th>
+                                      <th style={{ width: '80px' }}>Thao tác</th>
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {categoryDevices.map((device) => (
+                                    {selectedDevices.map((device) => (
                                       <tr key={device.id}>
                                         <td>{device.id}</td>
                                         <td>{device.name || '-'}</td>
                                         <td>{device.serial || '-'}</td>
+                                        <td>{device.deviceCategoryName || '-'}</td>
                                         <td>{device.departmentName || '-'}</td>
                                         <td>
                                           {device.status === 1 && <span className="badge bg-success">Đang sử dụng</span>}
@@ -1813,1351 +1900,1194 @@ function MaintenancePageContent() {
                                           {device.status === 3 && <span className="badge bg-danger">Hư hỏng</span>}
                                           {device.status === 4 && <span className="badge bg-secondary">Đã thanh lý</span>}
                                         </td>
+                                        <td>
+                                          <button
+                                            type="button"
+                                            className="btn btn-sm btn-outline-danger"
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              // Remove device from both deviceIds and selectedDevices
+                                              const deviceIdToRemove = device.id;
+                                              const newIds = formData.deviceIds.filter((id) => id !== deviceIdToRemove);
+                                              const newSelectedDevices = selectedDevices.filter((d) => d.id !== deviceIdToRemove);
+
+                                              // Update both states
+                                              setFormData((prev) => ({ ...prev, deviceIds: newIds }));
+                                              setSelectedDevices(newSelectedDevices);
+                                            }}
+                                            title="Xóa"
+                                          >
+                                            <i className="fas fa-times"></i>
+                                          </button>
+                                        </td>
                                       </tr>
                                     ))}
                                   </tbody>
                                 </table>
-                  </div>
-                              <div className="mt-2 text-muted small">
-                                Tổng cộng: <strong>{categoryDevices.length}</strong> thiết bị
                               </div>
                             </div>
                           </div>
-                        ) : (
-                          <div className="alert alert-info mb-0">
-                            <i className="fas fa-info-circle me-2"></i>
-                            Không có thiết bị nào trong danh mục này
-                </div>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </>
-              )}
+                    )}
+                  </>
+                )}
 
-              {formData.selectionType === 'devices' && (
-                <>
+                {/* Event Type */}
                 <div className="row mb-3">
                   <div className="col-md-12">
-                      <label className="form-label">Chọn thiết bị <span className="text-danger">*</span></label>
-                      <div>
-                        <button
-                          type="button"
-                          className="btn btn-outline-primary"
-                          onClick={handleOpenDeviceModal}
-                        >
-                          <i className="fas fa-search me-2"></i>
-                          Tìm kiếm và chọn thiết bị
-                        </button>
-                        {formData.deviceIds.length > 0 && (
-                          <span className="ms-3 text-muted">
-                            Đã chọn: <strong>{formData.deviceIds.length}</strong> thiết bị
-                          </span>
-                        )}
-                      </div>
+                    <label className="form-label">Loại sự kiện <span className="text-danger">*</span></label>
+                    <select
+                      className="form-select"
+                      value={formData.eventTypeId}
+                      onChange={(e) => setFormData({ ...formData, eventTypeId: parseInt(e.target.value) })}
+                      required
+                    >
+                      <option value="0">-- Chọn loại sự kiện --</option>
+                      {eventTypes.map((et) => (
+                        <option key={et.id} value={et.id}>
+                          {et.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Title */}
+                <div className="row mb-3">
+                  <div className="col-md-12">
+                    <label className="form-label">Tiêu đề <span className="text-danger">*</span></label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={formData.title}
+                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                      placeholder="Ví dụ: Bảo trì định kỳ máy lạnh"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div className="row mb-3">
+                  <div className="col-md-12">
+                    <label className="form-label">Mô tả</label>
+                    <textarea
+                      className="form-control"
+                      rows={3}
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      placeholder="Mô tả chi tiết về kế hoạch bảo trì"
+                    />
+                  </div>
+                </div>
+
+                {/* Interval */}
+                <div className="row mb-3">
+                  <div className="col-md-4">
+                    <label className="form-label">Khoảng thời gian <span className="text-danger">*</span></label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={formData.intervalValue}
+                      onChange={(e) => setFormData({ ...formData, intervalValue: parseInt(e.target.value) || 0 })}
+                      min="1"
+                      required
+                    />
+                  </div>
+                  <div className="col-md-8">
+                    <label className="form-label">Đơn vị <span className="text-danger">*</span></label>
+                    <select
+                      className="form-select"
+                      value={formData.intervalUnit}
+                      onChange={(e) => setFormData({ ...formData, intervalUnit: e.target.value as any })}
+                      required
+                    >
+                      <option value="day">Ngày</option>
+                      <option value="week">Tuần</option>
+                      <option value="month">Tháng</option>
+                      <option value="year">Năm</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Dates */}
+                <div className="row mb-3">
+                  <div className="col-md-6">
+                    <label className="form-label">Ngày bắt đầu <span className="text-danger">*</span></label>
+                    <DateInput
+                      value={formData.startFrom}
+                      onChange={(value) => setFormData({ ...formData, startFrom: value })}
+                      required
+                    />
+                  </div>
+                  <div className="col-md-6">
+                    <label className="form-label">Ngày kết thúc (tùy chọn)</label>
+                    <DateInput
+                      value={formData.endAt}
+                      onChange={(value) => setFormData({ ...formData, endAt: value })}
+                    />
+                  </div>
+                </div>
+
+                {/* Maintenance Type */}
+                <div className="row mb-3">
+                  <div className="col-md-12">
+                    <label className="form-label">Loại bảo trì <span className="text-danger">*</span></label>
+                    <div className="btn-group w-100" role="group">
+                      <input
+                        type="radio"
+                        className="btn-check"
+                        name="maintenanceType"
+                        id="maintenanceInternal"
+                        checked={formData.maintenanceType === 'internal'}
+                        onChange={() => setFormData({ ...formData, maintenanceType: 'internal', maintenanceProvider: '' })}
+                      />
+                      <label className="btn btn-outline-primary" htmlFor="maintenanceInternal">
+                        Nội bộ
+                      </label>
+
+                      <input
+                        type="radio"
+                        className="btn-check"
+                        name="maintenanceType"
+                        id="maintenanceOutsource"
+                        checked={formData.maintenanceType === 'outsource'}
+                        onChange={() => setFormData({ ...formData, maintenanceType: 'outsource' })}
+                      />
+                      <label className="btn btn-outline-primary" htmlFor="maintenanceOutsource">
+                        Thuê ngoài
+                      </label>
                     </div>
                   </div>
-                  
-                  {/* Show selected devices */}
-                  {selectedDevices.length > 0 && (
+                </div>
+
+                {/* Outsource Fields */}
+                {formData.maintenanceType === 'outsource' && (
+                  <>
                     <div className="row mb-3">
                       <div className="col-md-12">
-                        <label className="form-label">Danh sách thiết bị đã chọn:</label>
-                        <div className="card">
-                          <div className="card-body">
-                            <div className="table-responsive" style={{ maxHeight: '300px' }}>
-                              <table className="table table-sm table-hover mb-0">
-                                <thead className="table-light sticky-top">
-                                  <tr>
-                                    <th style={{ width: '50px' }}>ID</th>
-                                    <th>Tên thiết bị</th>
-                                    <th>Serial</th>
-                                    <th>Danh mục</th>
-                                    <th>Phòng ban</th>
-                                    <th>Trạng thái</th>
-                                    <th style={{ width: '80px' }}>Thao tác</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {selectedDevices.map((device) => (
-                                    <tr key={device.id}>
-                                      <td>{device.id}</td>
-                                      <td>{device.name || '-'}</td>
-                                      <td>{device.serial || '-'}</td>
-                                      <td>{device.deviceCategoryName || '-'}</td>
-                                      <td>{device.departmentName || '-'}</td>
-                                      <td>
-                                        {device.status === 1 && <span className="badge bg-success">Đang sử dụng</span>}
-                                        {device.status === 2 && <span className="badge bg-warning">Đang sửa chữa</span>}
-                                        {device.status === 3 && <span className="badge bg-danger">Hư hỏng</span>}
-                                        {device.status === 4 && <span className="badge bg-secondary">Đã thanh lý</span>}
-                                      </td>
-                                      <td>
-                                        <button
-                                          type="button"
-                                          className="btn btn-sm btn-outline-danger"
-                                          onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            // Remove device from both deviceIds and selectedDevices
-                                            const deviceIdToRemove = device.id;
-                                            const newIds = formData.deviceIds.filter((id) => id !== deviceIdToRemove);
-                                            const newSelectedDevices = selectedDevices.filter((d) => d.id !== deviceIdToRemove);
-                                            
-                                            // Update both states
-                                            setFormData((prev) => ({ ...prev, deviceIds: newIds }));
-                                            setSelectedDevices(newSelectedDevices);
-                                          }}
-                                          title="Xóa"
-                                        >
-                                          <i className="fas fa-times"></i>
-                                        </button>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        </div>
-                  </div>
-                </div>
-                  )}
-                </>
-              )}
-
-              {/* Event Type */}
-              <div className="row mb-3">
-                <div className="col-md-12">
-                  <label className="form-label">Loại sự kiện <span className="text-danger">*</span></label>
-                  <select
-                    className="form-select"
-                    value={formData.eventTypeId}
-                    onChange={(e) => setFormData({ ...formData, eventTypeId: parseInt(e.target.value) })}
-                    required
-                  >
-                    <option value="0">-- Chọn loại sự kiện --</option>
-                    {eventTypes.map((et) => (
-                      <option key={et.id} value={et.id}>
-                        {et.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Title */}
-              <div className="row mb-3">
-                <div className="col-md-12">
-                  <label className="form-label">Tiêu đề <span className="text-danger">*</span></label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    placeholder="Ví dụ: Bảo trì định kỳ máy lạnh"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Description */}
-              <div className="row mb-3">
-                <div className="col-md-12">
-                  <label className="form-label">Mô tả</label>
-                  <textarea
-                    className="form-control"
-                    rows={3}
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Mô tả chi tiết về kế hoạch bảo trì"
-                  />
-                </div>
-              </div>
-
-              {/* Interval */}
-              <div className="row mb-3">
-                <div className="col-md-4">
-                  <label className="form-label">Khoảng thời gian <span className="text-danger">*</span></label>
-                  <input
-                    type="number"
-                    className="form-control"
-                    value={formData.intervalValue}
-                    onChange={(e) => setFormData({ ...formData, intervalValue: parseInt(e.target.value) || 0 })}
-                    min="1"
-                    required
-                  />
-                </div>
-                <div className="col-md-8">
-                  <label className="form-label">Đơn vị <span className="text-danger">*</span></label>
-                  <select
-                    className="form-select"
-                    value={formData.intervalUnit}
-                    onChange={(e) => setFormData({ ...formData, intervalUnit: e.target.value as any })}
-                    required
-                  >
-                    <option value="day">Ngày</option>
-                    <option value="week">Tuần</option>
-                    <option value="month">Tháng</option>
-                    <option value="year">Năm</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Dates */}
-              <div className="row mb-3">
-                <div className="col-md-6">
-                  <label className="form-label">Ngày bắt đầu <span className="text-danger">*</span></label>
-                  <DateInput
-                    value={formData.startFrom}
-                    onChange={(value) => setFormData({ ...formData, startFrom: value })}
-                    required
-                  />
-                </div>
-                <div className="col-md-6">
-                  <label className="form-label">Ngày kết thúc (tùy chọn)</label>
-                  <DateInput
-                    value={formData.endAt}
-                    onChange={(value) => setFormData({ ...formData, endAt: value })}
-                  />
-                </div>
-              </div>
-
-              {/* Maintenance Type */}
-              <div className="row mb-3">
-                <div className="col-md-12">
-                  <label className="form-label">Loại bảo trì <span className="text-danger">*</span></label>
-                  <div className="btn-group w-100" role="group">
-                    <input
-                      type="radio"
-                      className="btn-check"
-                      name="maintenanceType"
-                      id="maintenanceInternal"
-                      checked={formData.maintenanceType === 'internal'}
-                      onChange={() => setFormData({ ...formData, maintenanceType: 'internal', maintenanceProvider: '' })}
-                    />
-                    <label className="btn btn-outline-primary" htmlFor="maintenanceInternal">
-                      Nội bộ
-                    </label>
-
-                    <input
-                      type="radio"
-                      className="btn-check"
-                      name="maintenanceType"
-                      id="maintenanceOutsource"
-                      checked={formData.maintenanceType === 'outsource'}
-                      onChange={() => setFormData({ ...formData, maintenanceType: 'outsource' })}
-                    />
-                    <label className="btn btn-outline-primary" htmlFor="maintenanceOutsource">
-                      Thuê ngoài
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              {/* Outsource Fields */}
-              {formData.maintenanceType === 'outsource' && (
-                <>
-                  <div className="row mb-3">
-                    <div className="col-md-12">
-                      <label className="form-label">Nhà cung cấp <span className="text-danger">*</span></label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        value={formData.maintenanceProvider}
-                        onChange={(e) => setFormData({ ...formData, maintenanceProvider: e.target.value })}
-                        placeholder="Tên công ty/nhà cung cấp"
-                        required={formData.maintenanceType === 'outsource'}
-                      />
-                    </div>
-                  </div>
-                  <div className="row mb-3">
-                    <div className="col-md-12">
-                      <label className="form-label">Chi phí dự kiến (VNĐ)</label>
-                      <input
-                        type="number"
-                        className="form-control"
-                        value={formData.cost || ''}
-                        onChange={(e) => setFormData({ ...formData, cost: parseInt(e.target.value) || 0 })}
-                        placeholder="0"
-                        min="0"
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Submit Button */}
-              <div className="row">
-                <div className="col-md-12">
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={submitting}
-                  >
-                    {submitting ? (
-                      <>
-                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                        Đang tạo...
-                      </>
-                    ) : (
-                      <>
-                        <i className="fas fa-save me-2"></i>
-                        Tạo Kế Hoạch
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : activeTab === 'batches' ? (
-        <div>
-          <div className="card">
-            <div className="card-header">
-              <h5 className="mb-0">
-                <i className="fas fa-layer-group me-2"></i>
-                Danh Sách Batch Bảo Trì
-              </h5>
-            </div>
-            <div className="card-body">
-              {batches.length === 0 ? (
-                <div className="text-center py-5 text-muted">
-                  <i className="fas fa-inbox fa-3x mb-3"></i>
-                  <p>Chưa có batch bảo trì nào</p>
-                </div>
-              ) : (
-                <div className="row">
-                  {batches.map((batch) => (
-                    <div key={batch.batchId} className="col-md-6 col-lg-4 mb-4">
-                      <div className="card h-100">
-                        <div className="card-header">
-                          <h6 className="mb-0">{batch.title}</h6>
-                          <small className="text-muted">{batch.batchId}</small>
-                        </div>
-                        <div className="card-body">
-                          <div className="mb-3">
-                            <div className="d-flex justify-content-between mb-2">
-                              <span>Tiến độ:</span>
-                              <strong>{batch.progressPercentage}%</strong>
-                            </div>
-                            <div className="progress" style={{ height: '20px' }}>
-                              <div
-                                className={`progress-bar ${getProgressColor(batch.progressPercentage)}`}
-                                role="progressbar"
-                                style={{ width: `${batch.progressPercentage}%` }}
-                                aria-valuenow={batch.progressPercentage}
-                                aria-valuemin={0}
-                                aria-valuemax={100}
-                              >
-                                {batch.progressPercentage}%
-                              </div>
-                            </div>
-                          </div>
-                          <div className="row text-center">
-                            <div className="col-6 mb-2">
-                              <div className="text-muted small">Tổng</div>
-                              <div className="fw-bold">{batch.totalDevices}</div>
-                            </div>
-                            <div className="col-6 mb-2">
-                              <div className="text-muted small">Hoàn thành</div>
-                              <div className="fw-bold text-success">{batch.completed}</div>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="card-footer">
-                          <button
-                            className="btn btn-sm btn-outline-primary w-100"
-                            onClick={() => handleViewBatch(batch.batchId)}
-                          >
-                            <i className="fas fa-eye me-2"></i>
-                            Xem Chi Tiết
-                          </button>
-                        </div>
+                        <label className="form-label">Nhà cung cấp <span className="text-danger">*</span></label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={formData.maintenanceProvider}
+                          onChange={(e) => setFormData({ ...formData, maintenanceProvider: e.target.value })}
+                          placeholder="Tên công ty/nhà cung cấp"
+                          required={formData.maintenanceType === 'outsource'}
+                        />
                       </div>
                     </div>
-                  ))}
+                    <div className="row mb-3">
+                      <div className="col-md-12">
+                        <label className="form-label">Chi phí dự kiến (VNĐ)</label>
+                        <input
+                          type="number"
+                          className="form-control"
+                          value={formData.cost || ''}
+                          onChange={(e) => setFormData({ ...formData, cost: parseInt(e.target.value) || 0 })}
+                          placeholder="0"
+                          min="0"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Submit Button */}
+                <div className="row">
+                  <div className="col-md-12">
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={submitting}
+                    >
+                      {submitting ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                          Đang tạo...
+                        </>
+                      ) : (
+                        <>
+                          <i className="fas fa-save me-2"></i>
+                          Tạo Kế Hoạch
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-              )}
+              </form>
             </div>
           </div>
-        </div>
-      ) : activeTab === 'plans' || activeTab === 'cancelled' ? (
-        <div>
-          <div className="card">
-            <div className="card-header d-flex justify-content-between align-items-center">
-              <h5 className="mb-0">
-                <i className={`fas ${activeTab === 'plans' ? 'fa-list-alt' : 'fa-ban'} me-2`}></i>
-                {activeTab === 'plans' ? 'Danh Sách Kế Hoạch Đang Hoạt Động' : 'Danh Sách Kế Hoạch Đã Hủy'}
-              </h5>
-              <button className="btn btn-sm btn-primary" onClick={loadAllPlans}>
-                <i className="fas fa-sync me-2"></i>
-                Làm mới
-              </button>
-            </div>
-            <div className="card-body">
-              {allPlans.length === 0 ? (
-                <div className="text-center py-5 text-muted">
-                  <i className="fas fa-inbox fa-3x mb-3"></i>
-                  <p>Chưa có kế hoạch bảo trì nào</p>
-                </div>
-              ) : groupedPlans.length === 0 ? (
-                <div className="text-center py-5 text-muted">
-                  <i className="fas fa-inbox fa-3x mb-3"></i>
-                  <p>{activeTab === 'plans' ? 'Không có kế hoạch đang hoạt động' : 'Không có kế hoạch đã hủy'}</p>
-                </div>
-              ) : (
-                <div className="accordion" id="plansAccordion">
-                  {groupedPlans.map((group, groupIndex) => {
-                    const collapseId = `collapse-${group.batchId}`;
-                    const isExpanded = expandedGroups.has(group.batchId);
-                    
-                    const toggleGroup = () => {
-                      setExpandedGroups((prev) => {
-                        const newSet = new Set(prev);
-                        if (newSet.has(group.batchId)) {
-                          newSet.delete(group.batchId);
-                        } else {
-                          newSet.add(group.batchId);
-                        }
-                        return newSet;
-                      });
-                    };
-                    
-                    // Tính toán màu sắc cho header dựa trên ngày đến hạn
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    let headerBgClass = '';
-                    if (group.nextMaintenanceDate) {
-                      const nextDate = new Date(group.nextMaintenanceDate);
-                      nextDate.setHours(0, 0, 0, 0);
-                      const daysUntilDue = Math.ceil((nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                      
-                      if (daysUntilDue < 0) {
-                        // Quá hạn - màu đỏ nhạt
-                        headerBgClass = 'bg-danger bg-opacity-10';
-                      } else if (daysUntilDue <= 30) {
-                        // Gần đến hạn (<= 30 ngày) - màu cam nhạt
-                        headerBgClass = 'bg-warning bg-opacity-10';
-                      } else {
-                        // Còn xa (> 30 ngày) - màu xanh nhạt
-                        headerBgClass = 'bg-success bg-opacity-10';
-                      }
-                    }
-                    
-                    return (
-                      <div key={group.batchId} className="accordion-item mb-3">
-                        <h2 className="accordion-header" id={`heading-${group.batchId}`}>
-                          <button
-                            className={`accordion-button ${isExpanded ? '' : 'collapsed'} ${headerBgClass}`}
-                            type="button"
-                            onClick={toggleGroup}
-                            aria-expanded={isExpanded}
-                            aria-controls={collapseId}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            <div className="d-flex justify-content-between align-items-center w-100 me-3">
-                              {/* Bên trái: Tiêu đề, Batch ID, Lịch trình - chia 2 hàng */}
-                              <div className="d-flex flex-column gap-2">
-                                {/* Hàng trên: Tiêu đề và Batch ID */}
-                                <div className="d-flex align-items-center gap-2">
-                                  <i className="fas fa-layer-group text-primary"></i>
-                                  <strong>{group.title}</strong>
-                                  {group.batchId !== 'no-batch' && (
-                                    <span className="badge bg-secondary small">{group.batchId}</span>
-                                  )}
+        ) : activeTab === 'batches' ? (
+          <div>
+            <div className="card">
+              <div className="card-header">
+                <h5 className="mb-0">
+                  <i className="fas fa-layer-group me-2"></i>
+                  Danh Sách Batch Bảo Trì
+                </h5>
+              </div>
+              <div className="card-body">
+                {batches.length === 0 ? (
+                  <div className="text-center py-5 text-muted">
+                    <i className="fas fa-inbox fa-3x mb-3"></i>
+                    <p>Chưa có batch bảo trì nào</p>
+                  </div>
+                ) : (
+                  <div className="row">
+                    {batches.map((batch) => (
+                      <div key={batch.batchId} className="col-md-6 col-lg-4 mb-4">
+                        <div className={`card h-100 ${batch.isCancelled ? 'border-danger border-opacity-25' : ''}`}>
+                          <div className={`card-header d-flex justify-content-between align-items-center ${batch.isCancelled ? 'bg-danger bg-opacity-10 text-danger' : ''}`}>
+                            <div className="text-truncate" style={{ maxWidth: '80%' }}>
+                              <h6 className="mb-0 text-truncate" title={batch.title}>{batch.title}</h6>
+                              <small className={`${batch.isCancelled ? 'text-danger text-opacity-75' : 'text-muted'}`}>{batch.batchId}</small>
+                            </div>
+                            {batch.isCancelled && <span className="badge bg-danger shadow-sm">ĐÃ HỦY</span>}
+                          </div>
+                          <div className="card-body">
+                            <div className="mb-3">
+                              <div className="d-flex justify-content-between mb-2">
+                                <span>Tiến độ:</span>
+                                <div
+                                  className={`progress-bar ${getProgressColor(batch.progressPercentage, batch.isCancelled)}`}
+                                  role="progressbar"
+                                  style={{ width: `${batch.progressPercentage}%` }}
+                                  aria-valuenow={batch.progressPercentage}
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                >
+                                  {batch.progressPercentage}%
                                 </div>
-                                
-                                {/* Hàng dưới: Lịch trình */}
-                                {(group.lastMaintenanceDate || group.nextMaintenanceDate) && (
-                                  <div className="d-flex align-items-center text-muted small">
-                                    <i className="fas fa-calendar-check text-success me-1"></i>
-                                    {group.lastMaintenanceDate ? (
-                                      <>BT trước: <strong className="ms-1">{formatDateDisplay(group.lastMaintenanceDate)}</strong></>
-                                    ) : (
-                                      <>BT trước: <strong className="ms-1">-</strong></>
-                                    )}
-                                    <span className="mx-2">→</span>
-                                    <i className="fas fa-clock text-primary me-1"></i>
-                                    {group.nextMaintenanceDate ? (() => {
-                                      const nextDate = group.nextMaintenanceDate instanceof Date 
-                                        ? group.nextMaintenanceDate 
-                                        : new Date(group.nextMaintenanceDate);
-                                      const today = new Date();
-                                      today.setHours(0, 0, 0, 0);
-                                      nextDate.setHours(0, 0, 0, 0);
-                                      const daysUntilDue = Math.ceil((nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                                      return (
-                                        <>BT sắp đến: <strong className="ms-1">{formatDateDisplay(group.nextMaintenanceDate)}</strong> <span className="text-muted">(còn lại {daysUntilDue > 0 ? `${daysUntilDue} ngày` : daysUntilDue === 0 ? 'hôm nay' : `quá ${Math.abs(daysUntilDue)} ngày`})</span></>
-                                      );
-                                    })() : (
-                                      <>BT sắp đến: <strong className="ms-1">-</strong></>
+                              </div>
+                            </div>
+                            <div className="row text-center">
+                              <div className="col-4 mb-2">
+                                <div className="text-muted small">Tổng</div>
+                                <div className="fw-bold">{batch.totalDevices}</div>
+                              </div>
+                              <div className="col-4 mb-2">
+                                <div className="text-muted small">Đang chạy</div>
+                                <div className="fw-bold text-primary">{batch.activePlansCount || 0}</div>
+                              </div>
+                              <div className="col-4 mb-2">
+                                <div className="text-muted small">Xong</div>
+                                <div className="fw-bold text-success">{batch.completed}</div>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="card-footer">
+                            <button
+                              className="btn btn-sm btn-outline-primary w-100"
+                              onClick={() => handleViewBatch(batch.batchId)}
+                            >
+                              <i className="fas fa-eye me-2"></i>
+                              Xem Chi Tiết
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : activeTab === 'plans' || activeTab === 'cancelled' ? (
+          <div>
+            <div className="card">
+              <div className="card-header d-flex justify-content-between align-items-center">
+                <h5 className="mb-0">
+                  <i className={`fas ${activeTab === 'plans' ? 'fa-list-alt' : 'fa-ban'} me-2`}></i>
+                  {activeTab === 'plans' ? 'Danh Sách Kế Hoạch Đang Hoạt Động' : 'Danh Sách Kế Hoạch Đã Hủy'}
+                </h5>
+                <button className="btn btn-sm btn-primary" onClick={loadAllPlans}>
+                  <i className="fas fa-sync me-2"></i>
+                  Làm mới
+                </button>
+              </div>
+              <div className="card-body">
+                {allPlans.length === 0 ? (
+                  <div className="text-center py-5 text-muted">
+                    <i className="fas fa-inbox fa-3x mb-3"></i>
+                    <p>Chưa có kế hoạch bảo trì nào</p>
+                  </div>
+                ) : groupedPlans.length === 0 ? (
+                  <div className="text-center py-5 text-muted">
+                    <i className="fas fa-inbox fa-3x mb-3"></i>
+                    <p>{activeTab === 'plans' ? 'Không có kế hoạch đang hoạt động' : 'Không có kế hoạch đã hủy'}</p>
+                  </div>
+                ) : (
+                  <div className="accordion" id="plansAccordion">
+                    {groupedPlans.map((group, groupIndex) => {
+                      const collapseId = `collapse-${group.batchId}`;
+                      const isExpanded = expandedGroups.has(group.batchId);
+
+                      const toggleGroup = () => {
+                        setExpandedGroups((prev) => {
+                          const newSet = new Set(prev);
+                          if (newSet.has(group.batchId)) {
+                            newSet.delete(group.batchId);
+                          } else {
+                            newSet.add(group.batchId);
+                          }
+                          return newSet;
+                        });
+                      };
+
+                      // Tính toán màu sắc cho header dựa trên ngày đến hạn
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      let headerBgClass = '';
+                      if (group.nextMaintenanceDate) {
+                        const nextDate = new Date(group.nextMaintenanceDate);
+                        nextDate.setHours(0, 0, 0, 0);
+                        const daysUntilDue = Math.ceil((nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+                        if (daysUntilDue < 0) {
+                          // Quá hạn - màu đỏ nhạt
+                          headerBgClass = 'bg-danger bg-opacity-10';
+                        } else if (daysUntilDue <= 30) {
+                          // Gần đến hạn (<= 30 ngày) - màu cam nhạt
+                          headerBgClass = 'bg-warning bg-opacity-10';
+                        } else {
+                          // Còn xa (> 30 ngày) - màu xanh nhạt
+                          headerBgClass = 'bg-success bg-opacity-10';
+                        }
+                      }
+
+                      return (
+                        <div key={group.batchId} className="accordion-item mb-3">
+                          <h2 className="accordion-header" id={`heading-${group.batchId}`}>
+                            <button
+                              className={`accordion-button ${isExpanded ? '' : 'collapsed'} ${headerBgClass}`}
+                              type="button"
+                              onClick={toggleGroup}
+                              aria-expanded={isExpanded}
+                              aria-controls={collapseId}
+                              style={{ cursor: 'pointer' }}
+                            >
+                              <div className="d-flex justify-content-between align-items-center w-100 me-3">
+                                {/* Bên trái: Tiêu đề, Batch ID, Lịch trình - chia 2 hàng */}
+                                <div className="d-flex flex-column gap-2">
+                                  {/* Hàng trên: Tiêu đề và Batch ID */}
+                                  <div className="d-flex align-items-center gap-2">
+                                    <i className="fas fa-layer-group text-primary"></i>
+                                    <strong>{group.title}</strong>
+                                    {group.batchId !== 'no-batch' && (
+                                      <span className="badge bg-secondary small">{group.batchId}</span>
                                     )}
                                   </div>
-                                )}
-                              </div>
-                              
-                              {/* Bên phải: Thông tin thiết bị, badges và action buttons - chia 2 hàng, căn lề phải */}
-                              <div className="d-flex flex-column align-items-end gap-2 flex-shrink-0">
-                                {/* Hàng trên: Thông tin thiết bị và badges */}
-                                <div className="d-flex align-items-center gap-2">
-                                  <span className="text-muted small">
-                                    <i className="fas fa-boxes me-1"></i>
-                                    {group.totalDevices} thiết bị
-                                  </span>
-                                  <span className="badge bg-success small">{group.activeCount} hoạt động</span>
-                                  {activeTab === 'plans' ? null : group.inactiveCount > 0 && (
-                                    <span className="badge bg-secondary small">{group.inactiveCount} đã hủy</span>
-                                  )}
-                                  {group.maintenanceType === 'outsource' && group.maintenanceProvider && (
-                                    <span className="text-info small">
-                                      <i className="fas fa-building me-1"></i>
-                                      {group.maintenanceProvider}
-                                    </span>
-                                  )}
-                                  {group.maintenanceType === 'internal' && (
-                                    <span className="badge bg-primary small">Nội bộ</span>
+
+                                  {/* Hàng dưới: Lịch trình */}
+                                  {(group.lastMaintenanceDate || group.nextMaintenanceDate) && (
+                                    <div className="d-flex align-items-center text-muted small">
+                                      <i className="fas fa-calendar-check text-success me-1"></i>
+                                      {group.lastMaintenanceDate ? (
+                                        <>BT trước: <strong className="ms-1">{formatDateDisplay(group.lastMaintenanceDate)}</strong></>
+                                      ) : (
+                                        <>BT trước: <strong className="ms-1">-</strong></>
+                                      )}
+                                      <span className="mx-2">→</span>
+                                      <i className="fas fa-clock text-primary me-1"></i>
+                                      {group.nextMaintenanceDate ? (() => {
+                                        const nextDate = group.nextMaintenanceDate instanceof Date
+                                          ? group.nextMaintenanceDate
+                                          : new Date(group.nextMaintenanceDate);
+                                        const today = new Date();
+                                        today.setHours(0, 0, 0, 0);
+                                        nextDate.setHours(0, 0, 0, 0);
+                                        const daysUntilDue = Math.ceil((nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                                        return (
+                                          <>BT sắp đến: <strong className="ms-1">{formatDateDisplay(group.nextMaintenanceDate)}</strong> <span className="text-muted">(còn lại {daysUntilDue > 0 ? `${daysUntilDue} ngày` : daysUntilDue === 0 ? 'hôm nay' : `quá ${Math.abs(daysUntilDue)} ngày`})</span></>
+                                        );
+                                      })() : (
+                                        <>BT sắp đến: <strong className="ms-1">-</strong></>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
-                                
-                                {/* Hàng dưới: Action buttons */}
-                                <div className="btn-group btn-group-sm" onClick={(e) => e.stopPropagation()}>
+
+                                {/* Bên phải: Thông tin thiết bị, badges và action buttons - chia 2 hàng, căn lề phải */}
+                                <div className="d-flex flex-column align-items-end gap-2 flex-shrink-0">
+                                  {/* Hàng trên: Thông tin thiết bị và badges */}
+                                  <div className="d-flex align-items-center gap-2">
+                                    <span className="text-muted small">
+                                      <i className="fas fa-boxes me-1"></i>
+                                      {group.totalDevices} thiết bị
+                                    </span>
+                                    <span className="badge bg-success small">{group.activeCount} hoạt động</span>
+                                    {activeTab === 'plans' ? null : group.inactiveCount > 0 && (
+                                      <span className="badge bg-secondary small">{group.inactiveCount} đã hủy</span>
+                                    )}
+                                    {group.maintenanceType === 'outsource' && group.maintenanceProvider && (
+                                      <span className="text-info small">
+                                        <i className="fas fa-building me-1"></i>
+                                        {group.maintenanceProvider}
+                                      </span>
+                                    )}
+                                    {group.maintenanceType === 'internal' && (
+                                      <span className="badge bg-primary small">Nội bộ</span>
+                                    )}
+                                  </div>
+
+                                  {/* Hàng dưới: Action buttons */}
+                                  <div className="btn-group btn-group-sm" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                      className="btn btn-outline-info"
+                                      onClick={() => {
+                                        setSelectedGroup({
+                                          batchId: group.batchId,
+                                          title: group.title,
+                                          plans: group.plans,
+                                        });
+                                        setShowViewPlanModal(true);
+                                      }}
+                                      title="Xem chi tiết kế hoạch"
+                                    >
+                                      <i className="fas fa-eye d-md-none"></i>
+                                      <i className="fas fa-eye d-none d-md-inline me-1"></i>
+                                      <span className="d-none d-md-inline">Xem</span>
+                                    </button>
+                                    {group.activeCount > 0 && (
+                                      <>
+                                        {(() => {
+                                          // Kiểm tra xem có plan nào đã đến hạn không
+                                          const today = new Date();
+                                          today.setHours(0, 0, 0, 0);
+                                          const hasDuePlans = group.plans.some((plan) => {
+                                            if (!plan.isActive || !plan.nextDueDate) return false;
+                                            const dueDate = new Date(plan.nextDueDate);
+                                            dueDate.setHours(0, 0, 0, 0);
+                                            return dueDate <= today;
+                                          });
+
+                                          return hasDuePlans ? (
+                                            <button
+                                              className="btn btn-outline-success"
+                                              onClick={() => {
+                                                setSelectedGroup(group);
+                                                setBatchCompleteDate(formatDateInput(new Date()));
+                                                setBatchCompleteNotes('');
+                                                setBatchCompleteStaffId(null);
+                                                loadStaffList();
+                                                setShowBatchCompleteModal(true);
+                                              }}
+                                              title="Đã xong tất cả"
+                                            >
+                                              <i className="fas fa-check-double d-md-none"></i>
+                                              <i className="fas fa-check-double d-none d-md-inline me-1"></i>
+                                              <span className="d-none d-md-inline">Đã xong</span>
+                                            </button>
+                                          ) : null;
+                                        })()}
+                                        <button
+                                          className="btn btn-outline-info"
+                                          onClick={() => {
+                                            setSelectedGroupForInterval({
+                                              batchId: group.batchId,
+                                              title: group.title,
+                                              plans: group.plans,
+                                            });
+                                            // Lấy chu kỳ từ plan đầu tiên (tất cả plans trong batch có cùng chu kỳ)
+                                            const firstPlan = group.plans.find(p => p.isActive) || group.plans[0];
+                                            setEditIntervalValue(firstPlan?.intervalValue || 6);
+                                            setEditIntervalUnit((firstPlan?.intervalUnit as 'day' | 'week' | 'month' | 'year') || 'month');
+                                            setShowEditIntervalModal(true);
+                                          }}
+                                          title="Sửa chu kỳ"
+                                        >
+                                          <i className="fas fa-edit d-md-none"></i>
+                                          <i className="fas fa-edit d-none d-md-inline me-1"></i>
+                                          <span className="d-none d-md-inline">Sửa chu kỳ</span>
+                                        </button>
+                                        <button
+                                          className="btn btn-outline-warning"
+                                          onClick={() => {
+                                            setSelectedGroup(group);
+                                            // Set default date to earliest nextDueDate or today
+                                            const earliestDate = group.plans
+                                              .filter(p => p.isActive && p.nextDueDate)
+                                              .map(p => p.nextDueDate ? new Date(p.nextDueDate) : null)
+                                              .filter(d => d !== null)
+                                              .sort((a, b) => (a?.getTime() || 0) - (b?.getTime() || 0))[0];
+                                            setBatchRescheduleDate(earliestDate ? formatDateInput(earliestDate) : formatDateInput(new Date()));
+                                            setShowBatchRescheduleModal(true);
+                                          }}
+                                          title="Dời lịch tất cả"
+                                        >
+                                          <i className="fas fa-calendar-alt d-md-none"></i>
+                                          <i className="fas fa-calendar-alt d-none d-md-inline me-1"></i>
+                                          <span className="d-none d-md-inline">Dời lịch</span>
+                                        </button>
+                                        <button
+                                          className="btn btn-outline-danger"
+                                          onClick={() => {
+                                            setSelectedGroup(group);
+                                            setShowBatchCancelModal(true);
+                                          }}
+                                          title="Hủy tất cả"
+                                        >
+                                          <i className="fas fa-times d-md-none"></i>
+                                          <i className="fas fa-times d-none d-md-inline me-1"></i>
+                                          <span className="d-none d-md-inline">Hủy</span>
+                                        </button>
+                                      </>
+                                    )}
+                                    <button
+                                      className="btn btn-outline-danger"
+                                      onClick={() => handleBatchDelete(group)}
+                                      title="Xóa tất cả"
+                                    >
+                                      <i className="fas fa-trash d-md-none"></i>
+                                      <i className="fas fa-trash d-none d-md-inline me-1"></i>
+                                      <span className="d-none d-md-inline">Xóa</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </button>
+                          </h2>
+                          <div
+                            id={collapseId}
+                            className={`accordion-collapse collapse ${isExpanded ? 'show' : ''}`}
+                            aria-labelledby={`heading-${group.batchId}`}
+                          >
+                            <div className="accordion-body p-0">
+                              {group.canModifyDevices && (
+                                <div className="d-flex justify-content-end gap-2 p-3 pb-0">
                                   <button
-                                    className="btn btn-outline-info"
+                                    className="btn btn-outline-success btn-sm"
                                     onClick={() => {
-                                      setSelectedGroup({
+                                      setSelectedGroupForDevices({
                                         batchId: group.batchId,
                                         title: group.title,
                                         plans: group.plans,
+                                        metadata: group.metadata,
                                       });
-                                      setShowViewPlanModal(true);
+                                      setDevicesToAdd([]);
+                                      loadAllDevicesForModal();
+                                      setShowAddDevicesModal(true);
                                     }}
-                                    title="Xem chi tiết kế hoạch"
+                                    title="Thêm thiết bị"
                                   >
-                                    <i className="fas fa-eye d-md-none"></i>
-                                    <i className="fas fa-eye d-none d-md-inline me-1"></i>
-                                    <span className="d-none d-md-inline">Xem</span>
+                                    <i className="fas fa-plus"></i>
                                   </button>
-                                  {group.activeCount > 0 && (
-                                    <>
-                                      {(() => {
-                                        // Kiểm tra xem có plan nào đã đến hạn không
-                                        const today = new Date();
-                                        today.setHours(0, 0, 0, 0);
-                                        const hasDuePlans = group.plans.some((plan) => {
-                                          if (!plan.isActive || !plan.nextDueDate) return false;
-                                          const dueDate = new Date(plan.nextDueDate);
-                                          dueDate.setHours(0, 0, 0, 0);
-                                          return dueDate <= today;
-                                        });
-                                        
-                                        return hasDuePlans ? (
-                                          <button
-                                            className="btn btn-outline-success"
-                                            onClick={() => {
-                                              setSelectedGroup(group);
-                                              setBatchCompleteDate(formatDateInput(new Date()));
-                                              setBatchCompleteNotes('');
-                                              setBatchCompleteStaffId(null);
-                                              loadStaffList();
-                                              setShowBatchCompleteModal(true);
-                                            }}
-                                            title="Đã xong tất cả"
-                                          >
-                                            <i className="fas fa-check-double d-md-none"></i>
-                                            <i className="fas fa-check-double d-none d-md-inline me-1"></i>
-                                            <span className="d-none d-md-inline">Đã xong</span>
-                                          </button>
-                                        ) : null;
-                                      })()}
-                                      <button
-                                        className="btn btn-outline-info"
-                                        onClick={() => {
-                                          setSelectedGroupForInterval({
-                                            batchId: group.batchId,
-                                            title: group.title,
-                                            plans: group.plans,
-                                          });
-                                          // Lấy chu kỳ từ plan đầu tiên (tất cả plans trong batch có cùng chu kỳ)
-                                          const firstPlan = group.plans.find(p => p.isActive) || group.plans[0];
-                                          setEditIntervalValue(firstPlan?.intervalValue || 6);
-                                          setEditIntervalUnit((firstPlan?.intervalUnit as 'day' | 'week' | 'month' | 'year') || 'month');
-                                          setShowEditIntervalModal(true);
-                                        }}
-                                        title="Sửa chu kỳ"
-                                      >
-                                        <i className="fas fa-edit d-md-none"></i>
-                                        <i className="fas fa-edit d-none d-md-inline me-1"></i>
-                                        <span className="d-none d-md-inline">Sửa chu kỳ</span>
-                                      </button>
-                                      <button
-                                        className="btn btn-outline-warning"
-                                        onClick={() => {
-                                          setSelectedGroup(group);
-                                          // Set default date to earliest nextDueDate or today
-                                          const earliestDate = group.plans
-                                            .filter(p => p.isActive && p.nextDueDate)
-                                            .map(p => p.nextDueDate ? new Date(p.nextDueDate) : null)
-                                            .filter(d => d !== null)
-                                            .sort((a, b) => (a?.getTime() || 0) - (b?.getTime() || 0))[0];
-                                          setBatchRescheduleDate(earliestDate ? formatDateInput(earliestDate) : formatDateInput(new Date()));
-                                          setShowBatchRescheduleModal(true);
-                                        }}
-                                        title="Dời lịch tất cả"
-                                      >
-                                        <i className="fas fa-calendar-alt d-md-none"></i>
-                                        <i className="fas fa-calendar-alt d-none d-md-inline me-1"></i>
-                                        <span className="d-none d-md-inline">Dời lịch</span>
-                                      </button>
-                                      <button
-                                        className="btn btn-outline-danger"
-                                        onClick={() => {
-                                          setSelectedGroup(group);
-                                          setShowBatchCancelModal(true);
-                                        }}
-                                        title="Hủy tất cả"
-                                      >
-                                        <i className="fas fa-times d-md-none"></i>
-                                        <i className="fas fa-times d-none d-md-inline me-1"></i>
-                                        <span className="d-none d-md-inline">Hủy</span>
-                                      </button>
-                                    </>
-                                  )}
                                   <button
-                                    className="btn btn-outline-danger"
-                                    onClick={() => handleBatchDelete(group)}
-                                    title="Xóa tất cả"
+                                    className="btn btn-outline-secondary btn-sm"
+                                    onClick={async () => {
+                                      setSelectedGroupForDevices({
+                                        batchId: group.batchId,
+                                        title: group.title,
+                                        plans: group.plans,
+                                        metadata: group.metadata,
+                                      });
+                                      setDevicesToRemove([]);
+                                      await loadAllDevicesForModal();
+                                      setShowRemoveDevicesModal(true);
+                                    }}
+                                    title="Bớt thiết bị"
                                   >
-                                    <i className="fas fa-trash d-md-none"></i>
-                                    <i className="fas fa-trash d-none d-md-inline me-1"></i>
-                                    <span className="d-none d-md-inline">Xóa</span>
+                                    <i className="fas fa-minus"></i>
                                   </button>
                                 </div>
-                              </div>
-                            </div>
-                          </button>
-                        </h2>
-                        <div
-                          id={collapseId}
-                          className={`accordion-collapse collapse ${isExpanded ? 'show' : ''}`}
-                          aria-labelledby={`heading-${group.batchId}`}
-                        >
-                          <div className="accordion-body p-0">
-                            {group.canModifyDevices && (
-                              <div className="d-flex justify-content-end gap-2 p-3 pb-0">
-                                <button
-                                  className="btn btn-outline-success btn-sm"
-                                  onClick={() => {
-                                    setSelectedGroupForDevices({
-                                      batchId: group.batchId,
-                                      title: group.title,
-                                      plans: group.plans,
-                                      metadata: group.metadata,
-                                    });
-                                    setDevicesToAdd([]);
-                                    loadAllDevicesForModal();
-                                    setShowAddDevicesModal(true);
-                                  }}
-                                  title="Thêm thiết bị"
-                                >
-                                  <i className="fas fa-plus"></i>
-                                </button>
-                                <button
-                                  className="btn btn-outline-secondary btn-sm"
-                                  onClick={async () => {
-                                    setSelectedGroupForDevices({
-                                      batchId: group.batchId,
-                                      title: group.title,
-                                      plans: group.plans,
-                                      metadata: group.metadata,
-                                    });
-                                    setDevicesToRemove([]);
-                                    await loadAllDevicesForModal();
-                                    setShowRemoveDevicesModal(true);
-                                  }}
-                                  title="Bớt thiết bị"
-                                >
-                                  <i className="fas fa-minus"></i>
-                                </button>
-                              </div>
-                            )}
-                <div className="table-responsive">
-                              <table className="table table-hover mb-0">
-                                <thead className="table-light">
-                      <tr>
-                        <th>Thiết Bị</th>
-                        <th>Loại Sự Kiện</th>
-                        <th>Ngày Bắt Đầu</th>
-                        <th>Ngày Đến Hạn</th>
-                        <th>Chu Kỳ</th>
-                                    <th>Trạng Thái Kế Hoạch</th>
-                                    <th>Trạng Thái Event</th>
-                        <th>Thao Tác</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                                  {group.plans.map((plan) => {
-                                    const event = planEvents[plan.id];
-                                    const hasEvent = !!event;
-                                    const eventStatus = event?.status;
-                                    
-                                    // Helper function to check if plan is active for event actions
-                                    const isPlanActive = plan.isActive;
-                                    
-                                    return (
-                        <tr key={plan.id}>
-                          <td>
-                            <strong>{plan.deviceName || `Thiết bị #${plan.deviceId}`}</strong>
-                          </td>
-                          <td>{plan.eventTypeName || '-'}</td>
-                          <td>{plan.startFrom ? formatDateDisplay(plan.startFrom) : '-'}</td>
-                          <td>
-                            {plan.nextDueDate ? (
-                              <span className={getDaysUntilDueColor(
-                                plan.nextDueDate
-                                  ? Math.ceil(
-                                      (new Date(plan.nextDueDate).getTime() - new Date().getTime()) /
-                                        (1000 * 60 * 60 * 24)
-                                    )
-                                  : null
-                              )}>
-                                {formatDateDisplay(plan.nextDueDate)}
-                              </span>
-                            ) : (
-                              '-'
-                            )}
-                          </td>
-                          <td>
-                            {plan.intervalValue && plan.intervalUnit
-                              ? `${plan.intervalValue} ${plan.intervalUnit === 'day' ? 'ngày' : plan.intervalUnit === 'week' ? 'tuần' : plan.intervalUnit === 'month' ? 'tháng' : 'năm'}`
-                              : '-'}
-                          </td>
-                          <td>
-                            {plan.isActive ? (
-                              <span className="badge bg-success">Hoạt động</span>
-                            ) : (
-                              <span className="badge bg-secondary">Đã hủy</span>
-                            )}
-                          </td>
-                          <td>
-                                          {hasEvent ? (() => {
-                                            // Kiểm tra nếu đã hoàn thành và đã qua ngày hôm nay (chỉ cho lịch đang hoạt động)
-                                            let displayStatus = eventStatus;
-                                            let displayText = '';
-                                            let badgeClass = '';
-                                            
-                                            if (eventStatus === 'completed') {
-                                              // Chỉ áp dụng logic "Chờ đợt tiếp theo" cho lịch đang hoạt động
-                                              if (plan.isActive) {
-                                                const today = new Date();
-                                                today.setHours(0, 0, 0, 0);
-                                                
-                                                // Kiểm tra endDate hoặc eventDate
-                                                const endDate = event?.endDate ? new Date(event.endDate) : null;
-                                                const eventDate = event?.eventDate ? new Date(event.eventDate) : null;
-                                                const completedDate = endDate || eventDate;
-                                                
-                                                if (completedDate) {
-                                                  completedDate.setHours(0, 0, 0, 0);
-                                                  // Nếu đã qua ngày hôm nay, hiển thị "Chờ đợt tiếp theo"
-                                                  if (completedDate < today) {
-                                                    displayText = 'Chờ đợt tiếp theo';
-                                                    badgeClass = 'bg-secondary';
+                              )}
+                              <div className="table-responsive">
+                                <table className="table table-hover mb-0">
+                                  <thead className="table-light">
+                                    <tr>
+                                      <th>Thiết Bị</th>
+                                      <th>Loại Sự Kiện</th>
+                                      <th>Ngày Bắt Đầu</th>
+                                      <th>Ngày Đến Hạn</th>
+                                      <th>Chu Kỳ</th>
+                                      <th>Trạng Thái Kế Hoạch</th>
+                                      <th>Trạng Thái Event</th>
+                                      <th>Thao Tác</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {group.plans.map((plan) => {
+                                      const event = planEvents[plan.id];
+                                      const hasEvent = !!event;
+                                      const eventStatus = event?.status;
+
+                                      // Helper function to check if plan is active for event actions
+                                      const isPlanActive = plan.isActive;
+
+                                      return (
+                                        <tr key={plan.id}>
+                                          <td>
+                                            <strong>{plan.deviceName || `Thiết bị #${plan.deviceId}`}</strong>
+                                          </td>
+                                          <td>{plan.eventTypeName || '-'}</td>
+                                          <td>{plan.startFrom ? formatDateDisplay(plan.startFrom) : '-'}</td>
+                                          <td>
+                                            {plan.nextDueDate ? (
+                                              <span className={getDaysUntilDueColor(
+                                                plan.nextDueDate
+                                                  ? Math.ceil(
+                                                    (new Date(plan.nextDueDate).getTime() - new Date().getTime()) /
+                                                    (1000 * 60 * 60 * 24)
+                                                  )
+                                                  : null
+                                              )}>
+                                                {formatDateDisplay(plan.nextDueDate)}
+                                              </span>
+                                            ) : (
+                                              '-'
+                                            )}
+                                          </td>
+                                          <td>
+                                            {plan.intervalValue && plan.intervalUnit
+                                              ? `${plan.intervalValue} ${plan.intervalUnit === 'day' ? 'ngày' : plan.intervalUnit === 'week' ? 'tuần' : plan.intervalUnit === 'month' ? 'tháng' : 'năm'}`
+                                              : '-'}
+                                          </td>
+                                          <td>
+                                            {plan.isActive ? (
+                                              <span className="badge bg-success">Hoạt động</span>
+                                            ) : (
+                                              <span className="badge bg-secondary">Đã hủy</span>
+                                            )}
+                                          </td>
+                                          <td>
+                                            {hasEvent ? (() => {
+                                              // Kiểm tra nếu đã hoàn thành và đã qua ngày hôm nay (chỉ cho lịch đang hoạt động)
+                                              let displayStatus = eventStatus;
+                                              let displayText = '';
+                                              let badgeClass = '';
+
+                                              if (eventStatus === 'completed') {
+                                                // Chỉ áp dụng logic "Chờ đợt tiếp theo" cho lịch đang hoạt động
+                                                if (plan.isActive) {
+                                                  const today = new Date();
+                                                  today.setHours(0, 0, 0, 0);
+
+                                                  // Kiểm tra endDate hoặc eventDate
+                                                  const endDate = event?.endDate ? new Date(event.endDate) : null;
+                                                  const eventDate = event?.eventDate ? new Date(event.eventDate) : null;
+                                                  const completedDate = endDate || eventDate;
+
+                                                  if (completedDate) {
+                                                    completedDate.setHours(0, 0, 0, 0);
+                                                    // Nếu đã qua ngày hôm nay, hiển thị "Chờ đợt tiếp theo"
+                                                    if (completedDate < today) {
+                                                      displayText = 'Chờ đợt tiếp theo';
+                                                      badgeClass = 'bg-secondary';
+                                                    } else {
+                                                      displayText = 'Đã hoàn thành';
+                                                      badgeClass = 'bg-success';
+                                                    }
                                                   } else {
                                                     displayText = 'Đã hoàn thành';
                                                     badgeClass = 'bg-success';
                                                   }
                                                 } else {
+                                                  // Lịch đã hủy, luôn hiển thị "Đã hoàn thành"
                                                   displayText = 'Đã hoàn thành';
                                                   badgeClass = 'bg-success';
                                                 }
+                                              } else if (eventStatus === 'in_progress') {
+                                                displayText = 'Đang tiến hành';
+                                                badgeClass = 'bg-info';
+                                              } else if (eventStatus === 'planned') {
+                                                displayText = 'Đã lên kế hoạch';
+                                                badgeClass = 'bg-secondary';
                                               } else {
-                                                // Lịch đã hủy, luôn hiển thị "Đã hoàn thành"
-                                                displayText = 'Đã hoàn thành';
-                                                badgeClass = 'bg-success';
+                                                displayText = 'Đã hủy';
+                                                badgeClass = 'bg-danger';
                                               }
-                                            } else if (eventStatus === 'in_progress') {
-                                              displayText = 'Đang tiến hành';
-                                              badgeClass = 'bg-info';
-                                            } else if (eventStatus === 'planned') {
-                                              displayText = 'Đã lên kế hoạch';
-                                              badgeClass = 'bg-secondary';
-                                            } else {
-                                              displayText = 'Đã hủy';
-                                              badgeClass = 'bg-danger';
-                                            }
-                                            
-                                            return (
-                                              <span className={`badge ${badgeClass}`}>
-                                                {displayText}
+
+                                              return (
+                                                <span className={`badge ${badgeClass}`}>
+                                                  {displayText}
+                                                </span>
+                                              );
+                                            })() : (
+                                              <span className="badge bg-light text-dark">Chưa có event</span>
+                                            )}
+                                          </td>
+                                          <td className="text-end">
+                                            {plan.isActive ? (
+                                              <div className="btn-group btn-group-sm d-inline-flex">
+                                                {/* Event actions */}
+                                                {hasEvent && eventStatus === 'planned' && (
+                                                  <button
+                                                    className="btn btn-primary"
+                                                    onClick={() => {
+                                                      setSelectedEvent(event);
+                                                      setStartStaffId(event.staffId || null);
+                                                      setStartNotes('');
+                                                      loadStaffList();
+                                                      setShowStartModal(true);
+                                                    }}
+                                                    title="Bắt đầu bảo trì"
+                                                  >
+                                                    <i className="fas fa-play me-1"></i>
+                                                    Bắt đầu
+                                                  </button>
+                                                )}
+                                                {hasEvent && eventStatus === 'in_progress' && (
+                                                  <button
+                                                    className="btn btn-success"
+                                                    onClick={() => {
+                                                      setSelectedEvent(event);
+                                                      setCompleteDate(formatDateInput(new Date()));
+                                                      setCompleteNotes('');
+                                                      setCompleteStaffId(event.staffId || null);
+                                                      loadStaffList();
+                                                      setShowCompleteModal(true);
+                                                    }}
+                                                    title="Ghi nhận hoàn thành"
+                                                  >
+                                                    <i className="fas fa-check me-1"></i>
+                                                    Hoàn thành
+                                                  </button>
+                                                )}
+
+                                                {/* Plan actions */}
+                                                <button
+                                                  className="btn btn-outline-warning"
+                                                  onClick={() => {
+                                                    setSelectedPlan(plan);
+                                                    setRescheduleDate(plan.nextDueDate ? formatDateInput(plan.nextDueDate) : formatDateInput(new Date()));
+                                                    setShowRescheduleModal(true);
+                                                  }}
+                                                  title="Dời lịch"
+                                                >
+                                                  <i className="fas fa-calendar-alt"></i>
+                                                </button>
+                                                <button
+                                                  className="btn btn-outline-danger"
+                                                  onClick={() => {
+                                                    setSelectedPlan(plan);
+                                                    setShowCancelModal(true);
+                                                  }}
+                                                  title="Hủy"
+                                                >
+                                                  <i className="fas fa-times"></i>
+                                                </button>
+                                                <button
+                                                  className="btn btn-outline-danger"
+                                                  onClick={() => handleDeletePlan(plan.id)}
+                                                  title="Xóa"
+                                                >
+                                                  <i className="fas fa-trash"></i>
+                                                </button>
+                                              </div>
+                                            ) : (
+                                              <span className="text-muted small">
+                                                <i className="fas fa-lock me-1"></i>
+                                                Chỉ xem
                                               </span>
-                                            );
-                                          })() : (
-                                            <span className="badge bg-light text-dark">Chưa có event</span>
-                            )}
-                          </td>
-                                        <td className="text-end">
-                                          {plan.isActive ? (
-                                            <div className="btn-group btn-group-sm d-inline-flex">
-                                              {/* Event actions */}
-                                              {hasEvent && eventStatus === 'planned' && (
-                                                <button
-                                                  className="btn btn-primary"
-                                                  onClick={() => {
-                                                    setSelectedEvent(event);
-                                                    setStartStaffId(event.staffId || null);
-                                                    setStartNotes('');
-                                                    loadStaffList();
-                                                    setShowStartModal(true);
-                                                  }}
-                                                  title="Bắt đầu bảo trì"
-                                                >
-                                                  <i className="fas fa-play me-1"></i>
-                                                  Bắt đầu
-                                                </button>
-                                              )}
-                                              {hasEvent && eventStatus === 'in_progress' && (
-                                                <button
-                                                  className="btn btn-success"
-                                                  onClick={() => {
-                                                    setSelectedEvent(event);
-                                                    setCompleteDate(formatDateInput(new Date()));
-                                                    setCompleteNotes('');
-                                                    setCompleteStaffId(event.staffId || null);
-                                                    loadStaffList();
-                                                    setShowCompleteModal(true);
-                                                  }}
-                                                  title="Ghi nhận hoàn thành"
-                                                >
-                                                  <i className="fas fa-check me-1"></i>
-                                                  Hoàn thành
-                                                </button>
-                                              )}
-                                              
-                                              {/* Plan actions */}
-                                  <button
-                                    className="btn btn-outline-warning"
-                                    onClick={() => {
-                                      setSelectedPlan(plan);
-                                      setRescheduleDate(plan.nextDueDate ? formatDateInput(plan.nextDueDate) : formatDateInput(new Date()));
-                                      setShowRescheduleModal(true);
-                                    }}
-                                    title="Dời lịch"
-                                  >
-                                    <i className="fas fa-calendar-alt"></i>
-                                  </button>
-                                  <button
-                                    className="btn btn-outline-danger"
-                                    onClick={() => {
-                                      setSelectedPlan(plan);
-                                      setShowCancelModal(true);
-                                    }}
-                                    title="Hủy"
-                                  >
-                                    <i className="fas fa-times"></i>
-                                  </button>
-                              <button
-                                className="btn btn-outline-danger"
-                                onClick={() => handleDeletePlan(plan.id)}
-                                title="Xóa"
-                              >
-                                <i className="fas fa-trash"></i>
-                              </button>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
                             </div>
-                                          ) : (
-                                            <span className="text-muted small">
-                                              <i className="fas fa-lock me-1"></i>
-                                              Chỉ xem
-                                            </span>
-                                          )}
-                          </td>
-                        </tr>
-                                    );
-                                  })}
-                    </tbody>
-                  </table>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Batch Details Modal */}
+        {showBatchModal && (
+          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog modal-lg">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Chi Tiết Batch: {selectedBatchId}</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowBatchModal(false);
+                      setSelectedBatchId(null);
+                      setBatchEvents([]);
+                    }}
+                  ></button>
                 </div>
-            </div>
-          </div>
-                      </div>
-                    );
-                  })}
-        </div>
-      )}
-            </div>
-          </div>
-        </div>
-      ) : null}
+                <div className="modal-body">
+                  {/* Tabs */}
+                  <ul className="nav nav-tabs mb-3">
+                    <li className="nav-item">
+                      <button
+                        className={`nav-link ${batchModalTab === 'events' ? 'active' : ''}`}
+                        onClick={() => setBatchModalTab('events')}
+                      >
+                        <i className="fas fa-list me-1"></i>
+                        Sự Kiện
+                      </button>
+                    </li>
+                    <li className="nav-item">
+                      <button
+                        className={`nav-link ${batchModalTab === 'rounds' ? 'active' : ''}`}
+                        onClick={() => setBatchModalTab('rounds')}
+                      >
+                        <i className="fas fa-history me-1"></i>
+                        Lịch Sử Đợt Bảo Trì
+                      </button>
+                    </li>
+                  </ul>
 
-      {/* Batch Details Modal */}
-      {showBatchModal && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-lg">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Chi Tiết Batch: {selectedBatchId}</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowBatchModal(false);
-                    setSelectedBatchId(null);
-                    setBatchEvents([]);
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                {/* Tabs */}
-                <ul className="nav nav-tabs mb-3">
-                  <li className="nav-item">
-                    <button
-                      className={`nav-link ${batchModalTab === 'events' ? 'active' : ''}`}
-                      onClick={() => setBatchModalTab('events')}
-                    >
-                      <i className="fas fa-list me-1"></i>
-                      Sự Kiện
-                    </button>
-                  </li>
-                  <li className="nav-item">
-                    <button
-                      className={`nav-link ${batchModalTab === 'rounds' ? 'active' : ''}`}
-                      onClick={() => setBatchModalTab('rounds')}
-                    >
-                      <i className="fas fa-history me-1"></i>
-                      Lịch Sử Đợt Bảo Trì
-                    </button>
-                  </li>
-                </ul>
-
-                {/* Tab Content: Events */}
-                {batchModalTab === 'events' && (
-                  <>
-                {loadingBatchDetails ? (
-                  <div className="text-center py-5">
-                    <div className="spinner-border text-primary" role="status">
-                      <span className="visually-hidden">Đang tải...</span>
-                    </div>
-                  </div>
-                ) : batchEvents.length === 0 ? (
-                  <div className="text-center py-5 text-muted">
-                    <p>Không có event nào trong batch này</p>
-                  </div>
-                ) : (
-                  <div className="table-responsive">
-                    <table className="table table-sm">
-                      <thead>
-                        <tr>
-                          <th>Thiết Bị</th>
-                          <th>Trạng Thái</th>
-                          <th>Ngày Sự Kiện</th>
-                          <th>Ngày Hoàn Thành</th>
-                          <th>Nhân Viên</th>
-                              <th>Thao Tác</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {batchEvents.map((event) => (
-                          <tr key={event.id}>
-                            <td>{event.deviceName}</td>
-                            <td>
-                              {(() => {
-                                // Tìm plan tương ứng với event để check isActive
-                                const relatedPlan = allPlans.find(p =>
-                                  p.deviceId === event.deviceId &&
-                                  p.eventTypeId === event.eventTypeId &&
-                                  p.metadata?.maintenanceBatchId === event.maintenanceBatchId
-                                );
-                                const isPlanActive = relatedPlan?.isActive ?? true; // Default true nếu không tìm thấy
-                                
-                                let displayText = '';
-                                let badgeClass = '';
-                                
-                                if (event.status === 'completed') {
-                                  // Chỉ áp dụng logic "Chờ đợt tiếp theo" cho lịch đang hoạt động
-                                  if (isPlanActive) {
-                                    const today = new Date();
-                                    today.setHours(0, 0, 0, 0);
-                                    const endDate = event.endDate ? new Date(event.endDate) : null;
-                                    const eventDate = event.eventDate ? new Date(event.eventDate) : null;
-                                    const completedDate = endDate || eventDate;
-                                    
-                                    if (completedDate) {
-                                      completedDate.setHours(0, 0, 0, 0);
-                                      if (completedDate < today) {
-                                        displayText = 'Chờ đợt tiếp theo';
-                                        badgeClass = 'bg-secondary';
-                                      } else {
-                                        displayText = 'Hoàn thành';
-                                        badgeClass = 'bg-success';
-                                      }
-                                    } else {
-                                      displayText = 'Hoàn thành';
-                                      badgeClass = 'bg-success';
-                                    }
-                                  } else {
-                                    // Lịch đã hủy, luôn hiển thị "Hoàn thành"
-                                    displayText = 'Hoàn thành';
-                                    badgeClass = 'bg-success';
-                                  }
-                                } else if (event.status === 'in_progress') {
-                                  displayText = 'Đang tiến hành';
-                                  badgeClass = 'bg-info';
-                                } else if (event.status === 'planned') {
-                                  displayText = 'Đã lên kế hoạch';
-                                  badgeClass = 'bg-secondary';
-                                } else {
-                                  displayText = 'Đã hủy';
-                                  badgeClass = 'bg-danger';
-                                }
-                                
-                                return (
-                                  <span className={`badge ${badgeClass}`}>
-                                    {displayText}
-                              </span>
-                                );
-                              })()}
-                            </td>
-                            <td>{formatDateDisplay(event.eventDate)}</td>
-                            <td>{event.endDate ? formatDateDisplay(event.endDate) : '-'}</td>
-                            <td>{event.staffName || '-'}</td>
-                            <td className="text-end">
-                              {(() => {
-                                // Tìm plan tương ứng với event để check isActive
-                                const relatedPlan = allPlans.find(p => 
-                                  p.deviceId === event.deviceId && 
-                                  p.metadata?.maintenanceBatchId === event.maintenanceBatchId
-                                );
-                                const isPlanActive = relatedPlan ? relatedPlan.isActive : true; // Default true nếu không tìm thấy
-                                
-                                if (!isPlanActive) {
-                                  return (
-                                    <span className="text-muted small">
-                                      <i className="fas fa-lock me-1"></i>
-                                      Chỉ xem
-                                    </span>
-                                  );
-                                }
-                                
-                                return (
-                                  <>
-                                    {event.status === 'planned' && (
-                                      <button
-                                        className="btn btn-sm btn-primary"
-                                        onClick={() => {
-                                          setSelectedEvent(event);
-                                          setStartStaffId(event.staffId || null);
-                                          setStartNotes('');
-                                          loadStaffList();
-                                          setShowStartModal(true);
-                                        }}
-                                        title="Bắt đầu bảo trì"
-                                      >
-                                        <i className="fas fa-play me-1"></i>
-                                        Bắt đầu
-                                      </button>
-                                    )}
-                                    {event.status === 'in_progress' && (
-                                      <button
-                                        className="btn btn-sm btn-success"
-                                        onClick={() => {
-                                          setSelectedEvent(event);
-                                          setCompleteDate(formatDateInput(new Date()));
-                                          setCompleteNotes('');
-                                          setCompleteStaffId(event.staffId || null);
-                                          loadStaffList();
-                                          setShowCompleteModal(true);
-                                        }}
-                                        title="Ghi nhận hoàn thành"
-                                      >
-                                        <i className="fas fa-check me-1"></i>
-                                        Hoàn thành
-                                      </button>
-                                    )}
-                                  </>
-                                );
-                              })()}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                    )}
-                  </>
-                )}
-
-                {/* Tab Content: Maintenance Rounds */}
-                {batchModalTab === 'rounds' && (
-                  <>
-                    {loadingRounds ? (
-                      <div className="text-center py-5">
-                        <div className="spinner-border text-primary" role="status">
-                          <span className="visually-hidden">Đang tải...</span>
-                        </div>
-                      </div>
-                    ) : maintenanceRounds.length === 0 ? (
-                      <div className="text-center py-5 text-muted">
-                        <p>Chưa có đợt bảo trì nào đã hoàn thành</p>
-                      </div>
-                    ) : (
-                      <div className="table-responsive">
-                        <table className="table table-sm">
-                          <thead>
-                            <tr>
-                              <th>Ngày Bảo Trì</th>
-                              <th>Số Thiết Bị</th>
-                              <th>Hoàn Thành</th>
-                              <th>Loại Bảo Trì</th>
-                              <th>Nhà Cung Cấp</th>
-                              <th>Thao Tác</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {maintenanceRounds.map((round, index) => (
-                              <tr key={index}>
-                                <td>
-                                  <strong>{formatDateDisplay(round.roundDate)}</strong>
-                                </td>
-                                <td>
-                                  <span className="badge bg-info">{round.totalDevices}</span>
-                                </td>
-                                <td>
-                                  <span className="badge bg-success">{round.completedDevices}/{round.totalDevices}</span>
-                                </td>
-                                <td>
-                                  {round.maintenanceType === 'outsource' ? (
-                                    <span className="badge bg-primary">Thuê ngoài</span>
-                                  ) : (
-                                    <span className="badge bg-secondary">Nội bộ</span>
-                                  )}
-                                </td>
-                                <td>
-                                  {round.maintenanceProvider || '-'}
-                                </td>
-                                <td>
-                                  <div className="btn-group btn-group-sm">
-                                    <button
-                                      className="btn btn-outline-info"
-                                      onClick={() => handleViewRound(round.batchId, round.roundDate)}
-                                      title="Xem chi tiết"
-                                    >
-                                      <i className="fas fa-eye me-1"></i>
-                                      Xem
-                                    </button>
-                                    <button
-                                      className="btn btn-outline-success"
-                                      onClick={() => handleExportRound(round.batchId, round.roundDate)}
-                                      title="Xuất Excel"
-                                    >
-                                      <i className="fas fa-file-excel me-1"></i>
-                                      Excel
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowBatchModal(false);
-                    setSelectedBatchId(null);
-                    setBatchEvents([]);
-                    setMaintenanceRounds([]);
-                  }}
-                >
-                  Đóng
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Round Detail Modal */}
-      {showRoundDetailModal && selectedRound && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-xl">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">
-                  <i className="fas fa-clipboard-list me-2"></i>
-                  Báo Cáo Đợt Bảo Trì - {selectedRound.roundDate ? formatDateDisplay(selectedRound.roundDate) : ''}
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowRoundDetailModal(false);
-                    setSelectedRound(null);
-                    setRoundDetail(null);
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                {loadingRoundDetail ? (
-                  <div className="text-center py-5">
-                    <div className="spinner-border text-primary" role="status">
-                      <span className="visually-hidden">Đang tải...</span>
-                    </div>
-                  </div>
-                ) : !roundDetail ? (
-                  <div className="text-center py-5 text-muted">
-                    <p>Không tìm thấy dữ liệu đợt bảo trì</p>
-                  </div>
-                ) : (
-                  <>
-                    {/* Batch Info */}
-                    <div className="card mb-3">
-                      <div className="card-body">
-                        <h6 className="card-title mb-3">
-                          <i className="fas fa-info-circle me-2"></i>
-                          Thông Tin Đợt Bảo Trì
-                        </h6>
-                        <div className="row">
-                          <div className="col-md-6">
-                            <div className="mb-2">
-                              <small className="text-muted">Kế hoạch:</small>
-                              <div><strong>{roundDetail.batchInfo?.title || '-'}</strong></div>
-                            </div>
-                            <div className="mb-2">
-                              <small className="text-muted">Batch ID:</small>
-                              <div><code>{roundDetail.batchInfo?.batchId || '-'}</code></div>
-                            </div>
-                            <div className="mb-2">
-                              <small className="text-muted">Ngày bảo trì:</small>
-                              <div><strong>{formatDateDisplay(roundDetail.roundDate)}</strong></div>
-                            </div>
-                          </div>
-                          <div className="col-md-6">
-                            <div className="mb-2">
-                              <small className="text-muted">Tổng số thiết bị:</small>
-                              <div><span className="badge bg-info">{roundDetail.totalDevices}</span></div>
-                            </div>
-                            <div className="mb-2">
-                              <small className="text-muted">Đã hoàn thành:</small>
-                              <div><span className="badge bg-success">{roundDetail.completedDevices}/{roundDetail.totalDevices}</span></div>
-                            </div>
-                            {roundDetail.batchInfo?.maintenanceType && (
-                              <div className="mb-2">
-                                <small className="text-muted">Loại bảo trì:</small>
-                                <div>
-                                  {roundDetail.batchInfo.maintenanceType === 'outsource' ? (
-                                    <span className="badge bg-primary">Thuê ngoài</span>
-                                  ) : (
-                                    <span className="badge bg-secondary">Nội bộ</span>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                            {roundDetail.batchInfo?.maintenanceProvider && (
-                              <div className="mb-2">
-                                <small className="text-muted">Nhà cung cấp:</small>
-                                <div><strong>{roundDetail.batchInfo.maintenanceProvider}</strong></div>
-                              </div>
-                            )}
+                  {/* Tab Content: Events */}
+                  {batchModalTab === 'events' && (
+                    <>
+                      {loadingBatchDetails ? (
+                        <div className="text-center py-5">
+                          <div className="spinner-border text-primary" role="status">
+                            <span className="visually-hidden">Đang tải...</span>
                           </div>
                         </div>
-                      </div>
-                    </div>
-
-                    {/* Devices Table */}
-                    <div className="card mb-3">
-                      <div className="card-header">
-                        <h6 className="mb-0">
-                          <i className="fas fa-list me-2"></i>
-                          Chi Tiết Thiết Bị
-                        </h6>
-                      </div>
-                      <div className="card-body p-0">
+                      ) : batchEvents.length === 0 ? (
+                        <div className="text-center py-5 text-muted">
+                          <p>Không có event nào trong batch này</p>
+                        </div>
+                      ) : (
                         <div className="table-responsive">
-                          <table className="table table-sm table-hover mb-0">
-                            <thead className="table-light">
+                          <table className="table table-sm">
+                            <thead>
                               <tr>
-                                <th>STT</th>
-                                <th>Tên Thiết Bị</th>
-                                <th>Serial</th>
-                                <th>Loại Sự Kiện</th>
-                                <th>Ngày Bảo Trì</th>
+                                <th>Thiết Bị</th>
+                                <th>Trạng Thái</th>
+                                <th>Ngày Sự Kiện</th>
+                                <th>Ngày Hoàn Thành</th>
                                 <th>Nhân Viên</th>
-                                <th>Kết Quả</th>
-                                <th>Ghi Chú</th>
-                                <th>Báo Cáo CV</th>
+                                <th>Thao Tác</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {roundDetail.events && roundDetail.events.length > 0 ? (
-                                roundDetail.events.map((event: any, index: number) => {
-                                  const statusText = event.status === 'completed' ? 'Hoàn thành' : 
-                                                    event.status === 'in_progress' ? 'Đang thực hiện' :
-                                                    event.status === 'planned' ? 'Kế hoạch' : 'Khác';
-                                  const statusBadge = event.status === 'completed' ? 'bg-success' : 
-                                                      event.status === 'in_progress' ? 'bg-info' :
-                                                      event.status === 'planned' ? 'bg-secondary' : 'bg-warning';
-                                  const maintenanceDate = event.endDate || event.eventDate || event.startDate;
+                              {batchEvents.map((event) => (
+                                <tr key={event.id}>
+                                  <td>{event.deviceName}</td>
+                                  <td>
+                                    {(() => {
+                                      // Tìm plan tương ứng với event để check isActive
+                                      const relatedPlan = allPlans.find(p =>
+                                        p.deviceId === event.deviceId &&
+                                        p.eventTypeId === event.eventTypeId &&
+                                        p.metadata?.maintenanceBatchId === event.maintenanceBatchId
+                                      );
+                                      const isPlanActive = relatedPlan?.isActive ?? true; // Default true nếu không tìm thấy
 
-                                  return (
-                                    <tr key={event.id}>
-                                      <td>{index + 1}</td>
-                                      <td><strong>{event.deviceName || '-'}</strong></td>
-                                      <td>{event.deviceSerial || '-'}</td>
-                                      <td>{event.eventTypeName || '-'}</td>
-                                      <td>{maintenanceDate ? formatDateDisplay(maintenanceDate) : '-'}</td>
-                                      <td>{event.staffName || '-'}</td>
-                                      <td>
-                                        <span className={`badge ${statusBadge}`}>{statusText}</span>
-                                      </td>
-                                      <td>
-                                        <small className="text-muted">{event.notes || '-'}</small>
-                                      </td>
-                                      <td>
-                                        {event.relatedReportId ? (
-                                          <a
-                                            href={`/dashboard/damage-reports?search=${event.relatedReportId}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="btn btn-sm btn-outline-primary"
-                                            title="Xem báo cáo công việc"
-                                          >
-                                            <i className="fas fa-external-link-alt me-1"></i>
-                                            CV-{event.relatedReportId}
-                                          </a>
-                                        ) : (
-                                          <span className="text-muted">-</span>
-                                        )}
-                                      </td>
-                                    </tr>
-                                  );
-                                })
-                              ) : (
-                                <tr>
-                                  <td colSpan={9} className="text-center text-muted py-3">
-                                    Không có dữ liệu
+                                      let displayText = '';
+                                      let badgeClass = '';
+
+                                      if (event.status === 'completed') {
+                                        // Chỉ áp dụng logic "Chờ đợt tiếp theo" cho lịch đang hoạt động
+                                        if (isPlanActive) {
+                                          const today = new Date();
+                                          today.setHours(0, 0, 0, 0);
+                                          const endDate = event.endDate ? new Date(event.endDate) : null;
+                                          const eventDate = event.eventDate ? new Date(event.eventDate) : null;
+                                          const completedDate = endDate || eventDate;
+
+                                          if (completedDate) {
+                                            completedDate.setHours(0, 0, 0, 0);
+                                            if (completedDate < today) {
+                                              displayText = 'Chờ đợt tiếp theo';
+                                              badgeClass = 'bg-secondary';
+                                            } else {
+                                              displayText = 'Hoàn thành';
+                                              badgeClass = 'bg-success';
+                                            }
+                                          } else {
+                                            displayText = 'Hoàn thành';
+                                            badgeClass = 'bg-success';
+                                          }
+                                        } else {
+                                          // Lịch đã hủy, luôn hiển thị "Hoàn thành"
+                                          displayText = 'Hoàn thành';
+                                          badgeClass = 'bg-success';
+                                        }
+                                      } else if (event.status === 'in_progress') {
+                                        displayText = 'Đang tiến hành';
+                                        badgeClass = 'bg-info';
+                                      } else if (event.status === 'planned') {
+                                        displayText = 'Đã lên kế hoạch';
+                                        badgeClass = 'bg-secondary';
+                                      } else {
+                                        displayText = 'Đã hủy';
+                                        badgeClass = 'bg-danger';
+                                      }
+
+                                      return (
+                                        <span className={`badge ${badgeClass}`}>
+                                          {displayText}
+                                        </span>
+                                      );
+                                    })()}
+                                  </td>
+                                  <td>{formatDateDisplay(event.eventDate)}</td>
+                                  <td>{event.endDate ? formatDateDisplay(event.endDate) : '-'}</td>
+                                  <td>{event.staffName || '-'}</td>
+                                  <td className="text-end">
+                                    {(() => {
+                                      // Tìm plan tương ứng với event để check isActive
+                                      const relatedPlan = allPlans.find(p =>
+                                        p.deviceId === event.deviceId &&
+                                        p.metadata?.maintenanceBatchId === event.maintenanceBatchId
+                                      );
+                                      const isPlanActive = relatedPlan ? relatedPlan.isActive : true; // Default true nếu không tìm thấy
+
+                                      if (!isPlanActive) {
+                                        return (
+                                          <span className="text-muted small">
+                                            <i className="fas fa-lock me-1"></i>
+                                            Chỉ xem
+                                          </span>
+                                        );
+                                      }
+
+                                      return (
+                                        <>
+                                          {event.status === 'planned' && (
+                                            <button
+                                              className="btn btn-sm btn-primary"
+                                              onClick={() => {
+                                                setSelectedEvent(event);
+                                                setStartStaffId(event.staffId || null);
+                                                setStartNotes('');
+                                                loadStaffList();
+                                                setShowStartModal(true);
+                                              }}
+                                              title="Bắt đầu bảo trì"
+                                            >
+                                              <i className="fas fa-play me-1"></i>
+                                              Bắt đầu
+                                            </button>
+                                          )}
+                                          {event.status === 'in_progress' && (
+                                            <button
+                                              className="btn btn-sm btn-success"
+                                              onClick={() => {
+                                                setSelectedEvent(event);
+                                                setCompleteDate(formatDateInput(new Date()));
+                                                setCompleteNotes('');
+                                                setCompleteStaffId(event.staffId || null);
+                                                loadStaffList();
+                                                setShowCompleteModal(true);
+                                              }}
+                                              title="Ghi nhận hoàn thành"
+                                            >
+                                              <i className="fas fa-check me-1"></i>
+                                              Hoàn thành
+                                            </button>
+                                          )}
+                                        </>
+                                      );
+                                    })()}
                                   </td>
                                 </tr>
-                              )}
+                              ))}
                             </tbody>
                           </table>
                         </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Tab Content: Maintenance Rounds */}
+                  {batchModalTab === 'rounds' && (
+                    <>
+                      {loadingRounds ? (
+                        <div className="text-center py-5">
+                          <div className="spinner-border text-primary" role="status">
+                            <span className="visually-hidden">Đang tải...</span>
+                          </div>
+                        </div>
+                      ) : maintenanceRounds.length === 0 ? (
+                        <div className="text-center py-5 text-muted">
+                          <p>Chưa có đợt bảo trì nào đã hoàn thành</p>
+                        </div>
+                      ) : (
+                        <div className="table-responsive">
+                          <table className="table table-sm">
+                            <thead>
+                              <tr>
+                                <th>Ngày Bảo Trì</th>
+                                <th>Số Thiết Bị</th>
+                                <th>Hoàn Thành</th>
+                                <th>Loại Bảo Trì</th>
+                                <th>Nhà Cung Cấp</th>
+                                <th>Thao Tác</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {maintenanceRounds.map((round, index) => (
+                                <tr key={index}>
+                                  <td>
+                                    <strong>{formatDateDisplay(round.roundDate)}</strong>
+                                  </td>
+                                  <td>
+                                    <span className="badge bg-info">{round.totalDevices}</span>
+                                  </td>
+                                  <td>
+                                    <span className="badge bg-success">{round.completedDevices}/{round.totalDevices}</span>
+                                  </td>
+                                  <td>
+                                    {round.maintenanceType === 'outsource' ? (
+                                      <span className="badge bg-primary">Thuê ngoài</span>
+                                    ) : (
+                                      <span className="badge bg-secondary">Nội bộ</span>
+                                    )}
+                                  </td>
+                                  <td>
+                                    {round.maintenanceProvider || '-'}
+                                  </td>
+                                  <td>
+                                    <div className="btn-group btn-group-sm">
+                                      <button
+                                        className="btn btn-outline-info"
+                                        onClick={() => handleViewRound(round.batchId, round.roundDate)}
+                                        title="Xem chi tiết"
+                                      >
+                                        <i className="fas fa-eye me-1"></i>
+                                        Xem
+                                      </button>
+                                      <button
+                                        className="btn btn-outline-success"
+                                        onClick={() => handleExportRound(round.batchId, round.roundDate)}
+                                        title="Xuất Excel"
+                                      >
+                                        <i className="fas fa-file-excel me-1"></i>
+                                        Excel
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowBatchModal(false);
+                      setSelectedBatchId(null);
+                      setBatchEvents([]);
+                      setMaintenanceRounds([]);
+                    }}
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Round Detail Modal */}
+        {showRoundDetailModal && selectedRound && (
+          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog modal-xl">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-clipboard-list me-2"></i>
+                    Báo Cáo Đợt Bảo Trì - {selectedRound.roundDate ? formatDateDisplay(selectedRound.roundDate) : ''}
+                  </h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowRoundDetailModal(false);
+                      setSelectedRound(null);
+                      setRoundDetail(null);
+                    }}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  {loadingRoundDetail ? (
+                    <div className="text-center py-5">
+                      <div className="spinner-border text-primary" role="status">
+                        <span className="visually-hidden">Đang tải...</span>
                       </div>
                     </div>
+                  ) : !roundDetail ? (
+                    <div className="text-center py-5 text-muted">
+                      <p>Không tìm thấy dữ liệu đợt bảo trì</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Batch Info */}
+                      <div className="card mb-3">
+                        <div className="card-body">
+                          <h6 className="card-title mb-3">
+                            <i className="fas fa-info-circle me-2"></i>
+                            Thông Tin Đợt Bảo Trì
+                          </h6>
+                          <div className="row">
+                            <div className="col-md-6">
+                              <div className="mb-2">
+                                <small className="text-muted">Kế hoạch:</small>
+                                <div><strong>{roundDetail.batchInfo?.title || '-'}</strong></div>
+                              </div>
+                              <div className="mb-2">
+                                <small className="text-muted">Batch ID:</small>
+                                <div><code>{roundDetail.batchInfo?.batchId || '-'}</code></div>
+                              </div>
+                              <div className="mb-2">
+                                <small className="text-muted">Ngày bảo trì:</small>
+                                <div><strong>{formatDateDisplay(roundDetail.roundDate)}</strong></div>
+                              </div>
+                            </div>
+                            <div className="col-md-6">
+                              <div className="mb-2">
+                                <small className="text-muted">Tổng số thiết bị:</small>
+                                <div><span className="badge bg-info">{roundDetail.totalDevices}</span></div>
+                              </div>
+                              <div className="mb-2">
+                                <small className="text-muted">Đã hoàn thành:</small>
+                                <div><span className="badge bg-success">{roundDetail.completedDevices}/{roundDetail.totalDevices}</span></div>
+                              </div>
+                              {roundDetail.batchInfo?.maintenanceType && (
+                                <div className="mb-2">
+                                  <small className="text-muted">Loại bảo trì:</small>
+                                  <div>
+                                    {roundDetail.batchInfo.maintenanceType === 'outsource' ? (
+                                      <span className="badge bg-primary">Thuê ngoài</span>
+                                    ) : (
+                                      <span className="badge bg-secondary">Nội bộ</span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                              {roundDetail.batchInfo?.maintenanceProvider && (
+                                <div className="mb-2">
+                                  <small className="text-muted">Nhà cung cấp:</small>
+                                  <div><strong>{roundDetail.batchInfo.maintenanceProvider}</strong></div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
 
-                    {/* Related Damage Reports */}
-                    {roundDetail.damageReports && roundDetail.damageReports.length > 0 && (
-                      <div className="card">
+                      {/* Devices Table */}
+                      <div className="card mb-3">
                         <div className="card-header">
                           <h6 className="mb-0">
-                            <i className="fas fa-file-alt me-2"></i>
-                            Báo Cáo Công Việc Liên Quan
+                            <i className="fas fa-list me-2"></i>
+                            Chi Tiết Thiết Bị
                           </h6>
                         </div>
                         <div className="card-body p-0">
@@ -3165,991 +3095,894 @@ function MaintenancePageContent() {
                             <table className="table table-sm table-hover mb-0">
                               <thead className="table-light">
                                 <tr>
-                                  <th>ID</th>
-                                  <th>Nội Dung</th>
-                                  <th>Người Báo</th>
-                                  <th>Người Xử Lý</th>
-                                  <th>Ngày Báo</th>
-                                  <th>Trạng Thái</th>
-                                  <th>Thao Tác</th>
+                                  <th>STT</th>
+                                  <th>Tên Thiết Bị</th>
+                                  <th>Serial</th>
+                                  <th>Loại Sự Kiện</th>
+                                  <th>Ngày Bảo Trì</th>
+                                  <th>Nhân Viên</th>
+                                  <th>Kết Quả</th>
+                                  <th>Ghi Chú</th>
+                                  <th>Báo Cáo CV</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {roundDetail.damageReports.map((report: any) => {
-                                  const statusLabels: Record<number, string> = {
-                                    1: 'Chờ xử lý',
-                                    2: 'Đã phân công',
-                                    3: 'Đang xử lý',
-                                    4: 'Hoàn thành',
-                                    5: 'Đã hủy',
-                                    6: 'Từ chối',
-                                  };
-                                  const statusBadges: Record<number, string> = {
-                                    1: 'bg-secondary',
-                                    2: 'bg-info',
-                                    3: 'bg-warning',
-                                    4: 'bg-success',
-                                    5: 'bg-danger',
-                                    6: 'bg-danger',
-                                  };
+                                {roundDetail.events && roundDetail.events.length > 0 ? (
+                                  roundDetail.events.map((event: any, index: number) => {
+                                    const statusText = event.status === 'completed' ? 'Hoàn thành' :
+                                      event.status === 'in_progress' ? 'Đang thực hiện' :
+                                        event.status === 'planned' ? 'Kế hoạch' : 'Khác';
+                                    const statusBadge = event.status === 'completed' ? 'bg-success' :
+                                      event.status === 'in_progress' ? 'bg-info' :
+                                        event.status === 'planned' ? 'bg-secondary' : 'bg-warning';
+                                    const maintenanceDate = event.endDate || event.eventDate || event.startDate;
 
-                                  return (
-                                    <tr key={report.id}>
-                                      <td><strong>#{report.id}</strong></td>
-                                      <td>
-                                        <small>{report.damageContent || '-'}</small>
-                                      </td>
-                                      <td>{report.reporterName || '-'}</td>
-                                      <td>{report.handlerName || '-'}</td>
-                                      <td>{report.reportDate ? formatDateDisplay(report.reportDate) : '-'}</td>
-                                      <td>
-                                        <span className={`badge ${statusBadges[report.status] || 'bg-secondary'}`}>
-                                          {statusLabels[report.status] || 'N/A'}
-                                        </span>
-                                      </td>
-                                      <td>
-                                        <a
-                                          href={`/dashboard/damage-reports?search=${report.id}`}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="btn btn-sm btn-outline-primary"
-                                          title="Xem chi tiết"
-                                        >
-                                          <i className="fas fa-eye me-1"></i>
-                                          Xem
-                                        </a>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
+                                    return (
+                                      <tr key={event.id}>
+                                        <td>{index + 1}</td>
+                                        <td><strong>{event.deviceName || '-'}</strong></td>
+                                        <td>{event.deviceSerial || '-'}</td>
+                                        <td>{event.eventTypeName || '-'}</td>
+                                        <td>{maintenanceDate ? formatDateDisplay(maintenanceDate) : '-'}</td>
+                                        <td>{event.staffName || '-'}</td>
+                                        <td>
+                                          <span className={`badge ${statusBadge}`}>{statusText}</span>
+                                        </td>
+                                        <td>
+                                          <small className="text-muted">{event.notes || '-'}</small>
+                                        </td>
+                                        <td>
+                                          {event.relatedReportId ? (
+                                            <a
+                                              href={`/dashboard/damage-reports?search=${event.relatedReportId}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="btn btn-sm btn-outline-primary"
+                                              title="Xem báo cáo công việc"
+                                            >
+                                              <i className="fas fa-external-link-alt me-1"></i>
+                                              CV-{event.relatedReportId}
+                                            </a>
+                                          ) : (
+                                            <span className="text-muted">-</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })
+                                ) : (
+                                  <tr>
+                                    <td colSpan={9} className="text-center text-muted py-3">
+                                      Không có dữ liệu
+                                    </td>
+                                  </tr>
+                                )}
                               </tbody>
                             </table>
                           </div>
                         </div>
                       </div>
-                    )}
-                  </>
-                )}
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-success"
-                  onClick={() => {
-                    if (selectedRound) {
-                      handleExportRound(selectedRound.batchId, selectedRound.roundDate);
-                    }
-                  }}
-                >
-                  <i className="fas fa-file-excel me-2"></i>
-                  Xuất Excel
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowRoundDetailModal(false);
-                    setSelectedRound(null);
-                    setRoundDetail(null);
-                  }}
-                >
-                  Đóng
-                </button>
+
+                      {/* Related Damage Reports */}
+                      {roundDetail.damageReports && roundDetail.damageReports.length > 0 && (
+                        <div className="card">
+                          <div className="card-header">
+                            <h6 className="mb-0">
+                              <i className="fas fa-file-alt me-2"></i>
+                              Báo Cáo Công Việc Liên Quan
+                            </h6>
+                          </div>
+                          <div className="card-body p-0">
+                            <div className="table-responsive">
+                              <table className="table table-sm table-hover mb-0">
+                                <thead className="table-light">
+                                  <tr>
+                                    <th>ID</th>
+                                    <th>Nội Dung</th>
+                                    <th>Người Báo</th>
+                                    <th>Người Xử Lý</th>
+                                    <th>Ngày Báo</th>
+                                    <th>Trạng Thái</th>
+                                    <th>Thao Tác</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {roundDetail.damageReports.map((report: any) => {
+                                    const statusLabels: Record<number, string> = {
+                                      1: 'Chờ xử lý',
+                                      2: 'Đã phân công',
+                                      3: 'Đang xử lý',
+                                      4: 'Hoàn thành',
+                                      5: 'Đã hủy',
+                                      6: 'Từ chối',
+                                    };
+                                    const statusBadges: Record<number, string> = {
+                                      1: 'bg-secondary',
+                                      2: 'bg-info',
+                                      3: 'bg-warning',
+                                      4: 'bg-success',
+                                      5: 'bg-danger',
+                                      6: 'bg-danger',
+                                    };
+
+                                    return (
+                                      <tr key={report.id}>
+                                        <td><strong>#{report.id}</strong></td>
+                                        <td>
+                                          <small>{report.damageContent || '-'}</small>
+                                        </td>
+                                        <td>{report.reporterName || '-'}</td>
+                                        <td>{report.handlerName || '-'}</td>
+                                        <td>{report.reportDate ? formatDateDisplay(report.reportDate) : '-'}</td>
+                                        <td>
+                                          <span className={`badge ${statusBadges[report.status] || 'bg-secondary'}`}>
+                                            {statusLabels[report.status] || 'N/A'}
+                                          </span>
+                                        </td>
+                                        <td>
+                                          <a
+                                            href={`/dashboard/damage-reports?search=${report.id}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="btn btn-sm btn-outline-primary"
+                                            title="Xem chi tiết"
+                                          >
+                                            <i className="fas fa-eye me-1"></i>
+                                            Xem
+                                          </a>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-success"
+                    onClick={() => {
+                      if (selectedRound) {
+                        handleExportRound(selectedRound.batchId, selectedRound.roundDate);
+                      }
+                    }}
+                  >
+                    <i className="fas fa-file-excel me-2"></i>
+                    Xuất Excel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowRoundDetailModal(false);
+                      setSelectedRound(null);
+                      setRoundDetail(null);
+                    }}
+                  >
+                    Đóng
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Reschedule Modal */}
-      {showRescheduleModal && selectedPlan && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Dời Lịch Bảo Trì</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowRescheduleModal(false);
-                    setSelectedPlan(null);
-                    setRescheduleDate('');
-                    setRescheduleReason('');
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <div className="mb-3">
-                  <label className="form-label">Thiết Bị</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={selectedPlan.deviceName || `Thiết bị #${selectedPlan.deviceId}`}
-                    disabled
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Ngày Đến Hạn Hiện Tại</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={selectedPlan.nextDueDate ? formatDateDisplay(selectedPlan.nextDueDate) : '-'}
-                    disabled
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Ngày Đến Hạn Mới <span className="text-danger">*</span></label>
-                  <DateInput
-                    value={rescheduleDate}
-                    onChange={(value) => setRescheduleDate(value)}
-                    required
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Lý Do Dời Lịch <span className="text-danger">*</span></label>
-                  <textarea
-                    className="form-control"
-                    rows={3}
-                    value={rescheduleReason}
-                    onChange={(e) => setRescheduleReason(e.target.value)}
-                    placeholder="Nhập lý do dời lịch..."
-                    required
-                  />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowRescheduleModal(false);
-                    setSelectedPlan(null);
-                    setRescheduleDate('');
-                    setRescheduleReason('');
-                  }}
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleReschedule}
-                >
-                  <i className="fas fa-save me-2"></i>
-                  Lưu
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Cancel Modal */}
-      {showCancelModal && selectedPlan && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Hủy Kế Hoạch Bảo Trì</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowCancelModal(false);
-                    setSelectedPlan(null);
-                    setCancelReason('');
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <div className="mb-3">
-                  <label className="form-label">Thiết Bị</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={selectedPlan.deviceName || `Thiết bị #${selectedPlan.deviceId}`}
-                    disabled
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Tiêu Đề</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={selectedPlan.title || '-'}
-                    disabled
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Lý Do Hủy <span className="text-danger">*</span></label>
-                  <textarea
-                    className="form-control"
-                    rows={3}
-                    value={cancelReason}
-                    onChange={(e) => setCancelReason(e.target.value)}
-                    placeholder="Nhập lý do hủy kế hoạch..."
-                    required
-                  />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowCancelModal(false);
-                    setSelectedPlan(null);
-                    setCancelReason('');
-                  }}
-                >
-                  Đóng
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-danger"
-                  onClick={handleCancel}
-                >
-                  <i className="fas fa-times me-2"></i>
-                  Xác Nhận Hủy
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* View Batch Details Modal */}
-      {showViewPlanModal && selectedGroup && (() => {
-        // Calculate values from plans
-        const totalDevices = selectedGroup.plans.length;
-        const activeCount = selectedGroup.plans.filter(p => p.isActive).length;
-        const inactiveCount = selectedGroup.plans.filter(p => !p.isActive).length;
-        
-        // Calculate lastMaintenanceDate and nextMaintenanceDate
-        const completedDates = selectedGroup.plans
-          .map(plan => {
-            if (plan.lastCompletedEvent?.endDate) {
-              return new Date(plan.lastCompletedEvent.endDate);
-            }
-            const event = planEvents[plan.id];
-            if (event?.status === 'completed' && event?.endDate) {
-              return new Date(event.endDate);
-            }
-            return null;
-          })
-          .filter((d): d is Date => d !== null);
-        
-        const nextDates = selectedGroup.plans
-          .filter(p => p.isActive && p.nextDueDate)
-          .map(p => new Date(p.nextDueDate!))
-          .filter(d => !isNaN(d.getTime()));
-        
-        const lastMaintenanceDate = completedDates.length > 0
-          ? completedDates.sort((a, b) => b.getTime() - a.getTime())[0]
-          : null;
-        
-        const nextMaintenanceDate = nextDates.length > 0
-          ? nextDates.sort((a, b) => a.getTime() - b.getTime())[0]
-          : null;
-        
-        const firstPlan = selectedGroup.plans[0];
-        
-        return (
+        {/* Reschedule Modal */}
+        {showRescheduleModal && selectedPlan && (
           <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <div className="modal-dialog">
               <div className="modal-content">
-                <div className="modal-header py-2">
-                  <h6 className="modal-title mb-0">Chi tiết kế hoạch</h6>
+                <div className="modal-header">
+                  <h5 className="modal-title">Dời Lịch Bảo Trì</h5>
                   <button
                     type="button"
                     className="btn-close"
                     onClick={() => {
-                      setShowViewPlanModal(false);
-                      setSelectedGroup(null);
+                      setShowRescheduleModal(false);
+                      setSelectedPlan(null);
+                      setRescheduleDate('');
+                      setRescheduleReason('');
                     }}
                   ></button>
                 </div>
-                <div className="modal-body py-3">
-                  {/* Tiêu đề */}
+                <div className="modal-body">
                   <div className="mb-3">
-                    <div className="text-muted small mb-1">Tiêu đề</div>
-                    <div className="fw-bold">{selectedGroup.title}</div>
+                    <label className="form-label">Thiết Bị</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={selectedPlan.deviceName || `Thiết bị #${selectedPlan.deviceId}`}
+                      disabled
+                    />
                   </div>
-                  
-                  {/* Mô tả */}
-                  {firstPlan?.description && (
+                  <div className="mb-3">
+                    <label className="form-label">Ngày Đến Hạn Hiện Tại</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={selectedPlan.nextDueDate ? formatDateDisplay(selectedPlan.nextDueDate) : '-'}
+                      disabled
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Ngày Đến Hạn Mới <span className="text-danger">*</span></label>
+                    <DateInput
+                      value={rescheduleDate}
+                      onChange={(value) => setRescheduleDate(value)}
+                      required
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Lý Do Dời Lịch <span className="text-danger">*</span></label>
+                    <textarea
+                      className="form-control"
+                      rows={3}
+                      value={rescheduleReason}
+                      onChange={(e) => setRescheduleReason(e.target.value)}
+                      placeholder="Nhập lý do dời lịch..."
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowRescheduleModal(false);
+                      setSelectedPlan(null);
+                      setRescheduleDate('');
+                      setRescheduleReason('');
+                    }}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleReschedule}
+                  >
+                    <i className="fas fa-save me-2"></i>
+                    Lưu
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Cancel Modal */}
+        {showCancelModal && selectedPlan && (
+          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Hủy Kế Hoạch Bảo Trì</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowCancelModal(false);
+                      setSelectedPlan(null);
+                      setCancelReason('');
+                    }}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  <div className="mb-3">
+                    <label className="form-label">Thiết Bị</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={selectedPlan.deviceName || `Thiết bị #${selectedPlan.deviceId}`}
+                      disabled
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Tiêu Đề</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={selectedPlan.title || '-'}
+                      disabled
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Lý Do Hủy <span className="text-danger">*</span></label>
+                    <textarea
+                      className="form-control"
+                      rows={3}
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      placeholder="Nhập lý do hủy kế hoạch..."
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowCancelModal(false);
+                      setSelectedPlan(null);
+                      setCancelReason('');
+                    }}
+                  >
+                    Đóng
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={handleCancel}
+                  >
+                    <i className="fas fa-times me-2"></i>
+                    Xác Nhận Hủy
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* View Batch Details Modal */}
+        {showViewPlanModal && selectedGroup && (() => {
+          // Calculate values from plans
+          const totalDevices = selectedGroup.plans.length;
+          const activeCount = selectedGroup.plans.filter(p => p.isActive).length;
+          const inactiveCount = selectedGroup.plans.filter(p => !p.isActive).length;
+
+          // Calculate lastMaintenanceDate and nextMaintenanceDate
+          const completedDates = selectedGroup.plans
+            .map(plan => {
+              if (plan.lastCompletedEvent?.endDate) {
+                return new Date(plan.lastCompletedEvent.endDate);
+              }
+              const event = planEvents[plan.id];
+              if (event?.status === 'completed' && event?.endDate) {
+                return new Date(event.endDate);
+              }
+              return null;
+            })
+            .filter((d): d is Date => d !== null);
+
+          const nextDates = selectedGroup.plans
+            .filter(p => p.isActive && p.nextDueDate)
+            .map(p => new Date(p.nextDueDate!))
+            .filter(d => !isNaN(d.getTime()));
+
+          const lastMaintenanceDate = completedDates.length > 0
+            ? completedDates.sort((a, b) => b.getTime() - a.getTime())[0]
+            : null;
+
+          const nextMaintenanceDate = nextDates.length > 0
+            ? nextDates.sort((a, b) => a.getTime() - b.getTime())[0]
+            : null;
+
+          const firstPlan = selectedGroup.plans[0];
+
+          return (
+            <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+              <div className="modal-dialog">
+                <div className="modal-content">
+                  <div className="modal-header py-2">
+                    <h6 className="modal-title mb-0">Chi tiết kế hoạch</h6>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      onClick={() => {
+                        setShowViewPlanModal(false);
+                        setSelectedGroup(null);
+                      }}
+                    ></button>
+                  </div>
+                  <div className="modal-body py-3">
+                    {/* Tiêu đề */}
                     <div className="mb-3">
-                      <div className="text-muted small mb-1">Mô tả</div>
-                      <div>{firstPlan.description}</div>
+                      <div className="text-muted small mb-1">Tiêu đề</div>
+                      <div className="fw-bold">{selectedGroup.title}</div>
                     </div>
-                  )}
-                  
-                  {/* Thông tin chính */}
-                  <div className="row g-2 mb-3">
-                    <div className="col-4">
-                      <div className="text-muted small mb-1">Thiết bị</div>
-                      <div className="fw-bold">{totalDevices}</div>
-                    </div>
-                    <div className="col-4">
-                      <div className="text-muted small mb-1">Hoạt động</div>
-                      <span className="badge bg-success">{activeCount}</span>
-                    </div>
-                    {inactiveCount > 0 && (
+
+                    {/* Mô tả */}
+                    {firstPlan?.description && (
+                      <div className="mb-3">
+                        <div className="text-muted small mb-1">Mô tả</div>
+                        <div>{firstPlan.description}</div>
+                      </div>
+                    )}
+
+                    {/* Thông tin chính */}
+                    <div className="row g-2 mb-3">
                       <div className="col-4">
-                        <div className="text-muted small mb-1">Đã hủy</div>
-                        <span className="badge bg-secondary">{inactiveCount}</span>
+                        <div className="text-muted small mb-1">Thiết bị</div>
+                        <div className="fw-bold">{totalDevices}</div>
                       </div>
-                    )}
-                  </div>
-                  
-                  {/* Thông tin bảo trì */}
-                  <div className="row g-2 mb-3">
-                    {firstPlan?.metadata?.maintenanceType && (
-                      <div className="col-6">
-                        <div className="text-muted small mb-1">Loại bảo trì</div>
-                        {firstPlan.metadata.maintenanceType === 'internal' ? (
-                          <span className="badge bg-primary">Nội Bộ</span>
-                        ) : (
-                          <span className="badge bg-info">Thuê Ngoài</span>
-                        )}
+                      <div className="col-4">
+                        <div className="text-muted small mb-1">Hoạt động</div>
+                        <span className="badge bg-success">{activeCount}</span>
                       </div>
-                    )}
-                    
-                    {firstPlan?.intervalValue && (
-                      <div className="col-6">
-                        <div className="text-muted small mb-1">Chu kỳ</div>
-                        <div>
-                          {firstPlan.intervalValue} {firstPlan.intervalUnit === 'day' ? 'ngày' : firstPlan.intervalUnit === 'week' ? 'tuần' : firstPlan.intervalUnit === 'month' ? 'tháng' : 'năm'}
+                      {inactiveCount > 0 && (
+                        <div className="col-4">
+                          <div className="text-muted small mb-1">Đã hủy</div>
+                          <span className="badge bg-secondary">{inactiveCount}</span>
                         </div>
-                      </div>
-                    )}
-                    
-                    {firstPlan?.metadata?.maintenanceProvider && (
-                      <div className="col-12">
-                        <div className="text-muted small mb-1">Nhà cung cấp</div>
-                        <div>{firstPlan.metadata.maintenanceProvider}</div>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Lịch trình */}
-                  {(lastMaintenanceDate || nextMaintenanceDate) && (
-                    <div className="row g-2">
-                      {lastMaintenanceDate && (
+                      )}
+                    </div>
+
+                    {/* Thông tin bảo trì */}
+                    <div className="row g-2 mb-3">
+                      {firstPlan?.metadata?.maintenanceType && (
                         <div className="col-6">
-                          <div className="text-muted small mb-1">BT trước</div>
-                          <div className="text-success small">
-                            {formatDateDisplay(lastMaintenanceDate)}
+                          <div className="text-muted small mb-1">Loại bảo trì</div>
+                          {firstPlan.metadata.maintenanceType === 'internal' ? (
+                            <span className="badge bg-primary">Nội Bộ</span>
+                          ) : (
+                            <span className="badge bg-info">Thuê Ngoài</span>
+                          )}
+                        </div>
+                      )}
+
+                      {firstPlan?.intervalValue && (
+                        <div className="col-6">
+                          <div className="text-muted small mb-1">Chu kỳ</div>
+                          <div>
+                            {firstPlan.intervalValue} {firstPlan.intervalUnit === 'day' ? 'ngày' : firstPlan.intervalUnit === 'week' ? 'tuần' : firstPlan.intervalUnit === 'month' ? 'tháng' : 'năm'}
                           </div>
                         </div>
                       )}
-                      
-                      {nextMaintenanceDate && (() => {
-                        const daysUntilDue = Math.ceil(
-                          (new Date(nextMaintenanceDate).getTime() - new Date().getTime()) /
-                            (1000 * 60 * 60 * 24)
-                        );
-                        return (
+
+                      {firstPlan?.metadata?.maintenanceProvider && (
+                        <div className="col-12">
+                          <div className="text-muted small mb-1">Nhà cung cấp</div>
+                          <div>{firstPlan.metadata.maintenanceProvider}</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Lịch trình */}
+                    {(lastMaintenanceDate || nextMaintenanceDate) && (
+                      <div className="row g-2">
+                        {lastMaintenanceDate && (
                           <div className="col-6">
-                            <div className="text-muted small mb-1">BT sắp đến</div>
-                            <div className="small">
-                              <span className={getDaysUntilDueColor(daysUntilDue)}>
-                                {formatDateDisplay(nextMaintenanceDate)}
-                              </span>
-                              <span className={`ms-2 small ${getDaysUntilDueColor(daysUntilDue)}`}>
-                                ({daysUntilDue > 0 ? `Còn ${daysUntilDue} ngày` : daysUntilDue === 0 ? 'Hôm nay' : `Quá ${Math.abs(daysUntilDue)} ngày`})
-                              </span>
+                            <div className="text-muted small mb-1">BT trước</div>
+                            <div className="text-success small">
+                              {formatDateDisplay(lastMaintenanceDate)}
                             </div>
                           </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-                  
-                  {/* Batch ID */}
-                  {selectedGroup.batchId !== 'no-batch' && (
-                    <div className="mt-3 pt-3 border-top">
-                      <div className="text-muted small mb-1">Batch ID</div>
-                      <span className="badge bg-secondary small">{selectedGroup.batchId}</span>
-                    </div>
-                  )}
-              </div>
-              <div className="modal-footer py-2">
-                <button
-                  type="button"
-                  className="btn btn-sm btn-secondary"
-                  onClick={() => {
-                    setShowViewPlanModal(false);
-                    setSelectedGroup(null);
-                  }}
-                >
-                  Đóng
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-        );
-      })()}
+                        )}
 
-      {/* Edit Interval Modal */}
-      {showEditIntervalModal && selectedGroupForInterval && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">
-                  <i className="fas fa-edit me-2"></i>
-                  Sửa Chu Kỳ Bảo Trì: {selectedGroupForInterval.title}
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowEditIntervalModal(false);
-                    setSelectedGroupForInterval(null);
-                    setEditIntervalValue(6);
-                    setEditIntervalUnit('month');
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <div className="mb-3">
-                  <label className="form-label">Số Lượng Kế Hoạch</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={`${selectedGroupForInterval.plans.filter(p => p.isActive).length} kế hoạch đang hoạt động`}
-                    disabled
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Chu Kỳ Hiện Tại</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={editIntervalValue && editIntervalUnit
-                      ? `${editIntervalValue} ${editIntervalUnit === 'day' ? 'ngày' : editIntervalUnit === 'week' ? 'tuần' : editIntervalUnit === 'month' ? 'tháng' : 'năm'}`
-                      : '-'}
-                    disabled
-                  />
-                </div>
-                <div className="row">
-                  <div className="col-md-6">
-                    <div className="mb-3">
-                      <label className="form-label">Giá Trị Chu Kỳ Mới <span className="text-danger">*</span></label>
-                      <input
-                        type="number"
-                        className="form-control"
-                        min="1"
-                        value={editIntervalValue}
-                        onChange={(e) => setEditIntervalValue(Number(e.target.value))}
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="col-md-6">
-                    <div className="mb-3">
-                      <label className="form-label">Đơn Vị <span className="text-danger">*</span></label>
-                      <select
-                        className="form-select"
-                        value={editIntervalUnit}
-                        onChange={(e) => setEditIntervalUnit(e.target.value as 'day' | 'week' | 'month' | 'year')}
-                        required
-                      >
-                        <option value="day">Ngày</option>
-                        <option value="week">Tuần</option>
-                        <option value="month">Tháng</option>
-                        <option value="year">Năm</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-                <div className="alert alert-info">
-                  <i className="fas fa-info-circle me-2"></i>
-                  Chu kỳ mới sẽ được áp dụng cho tất cả các kế hoạch đang hoạt động trong batch này. Ngày đến hạn tiếp theo sẽ được tính lại dựa trên chu kỳ mới từ ngày bắt đầu của mỗi kế hoạch.
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowEditIntervalModal(false);
-                    setSelectedGroupForInterval(null);
-                    setEditIntervalValue(6);
-                    setEditIntervalUnit('month');
-                  }}
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleEditInterval}
-                >
-                  <i className="fas fa-save me-2"></i>
-                  Lưu
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Batch Reschedule Modal */}
-      {showBatchRescheduleModal && selectedGroup && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Dời Lịch Bảo Trì Hàng Loạt</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowBatchRescheduleModal(false);
-                    setSelectedGroup(null);
-                    setBatchRescheduleDate('');
-                    setBatchRescheduleReason('');
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <div className="alert alert-info">
-                  <i className="fas fa-info-circle me-2"></i>
-                  Bạn đang dời lịch cho <strong>{selectedGroup.plans.filter(p => p.isActive).length}</strong> kế hoạch đang hoạt động trong nhóm: <strong>{selectedGroup.title}</strong>
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Ngày Đến Hạn Mới <span className="text-danger">*</span></label>
-                  <DateInput
-                    value={batchRescheduleDate}
-                    onChange={(value) => setBatchRescheduleDate(value)}
-                    required
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Lý Do Dời Lịch <span className="text-danger">*</span></label>
-                  <textarea
-                    className="form-control"
-                    rows={3}
-                    value={batchRescheduleReason}
-                    onChange={(e) => setBatchRescheduleReason(e.target.value)}
-                    placeholder="Nhập lý do dời lịch cho tất cả kế hoạch..."
-                    required
-                  />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowBatchRescheduleModal(false);
-                    setSelectedGroup(null);
-                    setBatchRescheduleDate('');
-                    setBatchRescheduleReason('');
-                  }}
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleBatchReschedule}
-                >
-                  <i className="fas fa-save me-2"></i>
-                  Xác Nhận Dời Lịch
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Batch Complete Modal */}
-      {showBatchCompleteModal && selectedGroup && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">
-                  <i className="fas fa-check-double me-2"></i>
-                  Ghi Nhận Hoàn Thành Bảo Trì Hàng Loạt
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowBatchCompleteModal(false);
-                    setSelectedGroup(null);
-                    setBatchCompleteDate('');
-                    setBatchCompleteNotes('');
-                    setBatchCompleteStaffId(null);
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <div className="alert alert-success">
-                  <i className="fas fa-info-circle me-2"></i>
-                  Bạn đang ghi nhận hoàn thành cho <strong>{selectedGroup.plans.filter(p => p.isActive).length}</strong> kế hoạch đang hoạt động trong nhóm: <strong>{selectedGroup.title}</strong>
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Ngày Hoàn Thành <span className="text-danger">*</span></label>
-                  <DateInput
-                    value={batchCompleteDate}
-                    onChange={(value) => setBatchCompleteDate(value)}
-                    required
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Nhân Viên Thực Hiện</label>
-                  <select
-                    className="form-select"
-                    value={batchCompleteStaffId || ''}
-                    onChange={(e) => setBatchCompleteStaffId(e.target.value ? parseInt(e.target.value) : null)}
-                  >
-                    <option value="">-- Chọn nhân viên --</option>
-                    {staffList.map((staff) => (
-                      <option key={staff.id} value={staff.id}>
-                        {staff.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Ghi Chú</label>
-                  <textarea
-                    className="form-control"
-                    rows={3}
-                    value={batchCompleteNotes}
-                    onChange={(e) => setBatchCompleteNotes(e.target.value)}
-                    placeholder="Nhập ghi chú cho tất cả kế hoạch..."
-                  />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowBatchCompleteModal(false);
-                    setSelectedGroup(null);
-                    setBatchCompleteDate('');
-                    setBatchCompleteNotes('');
-                    setBatchCompleteStaffId(null);
-                  }}
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-success"
-                  onClick={handleBatchComplete}
-                >
-                  <i className="fas fa-check-double me-2"></i>
-                  Xác Nhận Hoàn Thành
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Batch Cancel Modal */}
-      {showBatchCancelModal && selectedGroup && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Hủy Kế Hoạch Bảo Trì Hàng Loạt</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowBatchCancelModal(false);
-                    setSelectedGroup(null);
-                    setBatchCancelReason('');
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <div className="alert alert-warning">
-                  <i className="fas fa-exclamation-triangle me-2"></i>
-                  Bạn đang hủy <strong>{selectedGroup.plans.filter(p => p.isActive).length}</strong> kế hoạch đang hoạt động trong nhóm: <strong>{selectedGroup.title}</strong>
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Lý Do Hủy <span className="text-danger">*</span></label>
-                  <textarea
-                    className="form-control"
-                    rows={3}
-                    value={batchCancelReason}
-                    onChange={(e) => setBatchCancelReason(e.target.value)}
-                    placeholder="Nhập lý do hủy cho tất cả kế hoạch..."
-                    required
-                  />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowBatchCancelModal(false);
-                    setSelectedGroup(null);
-                    setBatchCancelReason('');
-                  }}
-                >
-                  Đóng
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-danger"
-                  onClick={handleBatchCancel}
-                >
-                  <i className="fas fa-times me-2"></i>
-                  Xác Nhận Hủy
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add Devices Modal */}
-      {showAddDevicesModal && selectedGroupForDevices && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-xl">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">
-                  <i className="fas fa-plus-circle me-2"></i>
-                  Thêm Thiết Bị Vào Kế Hoạch: {selectedGroupForDevices.title}
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowAddDevicesModal(false);
-                    setSelectedGroupForDevices(null);
-                    setDevicesToAdd([]);
-                    setDeviceSearchKeyword('');
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <div className="alert alert-info mb-3">
-                  <i className="fas fa-info-circle me-2"></i>
-                  Chọn thiết bị để thêm vào kế hoạch. Các thiết bị đã có trong kế hoạch sẽ không hiển thị trong danh sách này.
-                </div>
-
-                {/* Search */}
-                <div className="mb-3">
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="Tìm kiếm theo tên, serial hoặc ID..."
-                    value={deviceSearchKeyword}
-                    onChange={(e) => setDeviceSearchKeyword(e.target.value)}
-                  />
-                </div>
-
-                {/* Selected count */}
-                {devicesToAdd.length > 0 && (
-                  <div className="alert alert-success mb-3">
-                    <i className="fas fa-check-circle me-2"></i>
-                    Đã chọn: <strong>{devicesToAdd.length}</strong> thiết bị
-                  </div>
-                )}
-
-                {/* Device list */}
-                {loadingDevices ? (
-                  <div className="text-center py-5">
-                    <div className="spinner-border text-primary" role="status">
-                      <span className="visually-hidden">Đang tải...</span>
-                    </div>
-                  </div>
-                ) : filteredDevices.length === 0 ? (
-                  <div className="text-center py-5 text-muted">
-                    <i className="fas fa-inbox fa-3x mb-3"></i>
-                    <p>Không tìm thấy thiết bị nào</p>
-                  </div>
-                ) : (
-                  <div className="table-responsive" style={{ maxHeight: '500px' }}>
-                    <table className="table table-hover">
-                      <thead className="table-light sticky-top">
-                        <tr>
-                          <th style={{ width: '50px' }}>
-                            <input
-                              type="checkbox"
-                              checked={filteredDevices.length > 0 && filteredDevices.every((d) => 
-                                devicesToAdd.some((sd) => sd.id === d.id) ||
-                                selectedGroupForDevices.plans.some(p => p.deviceId === d.id)
-                              )}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  // Add all filtered devices that are not already in the group
-                                  const existingIds = selectedGroupForDevices.plans.map(p => p.deviceId);
-                                  const newDevices = filteredDevices.filter(d => !existingIds.includes(d.id));
-                                  setDevicesToAdd([...devicesToAdd, ...newDevices.filter(d => !devicesToAdd.some(sd => sd.id === d.id))]);
-                                } else {
-                                  // Remove all filtered devices
-                                  setDevicesToAdd(devicesToAdd.filter(d => !filteredDevices.some(fd => fd.id === d.id)));
-                                }
-                              }}
-                            />
-                          </th>
-                          <th style={{ width: '50px' }}>ID</th>
-                          <th>Tên thiết bị</th>
-                          <th>Serial</th>
-                          <th>Danh mục</th>
-                          <th>Phòng ban</th>
-                          <th>Trạng thái</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredDevices.map((device) => {
-                          const isInGroup = selectedGroupForDevices.plans.some(p => p.deviceId === device.id);
-                          const isSelected = devicesToAdd.some((d) => d.id === device.id);
-                          return (
-                            <tr key={device.id} className={isSelected ? 'table-success' : isInGroup ? 'table-secondary' : ''}>
-                              <td>
-                                {isInGroup ? (
-                                  <span className="text-muted" title="Đã có trong kế hoạch">
-                                    <i className="fas fa-check"></i>
-                                  </span>
-                                ) : (
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => {
-                                      setDevicesToAdd((prev) => {
-                                        const exists = prev.find((d) => d.id === device.id);
-                                        if (exists) {
-                                          // Remove from devicesToAdd
-                                          return prev.filter(d => d.id !== device.id);
-                                        } else {
-                                          // Add to devicesToAdd
-                                          return [...prev, device];
-                                        }
-                                      });
-                                    }}
-                                  />
-                                )}
-                              </td>
-                              <td>{device.id}</td>
-                              <td>{device.name || '-'}</td>
-                              <td>{device.serial || '-'}</td>
-                              <td>{device.deviceCategoryName || '-'}</td>
-                              <td>{device.departmentName || '-'}</td>
-                              <td>
-                                {device.status === 1 && <span className="badge bg-success">Đang sử dụng</span>}
-                                {device.status === 2 && <span className="badge bg-warning">Đang sửa chữa</span>}
-                                {device.status === 3 && <span className="badge bg-danger">Hư hỏng</span>}
-                                {device.status === 4 && <span className="badge bg-secondary">Đã thanh lý</span>}
-                              </td>
-                            </tr>
+                        {nextMaintenanceDate && (() => {
+                          const daysUntilDue = Math.ceil(
+                            (new Date(nextMaintenanceDate).getTime() - new Date().getTime()) /
+                            (1000 * 60 * 60 * 24)
                           );
-                        })}
-                      </tbody>
-                    </table>
+                          return (
+                            <div className="col-6">
+                              <div className="text-muted small mb-1">BT sắp đến</div>
+                              <div className="small">
+                                <span className={getDaysUntilDueColor(daysUntilDue)}>
+                                  {formatDateDisplay(nextMaintenanceDate)}
+                                </span>
+                                <span className={`ms-2 small ${getDaysUntilDueColor(daysUntilDue)}`}>
+                                  ({daysUntilDue > 0 ? `Còn ${daysUntilDue} ngày` : daysUntilDue === 0 ? 'Hôm nay' : `Quá ${Math.abs(daysUntilDue)} ngày`})
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+
+                    {/* Batch ID */}
+                    {selectedGroup.batchId !== 'no-batch' && (
+                      <div className="mt-3 pt-3 border-top">
+                        <div className="text-muted small mb-1">Batch ID</div>
+                        <span className="badge bg-secondary small">{selectedGroup.batchId}</span>
+                      </div>
+                    )}
                   </div>
-                )}
+                  <div className="modal-footer py-2">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => {
+                        setShowViewPlanModal(false);
+                        setSelectedGroup(null);
+                      }}
+                    >
+                      Đóng
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowAddDevicesModal(false);
-                    setSelectedGroupForDevices(null);
-                    setDevicesToAdd([]);
-                    setDeviceSearchKeyword('');
-                  }}
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleAddDevices}
-                  disabled={devicesToAdd.length === 0}
-                >
-                  <i className="fas fa-check me-2"></i>
-                  Thêm ({devicesToAdd.length})
-                </button>
+            </div>
+          );
+        })()}
+
+        {/* Edit Interval Modal */}
+        {showEditIntervalModal && selectedGroupForInterval && (
+          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-edit me-2"></i>
+                    Sửa Chu Kỳ Bảo Trì: {selectedGroupForInterval.title}
+                  </h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowEditIntervalModal(false);
+                      setSelectedGroupForInterval(null);
+                      setEditIntervalValue(6);
+                      setEditIntervalUnit('month');
+                    }}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  <div className="mb-3">
+                    <label className="form-label">Số Lượng Kế Hoạch</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={`${selectedGroupForInterval.plans.filter(p => p.isActive).length} kế hoạch đang hoạt động`}
+                      disabled
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Chu Kỳ Hiện Tại</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={editIntervalValue && editIntervalUnit
+                        ? `${editIntervalValue} ${editIntervalUnit === 'day' ? 'ngày' : editIntervalUnit === 'week' ? 'tuần' : editIntervalUnit === 'month' ? 'tháng' : 'năm'}`
+                        : '-'}
+                      disabled
+                    />
+                  </div>
+                  <div className="row">
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Giá Trị Chu Kỳ Mới <span className="text-danger">*</span></label>
+                        <input
+                          type="number"
+                          className="form-control"
+                          min="1"
+                          value={editIntervalValue}
+                          onChange={(e) => setEditIntervalValue(Number(e.target.value))}
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Đơn Vị <span className="text-danger">*</span></label>
+                        <select
+                          className="form-select"
+                          value={editIntervalUnit}
+                          onChange={(e) => setEditIntervalUnit(e.target.value as 'day' | 'week' | 'month' | 'year')}
+                          required
+                        >
+                          <option value="day">Ngày</option>
+                          <option value="week">Tuần</option>
+                          <option value="month">Tháng</option>
+                          <option value="year">Năm</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="alert alert-info">
+                    <i className="fas fa-info-circle me-2"></i>
+                    Chu kỳ mới sẽ được áp dụng cho tất cả các kế hoạch đang hoạt động trong batch này. Ngày đến hạn tiếp theo sẽ được tính lại dựa trên chu kỳ mới từ ngày bắt đầu của mỗi kế hoạch.
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowEditIntervalModal(false);
+                      setSelectedGroupForInterval(null);
+                      setEditIntervalValue(6);
+                      setEditIntervalUnit('month');
+                    }}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleEditInterval}
+                  >
+                    <i className="fas fa-save me-2"></i>
+                    Lưu
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Remove Devices Modal */}
-      {showRemoveDevicesModal && selectedGroupForDevices && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-xl">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">
-                  <i className="fas fa-minus-circle me-2"></i>
-                  Bớt Thiết Bị Khỏi Kế Hoạch: {selectedGroupForDevices.title}
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowRemoveDevicesModal(false);
-                    setSelectedGroupForDevices(null);
-                    setDevicesToRemove([]);
-                    setDeviceSearchKeyword('');
-                  }}
-                ></button>
+        {/* Batch Reschedule Modal */}
+        {showBatchRescheduleModal && selectedGroup && (
+          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Dời Lịch Bảo Trì Hàng Loạt</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowBatchRescheduleModal(false);
+                      setSelectedGroup(null);
+                      setBatchRescheduleDate('');
+                      setBatchRescheduleReason('');
+                    }}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  <div className="alert alert-info">
+                    <i className="fas fa-info-circle me-2"></i>
+                    Bạn đang dời lịch cho <strong>{selectedGroup.plans.filter(p => p.isActive).length}</strong> kế hoạch đang hoạt động trong nhóm: <strong>{selectedGroup.title}</strong>
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Ngày Đến Hạn Mới <span className="text-danger">*</span></label>
+                    <DateInput
+                      value={batchRescheduleDate}
+                      onChange={(value) => setBatchRescheduleDate(value)}
+                      required
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Lý Do Dời Lịch <span className="text-danger">*</span></label>
+                    <textarea
+                      className="form-control"
+                      rows={3}
+                      value={batchRescheduleReason}
+                      onChange={(e) => setBatchRescheduleReason(e.target.value)}
+                      placeholder="Nhập lý do dời lịch cho tất cả kế hoạch..."
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowBatchRescheduleModal(false);
+                      setSelectedGroup(null);
+                      setBatchRescheduleDate('');
+                      setBatchRescheduleReason('');
+                    }}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleBatchReschedule}
+                  >
+                    <i className="fas fa-save me-2"></i>
+                    Xác Nhận Dời Lịch
+                  </button>
+                </div>
               </div>
-              <div className="modal-body">
-                <div className="alert alert-warning mb-3">
-                  <i className="fas fa-exclamation-triangle me-2"></i>
-                  Chọn thiết bị để xóa khỏi kế hoạch. Chỉ hiển thị các thiết bị đang có trong kế hoạch.
-                </div>
+            </div>
+          </div>
+        )}
 
-                {/* Search */}
-                <div className="mb-3">
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="Tìm kiếm theo tên, serial hoặc ID..."
-                    value={deviceSearchKeyword}
-                    onChange={(e) => setDeviceSearchKeyword(e.target.value)}
-                  />
+        {/* Batch Complete Modal */}
+        {showBatchCompleteModal && selectedGroup && (
+          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-check-double me-2"></i>
+                    Ghi Nhận Hoàn Thành Bảo Trì Hàng Loạt
+                  </h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowBatchCompleteModal(false);
+                      setSelectedGroup(null);
+                      setBatchCompleteDate('');
+                      setBatchCompleteNotes('');
+                      setBatchCompleteStaffId(null);
+                    }}
+                  ></button>
                 </div>
-
-                {/* Selected count */}
-                {devicesToRemove.length > 0 && (
-                  <div className="alert alert-danger mb-3">
-                    <i className="fas fa-exclamation-circle me-2"></i>
-                    Đã chọn: <strong>{devicesToRemove.length}</strong> thiết bị để xóa
+                <div className="modal-body">
+                  <div className="alert alert-success">
+                    <i className="fas fa-info-circle me-2"></i>
+                    Bạn đang ghi nhận hoàn thành cho <strong>{selectedGroup.plans.filter(p => p.isActive).length}</strong> kế hoạch đang hoạt động trong nhóm: <strong>{selectedGroup.title}</strong>
                   </div>
-                )}
+                  <div className="mb-3">
+                    <label className="form-label">Ngày Hoàn Thành <span className="text-danger">*</span></label>
+                    <DateInput
+                      value={batchCompleteDate}
+                      onChange={(value) => setBatchCompleteDate(value)}
+                      required
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Nhân Viên Thực Hiện</label>
+                    <select
+                      className="form-select"
+                      value={batchCompleteStaffId || ''}
+                      onChange={(e) => setBatchCompleteStaffId(e.target.value ? parseInt(e.target.value) : null)}
+                    >
+                      <option value="">-- Chọn nhân viên --</option>
+                      {staffList.map((staff) => (
+                        <option key={staff.id} value={staff.id}>
+                          {staff.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Ghi Chú</label>
+                    <textarea
+                      className="form-control"
+                      rows={3}
+                      value={batchCompleteNotes}
+                      onChange={(e) => setBatchCompleteNotes(e.target.value)}
+                      placeholder="Nhập ghi chú cho tất cả kế hoạch..."
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowBatchCompleteModal(false);
+                      setSelectedGroup(null);
+                      setBatchCompleteDate('');
+                      setBatchCompleteNotes('');
+                      setBatchCompleteStaffId(null);
+                    }}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-success"
+                    onClick={handleBatchComplete}
+                  >
+                    <i className="fas fa-check-double me-2"></i>
+                    Xác Nhận Hoàn Thành
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
-                {/* Device list - only show devices in the group */}
-                {loadingDevices ? (
-                  <div className="text-center py-5">
-                    <div className="spinner-border text-primary" role="status">
-                      <span className="visually-hidden">Đang tải...</span>
+        {/* Batch Cancel Modal */}
+        {showBatchCancelModal && selectedGroup && (
+          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Hủy Kế Hoạch Bảo Trì Hàng Loạt</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowBatchCancelModal(false);
+                      setSelectedGroup(null);
+                      setBatchCancelReason('');
+                    }}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  <div className="alert alert-warning">
+                    <i className="fas fa-exclamation-triangle me-2"></i>
+                    Bạn đang hủy <strong>{selectedGroup.plans.filter(p => p.isActive).length}</strong> kế hoạch đang hoạt động trong nhóm: <strong>{selectedGroup.title}</strong>
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Lý Do Hủy <span className="text-danger">*</span></label>
+                    <textarea
+                      className="form-control"
+                      rows={3}
+                      value={batchCancelReason}
+                      onChange={(e) => setBatchCancelReason(e.target.value)}
+                      placeholder="Nhập lý do hủy cho tất cả kế hoạch..."
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowBatchCancelModal(false);
+                      setSelectedGroup(null);
+                      setBatchCancelReason('');
+                    }}
+                  >
+                    Đóng
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={handleBatchCancel}
+                  >
+                    <i className="fas fa-times me-2"></i>
+                    Xác Nhận Hủy
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Devices Modal */}
+        {showAddDevicesModal && selectedGroupForDevices && (
+          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog modal-xl">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-plus-circle me-2"></i>
+                    Thêm Thiết Bị Vào Kế Hoạch: {selectedGroupForDevices.title}
+                  </h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowAddDevicesModal(false);
+                      setSelectedGroupForDevices(null);
+                      setDevicesToAdd([]);
+                      setDeviceSearchKeyword('');
+                    }}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  <div className="alert alert-info mb-3">
+                    <i className="fas fa-info-circle me-2"></i>
+                    Chọn thiết bị để thêm vào kế hoạch. Các thiết bị đã có trong kế hoạch sẽ không hiển thị trong danh sách này.
+                  </div>
+
+                  {/* Search */}
+                  <div className="mb-3">
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Tìm kiếm theo tên, serial hoặc ID..."
+                      value={deviceSearchKeyword}
+                      onChange={(e) => setDeviceSearchKeyword(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Selected count */}
+                  {devicesToAdd.length > 0 && (
+                    <div className="alert alert-success mb-3">
+                      <i className="fas fa-check-circle me-2"></i>
+                      Đã chọn: <strong>{devicesToAdd.length}</strong> thiết bị
                     </div>
-                  </div>
-                ) : (() => {
-                  const groupDeviceIds = selectedGroupForDevices.plans.map(p => p.deviceId);
-                  const groupDevices = allDevices.filter(d => groupDeviceIds.includes(d.id));
-                  const filtered = deviceSearchKeyword.trim()
-                    ? groupDevices.filter(d => 
-                        d.name?.toLowerCase().includes(deviceSearchKeyword.toLowerCase()) ||
-                        d.serial?.toLowerCase().includes(deviceSearchKeyword.toLowerCase()) ||
-                        d.id.toString().includes(deviceSearchKeyword)
-                      )
-                    : groupDevices;
+                  )}
 
-                  return filtered.length === 0 ? (
+                  {/* Device list */}
+                  {loadingDevices ? (
+                    <div className="text-center py-5">
+                      <div className="spinner-border text-primary" role="status">
+                        <span className="visually-hidden">Đang tải...</span>
+                      </div>
+                    </div>
+                  ) : filteredDevices.length === 0 ? (
                     <div className="text-center py-5 text-muted">
                       <i className="fas fa-inbox fa-3x mb-3"></i>
                       <p>Không tìm thấy thiết bị nào</p>
@@ -4162,14 +3995,19 @@ function MaintenancePageContent() {
                             <th style={{ width: '50px' }}>
                               <input
                                 type="checkbox"
-                                checked={filtered.length > 0 && filtered.every((d) => 
-                                  devicesToRemove.some((sd) => sd.id === d.id)
+                                checked={filteredDevices.length > 0 && filteredDevices.every((d) =>
+                                  devicesToAdd.some((sd) => sd.id === d.id) ||
+                                  selectedGroupForDevices.plans.some(p => p.deviceId === d.id)
                                 )}
                                 onChange={(e) => {
                                   if (e.target.checked) {
-                                    setDevicesToRemove([...devicesToRemove, ...filtered.filter(d => !devicesToRemove.some(sd => sd.id === d.id))]);
+                                    // Add all filtered devices that are not already in the group
+                                    const existingIds = selectedGroupForDevices.plans.map(p => p.deviceId);
+                                    const newDevices = filteredDevices.filter(d => !existingIds.includes(d.id));
+                                    setDevicesToAdd([...devicesToAdd, ...newDevices.filter(d => !devicesToAdd.some(sd => sd.id === d.id))]);
                                   } else {
-                                    setDevicesToRemove(devicesToRemove.filter(d => !filtered.some(fd => fd.id === d.id)));
+                                    // Remove all filtered devices
+                                    setDevicesToAdd(devicesToAdd.filter(d => !filteredDevices.some(fd => fd.id === d.id)));
                                   }
                                 }}
                               />
@@ -4183,21 +4021,528 @@ function MaintenancePageContent() {
                           </tr>
                         </thead>
                         <tbody>
-                          {filtered.map((device) => {
-                            const isSelected = devicesToRemove.some((d) => d.id === device.id);
+                          {filteredDevices.map((device) => {
+                            const isInGroup = selectedGroupForDevices.plans.some(p => p.deviceId === device.id);
+                            const isSelected = devicesToAdd.some((d) => d.id === device.id);
                             return (
-                              <tr key={device.id} className={isSelected ? 'table-danger' : ''}>
+                              <tr key={device.id} className={isSelected ? 'table-success' : isInGroup ? 'table-secondary' : ''}>
+                                <td>
+                                  {isInGroup ? (
+                                    <span className="text-muted" title="Đã có trong kế hoạch">
+                                      <i className="fas fa-check"></i>
+                                    </span>
+                                  ) : (
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => {
+                                        setDevicesToAdd((prev) => {
+                                          const exists = prev.find((d) => d.id === device.id);
+                                          if (exists) {
+                                            // Remove from devicesToAdd
+                                            return prev.filter(d => d.id !== device.id);
+                                          } else {
+                                            // Add to devicesToAdd
+                                            return [...prev, device];
+                                          }
+                                        });
+                                      }}
+                                    />
+                                  )}
+                                </td>
+                                <td>{device.id}</td>
+                                <td>{device.name || '-'}</td>
+                                <td>{device.serial || '-'}</td>
+                                <td>{device.deviceCategoryName || '-'}</td>
+                                <td>{device.departmentName || '-'}</td>
+                                <td>
+                                  {device.status === 1 && <span className="badge bg-success">Đang sử dụng</span>}
+                                  {device.status === 2 && <span className="badge bg-warning">Đang sửa chữa</span>}
+                                  {device.status === 3 && <span className="badge bg-danger">Hư hỏng</span>}
+                                  {device.status === 4 && <span className="badge bg-secondary">Đã thanh lý</span>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowAddDevicesModal(false);
+                      setSelectedGroupForDevices(null);
+                      setDevicesToAdd([]);
+                      setDeviceSearchKeyword('');
+                    }}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleAddDevices}
+                    disabled={devicesToAdd.length === 0}
+                  >
+                    <i className="fas fa-check me-2"></i>
+                    Thêm ({devicesToAdd.length})
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Remove Devices Modal */}
+        {showRemoveDevicesModal && selectedGroupForDevices && (
+          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog modal-xl">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-minus-circle me-2"></i>
+                    Bớt Thiết Bị Khỏi Kế Hoạch: {selectedGroupForDevices.title}
+                  </h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowRemoveDevicesModal(false);
+                      setSelectedGroupForDevices(null);
+                      setDevicesToRemove([]);
+                      setDeviceSearchKeyword('');
+                    }}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  <div className="alert alert-warning mb-3">
+                    <i className="fas fa-exclamation-triangle me-2"></i>
+                    Chọn thiết bị để xóa khỏi kế hoạch. Chỉ hiển thị các thiết bị đang có trong kế hoạch.
+                  </div>
+
+                  {/* Search */}
+                  <div className="mb-3">
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Tìm kiếm theo tên, serial hoặc ID..."
+                      value={deviceSearchKeyword}
+                      onChange={(e) => setDeviceSearchKeyword(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Selected count */}
+                  {devicesToRemove.length > 0 && (
+                    <div className="alert alert-danger mb-3">
+                      <i className="fas fa-exclamation-circle me-2"></i>
+                      Đã chọn: <strong>{devicesToRemove.length}</strong> thiết bị để xóa
+                    </div>
+                  )}
+
+                  {/* Device list - only show devices in the group */}
+                  {loadingDevices ? (
+                    <div className="text-center py-5">
+                      <div className="spinner-border text-primary" role="status">
+                        <span className="visually-hidden">Đang tải...</span>
+                      </div>
+                    </div>
+                  ) : (() => {
+                    const groupDeviceIds = selectedGroupForDevices.plans.map(p => p.deviceId);
+                    const groupDevices = allDevices.filter(d => groupDeviceIds.includes(d.id));
+                    const filtered = deviceSearchKeyword.trim()
+                      ? groupDevices.filter(d =>
+                        d.name?.toLowerCase().includes(deviceSearchKeyword.toLowerCase()) ||
+                        d.serial?.toLowerCase().includes(deviceSearchKeyword.toLowerCase()) ||
+                        d.id.toString().includes(deviceSearchKeyword)
+                      )
+                      : groupDevices;
+
+                    return filtered.length === 0 ? (
+                      <div className="text-center py-5 text-muted">
+                        <i className="fas fa-inbox fa-3x mb-3"></i>
+                        <p>Không tìm thấy thiết bị nào</p>
+                      </div>
+                    ) : (
+                      <div className="table-responsive" style={{ maxHeight: '500px' }}>
+                        <table className="table table-hover">
+                          <thead className="table-light sticky-top">
+                            <tr>
+                              <th style={{ width: '50px' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={filtered.length > 0 && filtered.every((d) =>
+                                    devicesToRemove.some((sd) => sd.id === d.id)
+                                  )}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setDevicesToRemove([...devicesToRemove, ...filtered.filter(d => !devicesToRemove.some(sd => sd.id === d.id))]);
+                                    } else {
+                                      setDevicesToRemove(devicesToRemove.filter(d => !filtered.some(fd => fd.id === d.id)));
+                                    }
+                                  }}
+                                />
+                              </th>
+                              <th style={{ width: '50px' }}>ID</th>
+                              <th>Tên thiết bị</th>
+                              <th>Serial</th>
+                              <th>Danh mục</th>
+                              <th>Phòng ban</th>
+                              <th>Trạng thái</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filtered.map((device) => {
+                              const isSelected = devicesToRemove.some((d) => d.id === device.id);
+                              return (
+                                <tr key={device.id} className={isSelected ? 'table-danger' : ''}>
+                                  <td>
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => {
+                                        if (isSelected) {
+                                          setDevicesToRemove(devicesToRemove.filter(d => d.id !== device.id));
+                                        } else {
+                                          setDevicesToRemove([...devicesToRemove, device]);
+                                        }
+                                      }}
+                                    />
+                                  </td>
+                                  <td>{device.id}</td>
+                                  <td>{device.name || '-'}</td>
+                                  <td>{device.serial || '-'}</td>
+                                  <td>{device.deviceCategoryName || '-'}</td>
+                                  <td>{device.departmentName || '-'}</td>
+                                  <td>
+                                    {device.status === 1 && <span className="badge bg-success">Đang sử dụng</span>}
+                                    {device.status === 2 && <span className="badge bg-warning">Đang sửa chữa</span>}
+                                    {device.status === 3 && <span className="badge bg-danger">Hư hỏng</span>}
+                                    {device.status === 4 && <span className="badge bg-secondary">Đã thanh lý</span>}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowRemoveDevicesModal(false);
+                      setSelectedGroupForDevices(null);
+                      setDevicesToRemove([]);
+                      setDeviceSearchKeyword('');
+                    }}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={handleRemoveDevices}
+                    disabled={devicesToRemove.length === 0}
+                  >
+                    <i className="fas fa-trash me-2"></i>
+                    Xóa ({devicesToRemove.length})
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Start Maintenance Modal */}
+        {showStartModal && selectedEvent && (
+          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-play-circle me-2"></i>
+                    Bắt Đầu Bảo Trì
+                  </h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowStartModal(false);
+                      setSelectedEvent(null);
+                      setStartNotes('');
+                      setStartStaffId(null);
+                    }}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  <div className="alert alert-info mb-3">
+                    <i className="fas fa-info-circle me-2"></i>
+                    Xác nhận bắt đầu bảo trì cho thiết bị này.
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Thiết Bị</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={selectedEvent.deviceName || `Thiết bị #${selectedEvent.deviceId}`}
+                      disabled
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Tiêu Đề</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={selectedEvent.title || '-'}
+                      disabled
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Nhân Viên Thực Hiện</label>
+                    <select
+                      className="form-select"
+                      value={startStaffId || ''}
+                      onChange={(e) => setStartStaffId(e.target.value ? Number(e.target.value) : null)}
+                    >
+                      <option value="">-- Chọn nhân viên --</option>
+                      {staffList.map((staff) => (
+                        <option key={staff.id} value={staff.id}>
+                          {staff.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Ghi Chú</label>
+                    <textarea
+                      className="form-control"
+                      rows={3}
+                      value={startNotes}
+                      onChange={(e) => setStartNotes(e.target.value)}
+                      placeholder="Nhập ghi chú khi bắt đầu bảo trì..."
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowStartModal(false);
+                      setSelectedEvent(null);
+                      setStartNotes('');
+                      setStartStaffId(null);
+                    }}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleStartMaintenance}
+                  >
+                    <i className="fas fa-play me-2"></i>
+                    Bắt Đầu Bảo Trì
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Complete Maintenance Modal */}
+        {showCompleteModal && selectedEvent && (
+          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-check-circle me-2"></i>
+                    Ghi Nhận Bảo Trì Hoàn Thành
+                  </h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowCompleteModal(false);
+                      setSelectedEvent(null);
+                      setCompleteDate('');
+                      setCompleteNotes('');
+                      setCompleteStaffId(null);
+                    }}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  <div className="mb-3">
+                    <label className="form-label">Thiết Bị</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={selectedEvent.deviceName || `Thiết bị #${selectedEvent.deviceId}`}
+                      disabled
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Tiêu Đề</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={selectedEvent.title || '-'}
+                      disabled
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Ngày Hoàn Thành <span className="text-danger">*</span></label>
+                    <DateInput
+                      value={completeDate}
+                      onChange={(value) => setCompleteDate(value)}
+                      required
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Nhân Viên Thực Hiện</label>
+                    <select
+                      className="form-select"
+                      value={completeStaffId || ''}
+                      onChange={(e) => setCompleteStaffId(e.target.value ? Number(e.target.value) : null)}
+                    >
+                      <option value="">-- Chọn nhân viên --</option>
+                      {staffList.map((staff) => (
+                        <option key={staff.id} value={staff.id}>
+                          {staff.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Ghi Chú</label>
+                    <textarea
+                      className="form-control"
+                      rows={3}
+                      value={completeNotes}
+                      onChange={(e) => setCompleteNotes(e.target.value)}
+                      placeholder="Nhập ghi chú về việc bảo trì..."
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowCompleteModal(false);
+                      setSelectedEvent(null);
+                      setCompleteDate('');
+                      setCompleteNotes('');
+                      setCompleteStaffId(null);
+                    }}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-success"
+                    onClick={handleCompleteMaintenance}
+                  >
+                    <i className="fas fa-check me-2"></i>
+                    Xác Nhận Hoàn Thành
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Device Selection Modal */}
+        {showDeviceModal && (
+          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog modal-xl">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-search me-2"></i>
+                    Tìm kiếm và chọn thiết bị
+                  </h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowDeviceModal(false);
+                      setDeviceSearchKeyword('');
+                    }}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  {/* Search */}
+                  <div className="mb-3">
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Tìm kiếm theo tên, serial hoặc ID..."
+                      value={deviceSearchKeyword}
+                      onChange={(e) => setDeviceSearchKeyword(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Selected count */}
+                  {selectedDevices.length > 0 && (
+                    <div className="alert alert-info mb-3">
+                      <i className="fas fa-check-circle me-2"></i>
+                      Đã chọn: <strong>{selectedDevices.length}</strong> thiết bị
+                    </div>
+                  )}
+
+                  {/* Device list */}
+                  {loadingDevices ? (
+                    <div className="text-center py-5">
+                      <div className="spinner-border text-primary" role="status">
+                        <span className="visually-hidden">Đang tải...</span>
+                      </div>
+                    </div>
+                  ) : filteredDevices.length === 0 ? (
+                    <div className="text-center py-5 text-muted">
+                      <i className="fas fa-inbox fa-3x mb-3"></i>
+                      <p>Không tìm thấy thiết bị nào</p>
+                    </div>
+                  ) : (
+                    <div className="table-responsive" style={{ maxHeight: '500px' }}>
+                      <table className="table table-hover">
+                        <thead className="table-light sticky-top">
+                          <tr>
+                            <th style={{ width: '50px' }}>
+                              <input
+                                type="checkbox"
+                                checked={filteredDevices.length > 0 && filteredDevices.every((d) =>
+                                  selectedDevices.some((sd) => sd.id === d.id)
+                                )}
+                                onChange={handleSelectAllDevices}
+                              />
+                            </th>
+                            <th style={{ width: '50px' }}>ID</th>
+                            <th>Tên thiết bị</th>
+                            <th>Serial</th>
+                            <th>Danh mục</th>
+                            <th>Phòng ban</th>
+                            <th>Trạng thái</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredDevices.map((device) => {
+                            const isSelected = selectedDevices.some((d) => d.id === device.id);
+                            return (
+                              <tr key={device.id} className={isSelected ? 'table-primary' : ''}>
                                 <td>
                                   <input
                                     type="checkbox"
                                     checked={isSelected}
-                                    onChange={() => {
-                                      if (isSelected) {
-                                        setDevicesToRemove(devicesToRemove.filter(d => d.id !== device.id));
-                                      } else {
-                                        setDevicesToRemove([...devicesToRemove, device]);
-                                      }
-                                    }}
+                                    onChange={() => handleDeviceCheckboxChange(device)}
                                   />
                                 </td>
                                 <td>{device.id}</td>
@@ -4217,365 +4562,32 @@ function MaintenancePageContent() {
                         </tbody>
                       </table>
                     </div>
-                  );
-                })()}
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowRemoveDevicesModal(false);
-                    setSelectedGroupForDevices(null);
-                    setDevicesToRemove([]);
-                    setDeviceSearchKeyword('');
-                  }}
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-danger"
-                  onClick={handleRemoveDevices}
-                  disabled={devicesToRemove.length === 0}
-                >
-                  <i className="fas fa-trash me-2"></i>
-                  Xóa ({devicesToRemove.length})
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Start Maintenance Modal */}
-      {showStartModal && selectedEvent && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">
-                  <i className="fas fa-play-circle me-2"></i>
-                  Bắt Đầu Bảo Trì
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowStartModal(false);
-                    setSelectedEvent(null);
-                    setStartNotes('');
-                    setStartStaffId(null);
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <div className="alert alert-info mb-3">
-                  <i className="fas fa-info-circle me-2"></i>
-                  Xác nhận bắt đầu bảo trì cho thiết bị này.
+                  )}
                 </div>
-                <div className="mb-3">
-                  <label className="form-label">Thiết Bị</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={selectedEvent.deviceName || `Thiết bị #${selectedEvent.deviceId}`}
-                    disabled
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Tiêu Đề</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={selectedEvent.title || '-'}
-                    disabled
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Nhân Viên Thực Hiện</label>
-                  <select
-                    className="form-select"
-                    value={startStaffId || ''}
-                    onChange={(e) => setStartStaffId(e.target.value ? Number(e.target.value) : null)}
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowDeviceModal(false);
+                      setDeviceSearchKeyword('');
+                    }}
                   >
-                    <option value="">-- Chọn nhân viên --</option>
-                    {staffList.map((staff) => (
-                      <option key={staff.id} value={staff.id}>
-                        {staff.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Ghi Chú</label>
-                  <textarea
-                    className="form-control"
-                    rows={3}
-                    value={startNotes}
-                    onChange={(e) => setStartNotes(e.target.value)}
-                    placeholder="Nhập ghi chú khi bắt đầu bảo trì..."
-                  />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowStartModal(false);
-                    setSelectedEvent(null);
-                    setStartNotes('');
-                    setStartStaffId(null);
-                  }}
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleStartMaintenance}
-                >
-                  <i className="fas fa-play me-2"></i>
-                  Bắt Đầu Bảo Trì
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Complete Maintenance Modal */}
-      {showCompleteModal && selectedEvent && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">
-                  <i className="fas fa-check-circle me-2"></i>
-                  Ghi Nhận Bảo Trì Hoàn Thành
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowCompleteModal(false);
-                    setSelectedEvent(null);
-                    setCompleteDate('');
-                    setCompleteNotes('');
-                    setCompleteStaffId(null);
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <div className="mb-3">
-                  <label className="form-label">Thiết Bị</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={selectedEvent.deviceName || `Thiết bị #${selectedEvent.deviceId}`}
-                    disabled
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Tiêu Đề</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={selectedEvent.title || '-'}
-                    disabled
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Ngày Hoàn Thành <span className="text-danger">*</span></label>
-                  <DateInput
-                    value={completeDate}
-                    onChange={(value) => setCompleteDate(value)}
-                    required
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Nhân Viên Thực Hiện</label>
-                  <select
-                    className="form-select"
-                    value={completeStaffId || ''}
-                    onChange={(e) => setCompleteStaffId(e.target.value ? Number(e.target.value) : null)}
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleConfirmDeviceSelection}
                   >
-                    <option value="">-- Chọn nhân viên --</option>
-                    {staffList.map((staff) => (
-                      <option key={staff.id} value={staff.id}>
-                        {staff.name}
-                      </option>
-                    ))}
-                  </select>
+                    <i className="fas fa-check me-2"></i>
+                    Xác nhận ({selectedDevices.length})
+                  </button>
                 </div>
-                <div className="mb-3">
-                  <label className="form-label">Ghi Chú</label>
-                  <textarea
-                    className="form-control"
-                    rows={3}
-                    value={completeNotes}
-                    onChange={(e) => setCompleteNotes(e.target.value)}
-                    placeholder="Nhập ghi chú về việc bảo trì..."
-                  />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowCompleteModal(false);
-                    setSelectedEvent(null);
-                    setCompleteDate('');
-                    setCompleteNotes('');
-                    setCompleteStaffId(null);
-                  }}
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-success"
-                  onClick={handleCompleteMaintenance}
-                >
-                  <i className="fas fa-check me-2"></i>
-                  Xác Nhận Hoàn Thành
-                </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Device Selection Modal */}
-      {showDeviceModal && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-xl">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">
-                  <i className="fas fa-search me-2"></i>
-                  Tìm kiếm và chọn thiết bị
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowDeviceModal(false);
-                    setDeviceSearchKeyword('');
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                {/* Search */}
-                <div className="mb-3">
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="Tìm kiếm theo tên, serial hoặc ID..."
-                    value={deviceSearchKeyword}
-                    onChange={(e) => setDeviceSearchKeyword(e.target.value)}
-                  />
-                </div>
-
-                {/* Selected count */}
-                {selectedDevices.length > 0 && (
-                  <div className="alert alert-info mb-3">
-                    <i className="fas fa-check-circle me-2"></i>
-                    Đã chọn: <strong>{selectedDevices.length}</strong> thiết bị
-                  </div>
-                )}
-
-                {/* Device list */}
-                {loadingDevices ? (
-                  <div className="text-center py-5">
-                    <div className="spinner-border text-primary" role="status">
-                      <span className="visually-hidden">Đang tải...</span>
-                    </div>
-                  </div>
-                ) : filteredDevices.length === 0 ? (
-                  <div className="text-center py-5 text-muted">
-                    <i className="fas fa-inbox fa-3x mb-3"></i>
-                    <p>Không tìm thấy thiết bị nào</p>
-                  </div>
-                ) : (
-                  <div className="table-responsive" style={{ maxHeight: '500px' }}>
-                    <table className="table table-hover">
-                      <thead className="table-light sticky-top">
-                        <tr>
-                          <th style={{ width: '50px' }}>
-                            <input
-                              type="checkbox"
-                              checked={filteredDevices.length > 0 && filteredDevices.every((d) => 
-                                selectedDevices.some((sd) => sd.id === d.id)
-                              )}
-                              onChange={handleSelectAllDevices}
-                            />
-                          </th>
-                          <th style={{ width: '50px' }}>ID</th>
-                          <th>Tên thiết bị</th>
-                          <th>Serial</th>
-                          <th>Danh mục</th>
-                          <th>Phòng ban</th>
-                          <th>Trạng thái</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredDevices.map((device) => {
-                          const isSelected = selectedDevices.some((d) => d.id === device.id);
-                          return (
-                            <tr key={device.id} className={isSelected ? 'table-primary' : ''}>
-                              <td>
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => handleDeviceCheckboxChange(device)}
-                                />
-                              </td>
-                              <td>{device.id}</td>
-                              <td>{device.name || '-'}</td>
-                              <td>{device.serial || '-'}</td>
-                              <td>{device.deviceCategoryName || '-'}</td>
-                              <td>{device.departmentName || '-'}</td>
-                              <td>
-                                {device.status === 1 && <span className="badge bg-success">Đang sử dụng</span>}
-                                {device.status === 2 && <span className="badge bg-warning">Đang sửa chữa</span>}
-                                {device.status === 3 && <span className="badge bg-danger">Hư hỏng</span>}
-                                {device.status === 4 && <span className="badge bg-secondary">Đã thanh lý</span>}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowDeviceModal(false);
-                    setDeviceSearchKeyword('');
-                  }}
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleConfirmDeviceSelection}
-                >
-                  <i className="fas fa-check me-2"></i>
-                  Xác nhận ({selectedDevices.length})
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
       </div>
     </>
   );

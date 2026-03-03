@@ -20,12 +20,9 @@ body {
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
+  background: linear-gradient(to bottom,
       transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+      rgb(var(--background-end-rgb))) rgb(var(--background-start-rgb));
 }
 
 a {
@@ -423,12 +420,13 @@ a {
 
 /* Reduce padding on mobile to maximize space */
 @media (max-width: 768px) {
+
   /* Remove all padding/margin from page-content */
   .page-content {
     padding: 0 !important;
     margin: 0 !important;
   }
-  
+
   /* Container-fluid absolutely zero margin/padding */
   .container-fluid {
     padding-left: 0 !important;
@@ -438,7 +436,7 @@ a {
     width: 100% !important;
     max-width: 100vw !important;
   }
-  
+
   .card {
     margin-bottom: 0.75rem;
     margin-left: 0 !important;
@@ -447,17 +445,17 @@ a {
     border-left: none !important;
     border-right: none !important;
   }
-  
+
   .card-header {
     padding: 0.5rem 0.75rem !important;
     margin: 0 !important;
   }
-  
+
   .card-body {
     padding: 0.5rem 0.75rem !important;
     margin: 0 !important;
   }
-  
+
   /* Table container - zero padding on mobile */
   .card-body.p-0,
   .card-body[style*="padding: 0"],
@@ -465,16 +463,16 @@ a {
     padding: 0 !important;
     margin: 0 !important;
   }
-  
+
   .table-responsive {
     padding: 0 !important;
     margin: 0 !important;
   }
-  
+
   .top-navbar {
     padding: 0.5rem 0.75rem !important;
   }
-  
+
   .top-navbar-left {
     gap: 0.5rem;
     padding: 0;
@@ -486,7 +484,7 @@ a {
   .page-content {
     padding: 0 !important;
   }
-  
+
   .container-fluid {
     padding-left: 0 !important;
     padding-right: 0 !important;
@@ -495,7 +493,7 @@ a {
     width: 100% !important;
     max-width: 100% !important;
   }
-  
+
   .card {
     margin-bottom: 0.5rem;
     margin-left: 0 !important;
@@ -504,31 +502,31 @@ a {
     border-right: none;
     border-radius: 0;
   }
-  
+
   .card-header {
     padding: 0.5rem !important;
   }
-  
+
   .card-body {
     padding: 0.1rem !important;
     padding-right: 0.5rem !important;
   }
-  
+
   /* Table container - absolutely zero padding */
   .card-body.p-0,
   .card-body[style*="padding: 0"] {
     padding: 0 !important;
   }
-  
+
   .table-responsive {
     padding: 0 !important;
     margin: 0 !important;
   }
-  
+
   .table {
     margin-bottom: 0 !important;
   }
-  
+
   .top-navbar {
     padding: 0.5rem !important;
   }
@@ -551,7 +549,7 @@ a {
   .mobile-overlay {
     display: block;
   }
-  
+
   .sidebar {
     transform: translateX(-100%);
     transition: transform 0.3s ease;
@@ -574,15 +572,15 @@ a {
   .sidebar-toggle {
     display: none;
   }
-  
+
   .top-navbar {
     padding: 0.5rem 1rem;
   }
-  
+
   .top-navbar-left {
     gap: 0.5rem;
   }
-  
+
   .top-navbar-left .btn-sm {
     padding: 0.375rem 0.5rem;
     font-size: 0.875rem;
@@ -646,7 +644,7 @@ a {
 /* Extra mobile tweaks: improve spacing, touch targets and sidebar behavior */
 @media (max-width: 768px) {
   /* Page content padding already handled above - using minimal padding */
-  
+
   /* Make top navbar controls easier to tap */
   .top-navbar-left .btn,
   .top-navbar-left button,
@@ -699,6 +697,7 @@ a {
 }
 
 @media (max-width: 480px) {
+
   /* Extra small screens adjustments */
   .sidebar {
     width: 200px;
@@ -713,6 +712,7 @@ a {
 
 /* Compact filter styles and responsive table behavior */
 @media (max-width: 992px) {
+
   /* Compact filter card inputs */
   .filter-card .card-body {
     padding: 0.5rem;
@@ -751,6 +751,7 @@ a {
 }
 
 @media (max-width: 576px) {
+
   .filter-card .col-md-3,
   .filter-card .col-md-2,
   .filter-card .col-md-4 {
@@ -783,8 +784,10 @@ a {
 /* DON'T hide columns - let user scroll to see all columns */
 /* Removed column hiding to allow horizontal scrolling */
 @media (max-width: 480px) {
+
   /* Reduce font sizes in table for very small screens */
-  .table td, .table th {
+  .table td,
+  .table th {
     font-size: 0.9rem;
     padding: 0.45rem 0.5rem;
   }
@@ -797,10 +800,11 @@ a {
 
 /* Responsive improvements for devices page */
 @media (max-width: 768px) {
-  /* Make action buttons smaller and on one row */
+
+  /* Make action buttons smaller and allow wrapping */
   .card-header .d-flex.gap-1,
   .card-header .d-flex.gap-2 {
-    flex-wrap: nowrap !important;
+    flex-wrap: wrap !important;
     gap: 0.25rem !important;
   }
 
@@ -818,23 +822,23 @@ a {
   .card-header .btn-sm i {
     font-size: 0.875rem;
   }
-  
-  /* Pagination info - keep on one row */
+
+  /* Pagination info - allow wrapping on small screens */
   .card-header .d-flex.justify-content-between {
     flex-direction: row !important;
     gap: 0.5rem;
     align-items: center !important;
-    flex-wrap: nowrap !important;
+    flex-wrap: wrap !important;
   }
 
-  .card-header .d-flex.justify-content-between > div {
-    flex-shrink: 0;
-    white-space: nowrap;
+  .card-header .d-flex.justify-content-between>div {
+    flex-shrink: 1;
+    min-width: 0;
   }
 
   /* Hide sort info on small screens */
   @media (max-width: 576px) {
-    .card-header .d-flex.justify-content-between > div:last-child .text-muted.ms-2 {
+    .card-header .d-flex.justify-content-between>div:last-child .text-muted.ms-2 {
       display: none;
     }
   }
@@ -845,7 +849,7 @@ a {
     margin: 0.5rem auto;
   }
 
-  .modal-body .row > [class*="col-"] {
+  .modal-body .row>[class*="col-"] {
     margin-bottom: 1rem;
   }
 
@@ -913,7 +917,7 @@ a {
   .table-responsive::-webkit-scrollbar {
     height: 14px;
   }
-  
+
   .table-responsive::-webkit-scrollbar-thumb {
     background-color: rgba(0, 0, 0, 0.5);
   }
@@ -950,7 +954,8 @@ a {
 
 /* Show gradient when table is scrollable and not at end - DISABLED */
 .table-responsive:not(.scrolled-to-end)::after {
-  opacity: 0; /* Changed from 1 to 0 to hide */
+  opacity: 0;
+  /* Changed from 1 to 0 to hide */
 }
 
 /* Add left gradient when scrolled - REMOVED/MAKE LIGHTER */
@@ -963,7 +968,8 @@ a {
   width: 30px;
   background: linear-gradient(to left, transparent, rgba(0, 0, 0, 0.03));
   pointer-events: none;
-  opacity: 0; /* Changed from 1 to 0 to hide */
+  opacity: 0;
+  /* Changed from 1 to 0 to hide */
   z-index: 1;
 }
 
@@ -985,7 +991,7 @@ a {
     /* Ensure container is smaller than table */
     max-width: 100vw !important;
   }
-  
+
   .table-responsive table {
     width: max-content !important;
     min-width: max-content !important;
@@ -994,7 +1000,7 @@ a {
     /* Ensure all columns display */
     table-layout: auto !important;
   }
-  
+
   /* Ensure all table cells are visible - override any Bootstrap responsive classes */
   .table-responsive table th,
   .table-responsive table td {
@@ -1002,7 +1008,7 @@ a {
     visibility: visible !important;
     white-space: nowrap !important;
   }
-  
+
   /* Override Bootstrap's d-none or d-md-none classes on table cells */
   .table-responsive table th.d-none,
   .table-responsive table td.d-none,
@@ -1017,21 +1023,23 @@ a {
   .table-responsive::after {
     width: 40px;
     background: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.03));
-    opacity: 0 !important; /* Hide completely */
+    opacity: 0 !important;
+    /* Hide completely */
   }
 
   .table-responsive.scrolled::before {
     width: 40px;
     background: linear-gradient(to left, transparent, rgba(0, 0, 0, 0.03));
-    opacity: 0 !important; /* Hide completely */
+    opacity: 0 !important;
+    /* Hide completely */
   }
-  
+
   /* Make scrollbar more visible on mobile */
   .table-responsive::-webkit-scrollbar {
     height: 14px !important;
     display: block !important;
   }
-  
+
   .table-responsive::-webkit-scrollbar-thumb {
     background-color: rgba(0, 0, 0, 0.6) !important;
   }
@@ -1042,7 +1050,7 @@ a {
   .table-responsive {
     overflow-x: visible !important;
   }
-  
+
   .table-responsive table {
     width: 100% !important;
     min-width: 100% !important;
@@ -1053,6 +1061,7 @@ a {
 
 /* Scroll hint for very small screens */
 @media (max-width: 576px) {
+
   /* Hide all gradients on small screens */
   .table-responsive::after,
   .table-responsive.scrolled::before {
@@ -1090,7 +1099,7 @@ a {
     text-overflow: ellipsis;
     line-height: 1;
   }
-  
+
   .pagination .page-link:has(.fa-angle-left) i,
   .pagination .page-link:has(.fa-angle-right) i {
     font-size: 0.875rem;
@@ -1133,164 +1142,225 @@ a {
     font-size: 0.875rem;
     margin-bottom: 0.25rem;
   }
-  
+
   /* Table container - absolutely zero padding on small screens */
   .card-body.p-0 {
     padding: 0 !important;
   }
-  
+
   .table-responsive {
     padding: 0 !important;
     margin: 0 !important;
   }
-  
+
   .table {
     margin: 0 !important;
   }
-  
-/* Damage Report Status and Priority Colors - Compact Label Style */
-.damage-report-status-select,
-.damage-report-priority-select {
-  cursor: pointer;
-  transition: all 0.2s ease;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.25rem center;
-  background-size: 0.75rem;
-  padding-right: 1.5rem !important;
-}
 
-.damage-report-status-select:hover,
-.damage-report-priority-select:hover {
-  opacity: 0.85;
-  transform: scale(1.01);
-}
+  /* Damage Report Status and Priority Colors - Compact Label Style */
+  .damage-report-status-select,
+  .damage-report-priority-select {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.25rem center;
+    background-size: 0.75rem;
+    padding-right: 1.5rem !important;
+  }
 
-.damage-report-status-select:focus,
-.damage-report-priority-select:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
-}
+  .damage-report-status-select:hover,
+  .damage-report-priority-select:hover {
+    opacity: 0.85;
+    transform: scale(1.01);
+  }
 
-.damage-report-status-select option,
-.damage-report-priority-select option {
-  padding: 0.375rem 0.5rem;
-  font-size: 0.75rem;
-}
+  .damage-report-status-select:focus,
+  .damage-report-priority-select:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+  }
 
-.damage-report-status-select option[value="1"] {
-  background-color: #f8f9fa !important;
-  color: #6c757d !important;
-}
+  .damage-report-status-select option,
+  .damage-report-priority-select option {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.75rem;
+  }
 
-.damage-report-status-select option[value="2"] {
-  background-color: #cff4fc !important;
-  color: #0a58ca !important;
-}
+  .damage-report-status-select option[value="1"] {
+    background-color: #f8f9fa !important;
+    color: #6c757d !important;
+  }
 
-.damage-report-status-select option[value="3"] {
-  background-color: #fff3cd !important;
-  color: #664d03 !important;
-}
+  .damage-report-status-select option[value="2"] {
+    background-color: #cff4fc !important;
+    color: #0a58ca !important;
+  }
 
-.damage-report-status-select option[value="4"] {
-  background-color: #d1e7dd !important;
-  color: #0f5132 !important;
-}
+  .damage-report-status-select option[value="3"] {
+    background-color: #fff3cd !important;
+    color: #664d03 !important;
+  }
 
-.damage-report-status-select option[value="5"] {
-  background-color: #e9ecef !important;
-  color: #212529 !important;
-}
+  .damage-report-status-select option[value="4"] {
+    background-color: #d1e7dd !important;
+    color: #0f5132 !important;
+  }
 
-.damage-report-status-select option[value="6"] {
-  background-color: #f8d7da !important;
-  color: #842029 !important;
-}
+  .damage-report-status-select option[value="5"] {
+    background-color: #e9ecef !important;
+    color: #212529 !important;
+  }
 
-.damage-report-priority-select option {
-  padding: 0.5rem;
-}
+  .damage-report-status-select option[value="6"] {
+    background-color: #f8d7da !important;
+    color: #842029 !important;
+  }
 
-.damage-report-priority-select option[value="1"] {
-  background-color: #f8f9fa !important;
-  color: #6c757d !important;
-}
+  .damage-report-priority-select option {
+    padding: 0.5rem;
+  }
 
-.damage-report-priority-select option[value="2"] {
-  background-color: #cfe2ff !important;
-  color: #0a58ca !important;
-}
+  .damage-report-priority-select option[value="1"] {
+    background-color: #f8f9fa !important;
+    color: #6c757d !important;
+  }
 
-.damage-report-priority-select option[value="3"] {
-  background-color: #fff3cd !important;
-  color: #664d03 !important;
-}
+  .damage-report-priority-select option[value="2"] {
+    background-color: #cfe2ff !important;
+    color: #0a58ca !important;
+  }
 
-.damage-report-priority-select option[value="4"] {
-  background-color: #f8d7da !important;
-  color: #842029 !important;
-}
+  .damage-report-priority-select option[value="3"] {
+    background-color: #fff3cd !important;
+    color: #664d03 !important;
+  }
 
-/* Card View Styles for Damage Reports */
-.damage-report-card {
-  transition: all 0.3s ease;
-  border: 1px solid #e9ecef;
-}
+  .damage-report-priority-select option[value="4"] {
+    background-color: #f8d7da !important;
+    color: #842029 !important;
+  }
 
-.damage-report-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15) !important;
-  border-color: #dee2e6;
-}
-
-.damage-report-card .card-header {
-  transition: background-color 0.2s ease;
-}
-
-.damage-report-card:hover .card-header {
-  background-color: #f1f3f5 !important;
-}
-
-.damage-report-card .card-body {
-  background-color: #ffffff;
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
+  /* Card View Styles for Damage Reports */
   .damage-report-card {
-    margin-bottom: 1rem;
+    transition: all 0.3s ease;
+    border: 1px solid #e9ecef;
   }
-  
+
+  .damage-report-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15) !important;
+    border-color: #dee2e6;
+  }
+
   .damage-report-card .card-header {
-    padding: 0.75rem !important;
+    transition: background-color 0.2s ease;
   }
-  
+
+  .damage-report-card:hover .card-header {
+    background-color: #f1f3f5 !important;
+  }
+
   .damage-report-card .card-body {
-    padding: 0.75rem !important;
+    background-color: #ffffff;
   }
-}
 
-/* Card content spacing */
-.damage-report-card .row {
-  margin-left: -0.5rem;
-  margin-right: -0.5rem;
-}
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .damage-report-card {
+      margin-bottom: 0.5rem;
+    }
 
-.damage-report-card .row > * {
-  padding-left: 0.5rem;
-  padding-right: 0.5rem;
-}
+    .damage-report-card .card-header {
+      padding: 0.625rem 0.75rem !important;
+    }
 
-/* Select box hover and focus states */
-select.form-control-sm:focus {
-  border-color: #86b7fe;
-  outline: 0;
-  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
-}
+    .damage-report-card .card-body {
+      padding: 0.625rem 0.75rem !important;
+    }
+
+    /* Card header - title and buttons */
+    .card>.card-header {
+      padding: 0.5rem 0.75rem !important;
+    }
+
+    .card>.card-header h4 {
+      font-size: 1rem !important;
+    }
+
+    .card>.card-header .btn-sm {
+      padding: 0.2rem 0.4rem;
+      font-size: 0.7rem;
+      min-width: 28px;
+      height: 28px;
+    }
+
+    .card>.card-header .btn-sm i {
+      font-size: 0.8rem;
+    }
+
+    /* Compact the action buttons row */
+    .card>.card-header .d-flex.gap-1 {
+      gap: 0.2rem !important;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .damage-report-card .card-header {
+      padding: 0.5rem !important;
+      gap: 0.5rem !important;
+    }
+
+    .damage-report-card .card-body {
+      padding: 0.5rem !important;
+    }
+
+    .damage-report-card .card-header h6 {
+      font-size: 0.85rem !important;
+    }
+
+    /* Card header main */
+    .card>.card-header {
+      padding: 0.375rem 0.5rem !important;
+    }
+
+    .card>.card-header h4 {
+      font-size: 0.9rem !important;
+    }
+
+    .card>.card-header .btn-sm {
+      padding: 0.15rem 0.35rem;
+      font-size: 0.65rem;
+      min-width: 26px;
+      height: 26px;
+    }
+
+    .card>.card-header .d-flex.gap-1 {
+      gap: 0.15rem !important;
+      margin-right: 0 !important;
+    }
+  }
+
+  /* Card content spacing */
+  .damage-report-card .row {
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
+  }
+
+  .damage-report-card .row>* {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  /* Select box hover and focus states */
+  select.form-control-sm:focus {
+    border-color: #86b7fe;
+    outline: 0;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+  }
 
   .table thead th,
   .table tbody td {
@@ -1338,6 +1408,7 @@ select.form-control-sm:focus {
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -1368,7 +1439,7 @@ select.form-control-sm:focus {
   width: 100%;
   height: 100%;
   background: linear-gradient(135deg, rgba(102, 126, 234, 0.9) 0%, rgba(118, 75, 162, 0.9) 50%, rgba(240, 147, 251, 0.9) 100%);
-  background-image: 
+  background-image:
     radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
     radial-gradient(circle at 80% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
 }
@@ -1389,6 +1460,7 @@ select.form-control-sm:focus {
     opacity: 0;
     transform: translateY(30px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -1417,9 +1489,12 @@ select.form-control-sm:focus {
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
   }
+
   50% {
     transform: scale(1.05);
   }
@@ -1596,4 +1671,3 @@ select.form-control-sm:focus {
     padding-right: 1rem !important;
   }
 }
-
