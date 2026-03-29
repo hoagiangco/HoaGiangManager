@@ -293,7 +293,8 @@ export class DeviceService {
           dr."ID" as "id",
           dr."ReportDate" as "reportDate",
           dr."CompletedDate" as "completedDate",
-          dr."Status" as "status"
+          dr."Status" as "status",
+          dr."DamageContent" as "damageContent"
         FROM "DamageReport" dr
         WHERE dr."DeviceID" = $1
         ORDER BY dr."ReportDate" DESC, dr."ID" DESC
@@ -326,6 +327,7 @@ export class DeviceService {
           statusName: this.getDamageReportStatusName(statusEnum),
           eventTypeName: null,
           eventTypeCode: null,
+          damageContent: row.damageContent ?? row.DamageContent ?? null,
         });
       }
 
@@ -342,10 +344,12 @@ export class DeviceService {
           e."EventDate" as "eventDate",
           e."EndDate" as "endDate",
           e."CreatedAt" as "createdAt",
+          e."Description" as "description",
           e."RelatedReportID" as "relatedReportId",
           dr."ReportDate" as "reportDate",
           dr."CompletedDate" as "reportCompletedDate",
-          dr."Status" as "reportStatus"
+          dr."Status" as "reportStatus",
+          dr."DamageContent" as "reportDamageContent"
         FROM "Event" e
         LEFT JOIN "EventType" et ON e."EventTypeID" = et."ID"
         LEFT JOIN "DamageReport" dr ON e."RelatedReportID" = dr."ID"
@@ -390,6 +394,7 @@ export class DeviceService {
           relatedReportId: row.relatedReportId ?? row.RelatedReportID ?? null,
           reportStatus: reportStatusEnum,
           reportStatusName: reportStatusEnum !== null ? this.getDamageReportStatusName(reportStatusEnum) : null,
+          description: row.description ?? row.Description ?? null,
         };
 
         events.push(eventSummary);
@@ -407,6 +412,9 @@ export class DeviceService {
             if (eventSummary.reportStatus !== null && eventSummary.reportStatus !== undefined) {
               report.status = eventSummary.reportStatus;
               report.statusName = this.getDamageReportStatusName(eventSummary.reportStatus);
+            }
+            if (!report.damageContent && row.reportDamageContent) {
+              report.damageContent = row.reportDamageContent;
             }
           }
         }

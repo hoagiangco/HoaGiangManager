@@ -175,7 +175,7 @@ export async function GET(
           updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString() : null,
         };
       })
-      .filter((event: any) => event !== null);
+      .filter((event: any) => event !== null) as any[];
 
     // Get batch info from first event or from plans
     const batchInfo = events.length > 0 ? {

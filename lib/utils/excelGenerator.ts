@@ -42,7 +42,7 @@ export async function generateExcelFile(data: {
   ];
 
   // Add worksheet to workbook
-  xlsxLib.utils.book_append_sheet(wb, ws, 'Báo cáo hư hỏng');
+  xlsxLib.utils.book_append_sheet(wb, ws, 'Báo cáo');
 
   // Generate buffer
   const buffer = xlsxLib.write(wb, { type: 'buffer', bookType: 'xlsx' });

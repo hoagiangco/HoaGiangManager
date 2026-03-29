@@ -173,6 +173,13 @@ export async function GET(request: NextRequest) {
       }
 
       const batch = batchMap.get(batchId)!;
+      
+      // Cập nhật title từ kế hoạch hiện tại (ưu tiên hơn so với title từ events cũ)
+      if (!batch.hasPlanTitle) {
+        batch.title = row.title || metadata.title || 'Bảo trì định kỳ';
+        batch.hasPlanTitle = true;
+      }
+      
       batch.totalDevices += 1;
       // Robust check for boolean isActive from Postgres record
       const isActive = row.isActive === true || String(row.isActive) === 't' || row.isActive === 1 || String(row.isActive) === '1';

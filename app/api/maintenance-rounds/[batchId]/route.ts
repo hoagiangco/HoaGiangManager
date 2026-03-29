@@ -105,7 +105,7 @@ export async function GET(
           updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString() : null,
         };
       })
-      .filter((event: any) => event !== null);
+      .filter((event: any) => event !== null) as any[];
 
     // Group events by roundDate
     const roundsMap: Record<string, any[]> = {};

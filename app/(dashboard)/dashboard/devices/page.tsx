@@ -10,6 +10,8 @@ import DateInput from '@/components/DateInput';
 import dynamic from 'next/dynamic';
 import FileManager from '@/components/FileManager';
 import AdminRoute from '@/components/AdminRoute';
+import QuickViewReportModal from '@/components/QuickViewReportModal';
+import * as XLSX from 'xlsx';
 
 // Dynamically import ReactQuill to avoid SSR issues
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
@@ -54,6 +56,8 @@ function DevicesPageContent() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyData, setHistoryData] = useState<DeviceHistorySummary | null>(null);
+  const [showQuickView, setShowQuickView] = useState(false);
+  const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
   
   // Define quillModules using useMemo at top level to avoid hook order violation
   const quillModules = useMemo(() => ({
@@ -427,8 +431,12 @@ function DevicesPageContent() {
   };
 
   const handleViewHistory = async () => {
-    if (selectedIds.length !== 1) {
-      toast.warning('Vui lòng chọn 1 thiết bị để xem lịch sử');
+    if (selectedIds.length === 0) {
+      toast.warning('Vui lòng chọn thiết bị để xem lịch sử!');
+      return;
+    }
+    if (selectedIds.length > 1) {
+      toast.warning('Vui lòng chỉ chọn 1 thiết bị duy nhất để xem lịch sử!');
       return;
     }
 
@@ -458,6 +466,120 @@ function DevicesPageContent() {
     setShowHistoryModal(false);
     setHistoryLoading(false);
     setHistoryData(null);
+  };
+
+  const removeAccents = (str: string) => {
+    return str.normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D');
+  };
+
+  const handleExportHistoryExcel = () => {
+    if (!historyData) {
+      toast.warning('Chưa có dữ liệu lịch sử để xuất');
+      return;
+    }
+    
+    try {
+      const wb = XLSX.utils.book_new();
+      
+      const dataRows: any[][] = [
+        ['', '', '', 'BÁO CÁO VÒNG ĐỜI THIẾT BỊ'], // Row 1
+        ['Tên thiết bị:', '', historyData.deviceName || 'Thiết bị không xác định'], // Row 2
+        ['Số Serial:', '', historyData.deviceSerial || '—'], // Row 3
+        ['Tổng số lần báo hư:', '', historyData.totalReports], // Row 4
+        ['Tổng số sự kiện bảo trì:', '', historyData.totalEvents], // Row 5
+        [''], // Row 6
+        ['CHI TIẾT'], // Row 7
+        ['STT', 'Ngày tháng', 'Phân loại', 'Nội dung/Tiêu đề', 'Mô tả chi tiết', 'Trạng thái', 'Mã tham chiếu'] // Row 8
+      ];
+
+      // Prepare merged timeline data
+      const linkedReportIds = historyData.events
+        .filter(e => e.relatedReportId)
+        .map(e => e.relatedReportId);
+        
+      const unlinkedReports = historyData.reports.filter(r => !linkedReportIds.includes(r.reportId));
+      
+      const timeline: any[] = [];
+      historyData.events.forEach(event => {
+        timeline.push({
+          date: event.reportedAt || event.eventDate,
+          type: event.eventTypeName || 'Sửa chữa',
+          title: event.title || '—',
+          description: (event.description || '').replace(/<[^>]*>?/gm, ''),
+          status: event.statusLabel,
+          ref: event.relatedReportId ? `#Báo cáo ${event.relatedReportId}` : (event.id ? `#Sự kiện ${event.id}` : '—'),
+          sortDate: new Date(event.reportedAt || event.eventDate || 0).getTime()
+        });
+      });
+      unlinkedReports.forEach(report => {
+        timeline.push({
+          date: report.reportDate,
+          type: report.eventTypeName || 'Báo cáo',
+          title: `Báo cáo #${report.reportId}`,
+          description: (report.damageContent || '').replace(/<[^>]*>?/gm, ''),
+          status: report.statusName,
+          ref: `#Báo cáo ${report.reportId}`,
+          sortDate: new Date(report.reportDate || 0).getTime()
+        });
+      });
+      timeline.sort((a, b) => b.sortDate - a.sortDate);
+      
+      timeline.forEach((item, index) => {
+        dataRows.push([
+          (index + 1).toString(),
+          formatDateTime(item.date) || '—',
+          item.type,
+          item.title,
+          item.description,
+          item.status,
+          item.ref
+        ]);
+      });
+
+      if (timeline.length === 0) {
+        dataRows.push(['', 'Không có dữ liệu lịch sử.']);
+      }
+
+      // Add "Ngày xuất báo cáo" at the bottom
+      dataRows.push(['']);
+      dataRows.push(['Ngày xuất báo cáo:', '', new Date().toLocaleString('vi-VN')]);
+
+      const ws = XLSX.utils.aoa_to_sheet(dataRows);
+      
+      ws['!cols'] = [
+        { wch: 6 }, { wch: 22 }, { wch: 18 }, { wch: 45 }, { wch: 65 }, { wch: 18 }, { wch: 18 }
+      ];
+      
+      ws['!merges'] = [
+        { s: { r: 0, c: 3 }, e: { r: 0, c: 4 } }, // Title
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } }, // Row 2 Label
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 1 } }, // Row 3 Label
+        { s: { r: 3, c: 0 }, e: { r: 3, c: 1 } }, // Row 4 Label
+        { s: { r: 4, c: 0 }, e: { r: 4, c: 1 } }, // Row 5 Label
+        { s: { r: 6, c: 0 }, e: { r: 6, c: 1 } }, // CHI TIET
+        { s: { r: dataRows.length - 1, c: 0 }, e: { r: dataRows.length - 1, c: 1 } } // Bottom label
+      ];
+      
+      XLSX.utils.book_append_sheet(wb, ws, "Vong doi thiet bi");
+
+      const rawDeviceName = historyData.deviceName || 'thiet_bi';
+      const safeName = removeAccents(rawDeviceName).replace(/[^a-zA-Z0-9]/g, '_');
+      const fileName = `Vong_doi_thiet_bi_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      
+      XLSX.writeFile(wb, fileName);
+      toast.success('Xuất file Excel thành công theo đúng định dạng');
+    } catch (error) {
+      console.error('Lỗi khi xuất file Excel:', error);
+      toast.error('Có lỗi xảy ra khi xuất file Excel');
+    }
+  };
+
+  const handleQuickViewReport = (reportId: number) => {
+    setSelectedReportId(reportId);
+    setShowQuickView(true);
   };
 
   // Use utility function from dateFormat.ts
@@ -1540,7 +1662,14 @@ function DevicesPageContent() {
                                       <span className="text-muted">—</span>
                                     )}
                                   </td>
-                                  <td>{event.title || '—'}</td>
+                                  <td>
+                                    <div className="fw-semibold">{event.title || '—'}</div>
+                                    {event.description && (
+                                      <div className="text-muted small text-truncate" style={{ maxWidth: '250px' }} title={event.description.replace(/<[^>]*>?/gm, '')}>
+                                        {event.description.replace(/<[^>]*>?/gm, '')}
+                                      </div>
+                                    )}
+                                  </td>
                                   <td>
                                     <span className={getEventStatusBadgeClass(event.status)}>
                                       {event.statusLabel}
@@ -1551,18 +1680,17 @@ function DevicesPageContent() {
                                   <td>
                                     {event.relatedReportId ? (
                                       <div className="d-flex flex-column gap-1">
-                                        <div className="fw-semibold">#{event.relatedReportId}</div>
+                                        <button
+                                          type="button"
+                                          className="btn btn-link btn-sm p-0 fw-bold d-block text-start"
+                                          onClick={() => handleQuickViewReport(event.relatedReportId!)}
+                                          style={{ textDecoration: 'none' }}
+                                        >
+                                          #{event.relatedReportId}
+                                        </button>
                                         <div className="text-muted small">
                                           {event.reportStatusName || 'Không rõ trạng thái'}
                                         </div>
-                                        <a
-                                          className="btn btn-link btn-sm p-0 align-self-start"
-                                          href={`/dashboard/damage-reports?reportId=${event.relatedReportId}`}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                        >
-                                          Xem báo cáo
-                                        </a>
                                       </div>
                                     ) : (
                                       <span className="text-muted">—</span>
@@ -1577,10 +1705,10 @@ function DevicesPageContent() {
                     </div>
 
                     <div>
-                      <h6 className="fw-semibold mb-2">Báo cáo hư hỏng</h6>
+                      <h6 className="fw-semibold mb-2">Báo cáo</h6>
                       {historyData.reports.length === 0 ? (
                         <div className="text-muted small">
-                          Thiết bị chưa có báo cáo hư hỏng nào.
+                          Thiết bị chưa có báo cáo nào.
                         </div>
                       ) : (
                         <div className="table-responsive">
@@ -1597,7 +1725,15 @@ function DevicesPageContent() {
                             <tbody>
                               {historyData.reports.map((report) => (
                                 <tr key={report.reportId}>
-                                  <td className="fw-semibold">#{report.reportId}</td>
+                                  <td className="fw-semibold">
+                                    <button
+                                      type="button"
+                                      className="btn btn-link p-0 fw-semibold"
+                                      onClick={() => handleQuickViewReport(report.reportId)}
+                                    >
+                                      #{report.reportId}
+                                    </button>
+                                  </td>
                                   <td>{formatDateTimeLocal(report.reportDate)}</td>
                                   <td>{formatDateTime(report.completedDate)}</td>
                                   <td>
@@ -1605,7 +1741,14 @@ function DevicesPageContent() {
                                       {report.statusName}
                                     </span>
                                   </td>
-                                  <td>{report.eventTypeName || '—'}</td>
+                                  <td>
+                                    <div>{report.eventTypeName || '—'}</div>
+                                    {report.damageContent && (
+                                      <div className="text-muted small mt-1 text-truncate" style={{ maxWidth: '250px' }} title={report.damageContent.replace(/<[^>]*>?/gm, '')}>
+                                        {report.damageContent.replace(/<[^>]*>?/gm, '')}
+                                      </div>
+                                    )}
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
@@ -1616,7 +1759,17 @@ function DevicesPageContent() {
                   </div>
                 )}
               </div>
-              <div className="modal-footer">
+              <div className="modal-footer d-flex justify-content-between align-items-center">
+                <button 
+                  type="button" 
+                  className="btn btn-success d-flex align-items-center" 
+                  onClick={handleExportHistoryExcel}
+                  disabled={!historyData || historyLoading}
+                  title="Xuất lịch sử vòng đời ra file Excel"
+                >
+                  <i className="fas fa-file-excel me-1"></i>
+                  <span>Xuất Excel</span>
+                </button>
                 <button type="button" className="btn btn-secondary" onClick={closeHistoryModal}>
                   Đóng
                 </button>
@@ -1625,6 +1778,12 @@ function DevicesPageContent() {
           </div>
         </div>
       )}
+
+      <QuickViewReportModal
+        isOpen={showQuickView}
+        reportId={selectedReportId || 0}
+        onClose={() => setShowQuickView(false)}
+      />
     </div>
   );
 }

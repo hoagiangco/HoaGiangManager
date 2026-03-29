@@ -211,6 +211,7 @@ export interface DeviceHistoryReport {
   statusName: string;
   eventTypeName?: string | null;
   eventTypeCode?: string | null;
+  damageContent?: string | null;
 }
 
 export interface DeviceHistoryEvent {
@@ -227,6 +228,7 @@ export interface DeviceHistoryEvent {
   relatedReportId?: number | null;
   reportStatus?: DamageReportStatus | null;
   reportStatusName?: string | null;
+  description?: string | null;
 }
 
 export interface DeviceHistorySummary {

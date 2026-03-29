@@ -1,6 +1,7 @@
 import pool from '../db';
 import { PoolClient } from 'pg';
-import { DamageReport, DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceStatus } from '@/types';
+import { DamageReport, DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceStatus, EventStatus } from '@/types';
+import { EventService } from './eventService';
 
 export class DamageReportService {
   private async ensureHistorySequence(client?: PoolClient): Promise<void> {
@@ -348,7 +349,23 @@ export class DamageReportService {
       ]
     );
 
-    return result.rows[0].ID;
+    const id = result.rows[0].ID;
+
+    // Sync maintenance events if linked to a batch
+    if (report.maintenanceBatchId) {
+      try {
+        await this.syncMaintenanceBatchEvents(id, report.status, report.createdBy || '', {
+          handlerId: report.handlerId,
+          handlingDate: report.handlingDate,
+          handlerNotes: report.handlerNotes || report.notes,
+          damageContent: report.damageContent,
+        });
+      } catch (err) {
+        console.error('Failed to sync maintenance events on create:', err);
+      }
+    }
+
+    return id;
   }
 
   async update(report: DamageReport): Promise<number> {
@@ -445,6 +462,20 @@ export class DamageReportService {
           `UPDATE "Device" SET "Status" = '1' WHERE "ID" = $1`,
           [report.deviceId]
         );
+      }
+    }
+
+    // Sync maintenance events if status or batch changed
+    if (report.maintenanceBatchId) {
+      try {
+        await this.syncMaintenanceBatchEvents(report.id, report.status, report.updatedBy || '', {
+          handlerId: report.handlerId,
+          handlingDate: report.handlingDate,
+          handlerNotes: report.handlerNotes || report.notes,
+          damageContent: report.damageContent,
+        });
+      } catch (err) {
+        console.error('Failed to sync maintenance events on update:', err);
       }
     }
 
@@ -597,5 +628,179 @@ export class DamageReportService {
     await pool.query('DELETE FROM "DamageReport" WHERE "ID" = $1', [id]);
     return true;
   }
-}
 
+  /**
+   * Synchronize maintenance events for a specific batch based on a damage report's status
+   */
+  async syncMaintenanceBatchEvents(
+    reportId: number, 
+    status: DamageReportStatus, 
+    userId: string | null | undefined,
+    options?: {
+      handlerId?: number | null;
+      handlingDate?: Date | null;
+      handlerNotes?: string | null;
+      damageContent?: string | null;
+      eventTypeId?: number | null;
+      eventTitle?: string | null;
+      eventDescription?: string | null;
+    }
+  ): Promise<void> {
+    const reportRes = await pool.query(
+      `SELECT "MaintenanceBatchId", "DamageContent", "HandlerID", "HandlingDate", "HandlerNotes" 
+       FROM "DamageReport" WHERE "ID" = $1`,
+      [reportId]
+    );
+    
+    const report = reportRes.rows[0];
+    if (!report || !report.MaintenanceBatchId) return;
+
+    const batchId = report.MaintenanceBatchId;
+    const eventService = new EventService();
+
+    let mappedStatus = EventStatus.Planned;
+    const s = Number(status);
+    if (s === DamageReportStatus.InProgress) mappedStatus = EventStatus.InProgress;
+    else if (s === DamageReportStatus.Completed) mappedStatus = EventStatus.Completed;
+    else if (s === DamageReportStatus.Cancelled || s === DamageReportStatus.Rejected) mappedStatus = EventStatus.Cancelled;
+
+    const now = new Date();
+    // Use current time as fallback for start/end dates
+    const startDateUpdate = [DamageReportStatus.InProgress, DamageReportStatus.Completed].includes(s) 
+      ? `, "StartDate" = COALESCE("StartDate", CURRENT_TIMESTAMP)` : '';
+    const endDateUpdate = [DamageReportStatus.Completed, DamageReportStatus.Cancelled, DamageReportStatus.Rejected].includes(s) 
+      ? `, "EndDate" = COALESCE("EndDate", CURRENT_TIMESTAMP)` : '';
+
+    const metadataFilter = `%"maintenanceBatchId":"${batchId}"%`;
+
+    // 1. Update events ALREADY linked to this report (strict match)
+    await pool.query(
+      `UPDATE "Event" 
+       SET "Status" = $1, "UpdatedAt" = CURRENT_TIMESTAMP ${startDateUpdate} ${endDateUpdate}
+       WHERE "RelatedReportID" = $2 AND "Status" != 'completed'`,
+      [mappedStatus, reportId]
+    );
+
+    // 2. Identify devices in the batch that already have an event for THIS report
+    const hasEventDeviceIdsRes = await pool.query(
+      `SELECT "DeviceID" FROM "Event" WHERE "RelatedReportID" = $1`,
+      [reportId]
+    );
+    const hasEventDeviceIds = new Set(hasEventDeviceIdsRes.rows.map(r => r.DeviceID));
+
+    // 3. Update existing UNLINKED non-completed events for this batch (loose match)
+    // This handles cases where events were created by the scheduler but not yet linked to a report
+    await pool.query(
+      `UPDATE "Event" 
+       SET "Status" = $1, "UpdatedAt" = CURRENT_TIMESTAMP ${startDateUpdate} ${endDateUpdate},
+           "RelatedReportID" = $2
+       WHERE ("Metadata"::text LIKE $3 OR ("Metadata"->>'maintenanceBatchId') = $4)
+         AND "Status" != 'completed'
+         AND "RelatedReportID" IS NULL`,
+      [mappedStatus, reportId, metadataFilter, batchId]
+    );
+
+    // 4. Find plans belonging to this batch to identify missing events
+    const plansResult = await pool.query(
+      `
+      SELECT 
+        drp."ID" as id,
+        drp."DeviceID" as "deviceId",
+        drp."Title" as title,
+        drp."EventTypeID" as "eventTypeId",
+        drp."IntervalValue" as "intervalValue",
+        drp."IntervalUnit" as "intervalUnit",
+        d."Name" as "deviceName"
+      FROM "DeviceReminderPlan" drp
+      LEFT JOIN "Device" d ON drp."DeviceID" = d."ID"
+      WHERE drp."Metadata" IS NOT NULL
+        AND (
+          drp."Metadata"::text LIKE $1
+          OR (drp."Metadata"->>'maintenanceBatchId') = $2
+        )
+        AND drp."IsActive" = true
+      `,
+      [metadataFilter, batchId]
+    );
+    const plans = plansResult.rows || [];
+
+    // 5. Re-check device IDs that now have events for this report (after update in step 3)
+    const finalHasEventDeviceIdsRes = await pool.query(
+      `SELECT "DeviceID" FROM "Event" WHERE "RelatedReportID" = $1`,
+      [reportId]
+    );
+    const finalHasEventDeviceIds = new Set(finalHasEventDeviceIdsRes.rows.map(r => r.DeviceID));
+
+    // 6. Create missing events for devices in the batch that still have no event for this report
+    const missingPlans = plans.filter(p => !finalHasEventDeviceIds.has(p.deviceId));
+
+    if (missingPlans.length > 0) {
+      const metadata: any = {
+        source: 'damage-report-sync',
+        damageReportId: reportId,
+        maintenanceBatchId: batchId,
+        syncAt: now.toISOString(),
+      };
+      
+      const eventPromises = missingPlans.map((plan: any) => {
+        return eventService.create({
+          title: options?.eventTitle || (plan.deviceName 
+            ? `Bảo trì định kỳ - ${plan.deviceName}` 
+            : `Bảo trì định kỳ - ${plan.title || options?.damageContent || report.DamageContent || 'Bảo trì'}`),
+          deviceId: plan.deviceId,
+          eventTypeId: options?.eventTypeId || plan.eventTypeId || 1,
+          description: options?.eventDescription || options?.damageContent || report.DamageContent || plan.title || '',
+          notes: options?.handlerNotes || report.HandlerNotes || '',
+          status: mappedStatus,
+          eventDate: now,
+          startDate: options?.handlingDate ? new Date(options?.handlingDate) : (s === DamageReportStatus.InProgress || s === DamageReportStatus.Completed ? now : null),
+          endDate: (s === DamageReportStatus.Completed || s === DamageReportStatus.Cancelled || s === DamageReportStatus.Rejected) ? now : null,
+          staffId: options?.handlerId || report.HandlerID || null,
+          relatedReportId: reportId,
+          metadata,
+          createdBy: userId,
+          createdAt: now,
+          updatedBy: userId || null,
+          updatedAt: now,
+        });
+      });
+
+      await Promise.all(eventPromises);
+    }
+
+    // 7. If status is Completed, bump nextDueDate for ALL plans in this batch
+    if (s === DamageReportStatus.Completed) {
+      console.log(`Bumping nextDueDate for batch ${batchId} due to report ${reportId} completion`);
+      
+      const planUpdatePromises = plans.map((plan: any) => {
+        if (!plan.intervalValue || !plan.intervalUnit) {
+          console.log(`Skipping plan ${plan.id} - no interval defined`);
+          return Promise.resolve();
+        }
+
+        const correctNextDueDate = new Date(now);
+        correctNextDueDate.setHours(0, 0, 0, 0);
+        
+        if (plan.intervalUnit === 'day') {
+          correctNextDueDate.setDate(correctNextDueDate.getDate() + plan.intervalValue);
+        } else if (plan.intervalUnit === 'week') {
+          correctNextDueDate.setDate(correctNextDueDate.getDate() + plan.intervalValue * 7);
+        } else if (plan.intervalUnit === 'month') {
+          correctNextDueDate.setMonth(correctNextDueDate.getMonth() + plan.intervalValue);
+        } else if (plan.intervalUnit === 'year') {
+          correctNextDueDate.setFullYear(correctNextDueDate.getFullYear() + plan.intervalValue);
+        }
+
+        return pool.query(
+          `UPDATE "DeviceReminderPlan" 
+           SET "NextDueDate" = $1, "LastTriggeredAt" = $2, "UpdatedAt" = CURRENT_TIMESTAMP, "UpdatedBy" = $3
+           WHERE "ID" = $4`,
+          [correctNextDueDate, now, userId, plan.id]
+        );
+      });
+
+      await Promise.all(planUpdatePromises);
+      console.log(`Successfully bumped ${plans.length} plans for batch ${batchId}`);
+    }
+  }
+}

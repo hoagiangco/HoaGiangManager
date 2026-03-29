@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -11,7 +11,6 @@ export const metadata: Metadata = {
   title: 'HoaGiang Manager - Quản lý vật tư',
   description: 'Hệ thống quản lý vật tư và thiết bị',
   manifest: '/manifest.webmanifest',
-  themeColor: '#0d6efd',
   icons: {
     icon: [
       { url: '/icons/icon.svg', type: 'image/svg+xml' },
@@ -26,6 +25,10 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
     title: 'HoaGiang Manager',
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#0d6efd',
 };
 
 export default function RootLayout({

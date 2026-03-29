@@ -133,11 +133,14 @@ export default function DashboardLayout({
       
       {/* Sidebar */}
       <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-        <div className="sidebar-header">
+        <div className="sidebar-header d-flex justify-content-center align-items-center position-relative">
           {!sidebarCollapsed && (
-            <h4 className="sidebar-title">HoaGiang Manager</h4>
+            <h4 className="sidebar-title m-0 text-center">
+              <span className="d-none d-md-inline">HoaGiang Manager</span>
+              <span className="d-md-none">HG Manager</span>
+            </h4>
           )}
-          <button className="sidebar-toggle" onClick={toggleSidebar}>
+          <button className="sidebar-toggle position-absolute end-0 me-2" onClick={toggleSidebar}>
             <i className={`fas ${sidebarCollapsed ? 'fa-angle-right' : 'fa-angle-left'}`}></i>
           </button>
         </div>
@@ -180,7 +183,7 @@ export default function DashboardLayout({
         {/* Top Navbar */}
         <nav className="top-navbar">
           <div className="top-navbar-content">
-            <div className="top-navbar-left">
+            <div className="top-navbar-left d-flex align-items-center gap-3">
               <button className="sidebar-toggle-mobile" onClick={toggleSidebar}>
                 <i className="fas fa-bars"></i>
               </button>
@@ -190,8 +193,10 @@ export default function DashboardLayout({
                 aria-label={staffName || user?.fullName || user?.email}
               >
                 <i className="fas fa-user-circle"></i>
-                {staffName && <span>{staffName}</span>}
+                <span>{staffName || user?.fullName || user?.email || 'Account'}</span>
               </span>
+            </div>
+            <div className="top-navbar-right ms-auto">
               <button 
                 className="btn btn-outline-primary btn-sm" 
                 onClick={handleLogout}

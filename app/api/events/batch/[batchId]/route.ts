@@ -43,6 +43,7 @@ export async function GET(
         e."StaffID" as "staffId",
         s."Name" as "staffName",
         e."Metadata" as metadata,
+        e."RelatedReportID" as "relatedReportId",
         e."CreatedAt" as "createdAt",
         e."UpdatedAt" as "updatedAt"
       FROM "Event" e
@@ -92,6 +93,7 @@ export async function GET(
           maintenanceBatchId: metadata.maintenanceBatchId,
           maintenanceType: metadata.maintenanceType || null,
           maintenanceProvider: metadata.maintenanceProvider || null,
+          relatedReportId: row.relatedReportId || null,
           createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
           updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString() : null,
         };

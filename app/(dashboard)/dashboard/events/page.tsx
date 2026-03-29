@@ -451,7 +451,7 @@ function EventsPageContent() {
         <div className="fw-semibold">{summary}</div>
         <div className="d-flex flex-wrap align-items-center gap-2">
           {isSystemEvent && (
-            <span className="badge bg-secondary">Sinh từ báo cáo hư hỏng</span>
+            <span className="badge bg-secondary">Sinh từ báo cáo</span>
           )}
           <button
             type="button"
@@ -810,8 +810,8 @@ function EventsPageContent() {
           <div className="modal-header">
             <h5 className="modal-title">
               {reportModal.report
-                ? `Báo cáo hư hỏng #${reportModal.report.id}`
-                : 'Báo cáo hư hỏng'}
+                ? `Báo cáo #${reportModal.report.id}`
+                : 'Báo cáo'}
             </h5>
             <button
               type="button"
@@ -1057,7 +1057,7 @@ function EventsPageContent() {
                     />
                   </div>
                   <div className="col-12 col-md-6">
-                    <label className="form-label">Báo cáo hư hỏng liên quan (ID)</label>
+                    <label className="form-label">Báo cáo liên quan (ID)</label>
                     <input
                       type="number"
                       className="form-control"
@@ -1065,7 +1065,7 @@ function EventsPageContent() {
                       onChange={(e) =>
                         setFormData((prev) => ({ ...prev, relatedReportId: e.target.value }))
                       }
-                      placeholder="Nhập ID báo cáo hư hỏng"
+                      placeholder="Nhập ID báo cáo"
                       min={0}
                     />
                   </div>

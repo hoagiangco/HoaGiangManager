@@ -81,7 +81,6 @@ export async function PUT(
     }
 
     const previousStatus = report.status as DamageReportStatus;
-    const previousCompletedDate = report.completedDate ? new Date(report.completedDate) : null;
     const previousHandlerNotes = report.handlerNotes || '';
 
     let parsedEventTypeId: number | null = null;
@@ -137,144 +136,53 @@ export async function PUT(
       await damageReportService.updateCompletionDate(id, completedAt, user.userId);
     }
 
-    let handlerNotesUpdated = false;
     if (
       trimmedHandlerNotes !== undefined &&
       trimmedHandlerNotes !== previousHandlerNotes
     ) {
       await damageReportService.updateHandlerNotes(id, trimmedHandlerNotes, user.userId);
-      handlerNotesUpdated = true;
     }
 
-    // For maintenance reports, allow creating event without deviceId
+    // Consolidated Sync logic for maintenance batch or regular report completion
     const isMaintenanceReport = !!report.maintenanceBatchId;
     
-    if (nextStatus === DamageReportStatus.Completed && parsedEventTypeId && (resolvedDeviceId || isMaintenanceReport)) {
-      // completedAt đã được set ở trên
-      if (!completedAt) {
-        completedAt = new Date();
-      }
-      try {
-
-        const metadata: any = {
+    if (isMaintenanceReport) {
+      // Use the newly created service method for maintenance sync
+      await damageReportService.syncMaintenanceBatchEvents(id, nextStatus, user.userId, {
+        handlerId: report.handlerId,
+        handlingDate: report.handlingDate,
+        handlerNotes: trimmedHandlerNotes ?? previousHandlerNotes ?? null,
+        damageContent: report.damageContent,
+        eventTypeId: parsedEventTypeId,
+        eventTitle: trimmedTitle,
+        eventDescription: trimmedDescription,
+      });
+    } else if (nextStatus === DamageReportStatus.Completed && parsedEventTypeId && resolvedDeviceId) {
+      // For regular reports completion, create a single event
+      if (!completedAt) completedAt = new Date();
+      
+      await eventService.create({
+        title: trimmedTitle || (report.deviceName ? `Hoàn thành xử lý - ${report.deviceName}` : `Hoàn thành xử lý báo cáo #${id}`),
+        deviceId: resolvedDeviceId || null,
+        eventTypeId: parsedEventTypeId,
+        description: trimmedDescription || report.damageContent || '',
+        notes: trimmedHandlerNotes || previousHandlerNotes || '',
+        status: EventStatus.Completed,
+        eventDate: completedAt,
+        startDate: report.handlingDate ? new Date(report.handlingDate) : completedAt,
+        endDate: completedAt,
+        staffId: report.handlerId || null,
+        relatedReportId: id,
+        metadata: {
           source: 'damage-report-completion',
           damageReportId: id,
           previousStatus,
-          handlerNotes: trimmedHandlerNotes ?? previousHandlerNotes ?? null,
-        };
-
-        // Nếu damage report có maintenanceBatchId, thêm vào metadata của event
-        if (report.maintenanceBatchId) {
-          metadata.maintenanceBatchId = report.maintenanceBatchId;
-        }
-
-        // For maintenance reports, create events for all devices in the batch
-        if (isMaintenanceReport && report.maintenanceBatchId) {
-          // Get all active plans in this batch
-          const plansResult = await pool.query(
-            `
-            SELECT 
-              drp."DeviceID" as "deviceId",
-              drp."Title" as title,
-              d."Name" as "deviceName"
-            FROM "DeviceReminderPlan" drp
-            LEFT JOIN "Device" d ON drp."DeviceID" = d."ID"
-            WHERE drp."Metadata" IS NOT NULL
-              AND (
-                drp."Metadata"::text LIKE '%"maintenanceBatchId":"' || $1 || '"%'
-                OR (drp."Metadata"::jsonb ? 'maintenanceBatchId' 
-                    AND (drp."Metadata"->>'maintenanceBatchId') = $1)
-              )
-              AND drp."IsActive" = true
-            `,
-            [report.maintenanceBatchId]
-          );
-
-          const plans = plansResult.rows || [];
-          
-          if (plans.length === 0) {
-            throw new Error('Không tìm thấy thiết bị nào trong đợt bảo trì này');
-          }
-
-          // Create event for each device in the batch
-          const eventPromises = plans.map((plan: any) => {
-            return eventService.create({
-              title:
-                trimmedTitle ||
-                (plan.deviceName
-                  ? `Bảo trì định kỳ - ${plan.deviceName}`
-                  : `Bảo trì định kỳ - ${plan.title || report.damageContent || 'Bảo trì'}`),
-              deviceId: plan.deviceId,
-              eventTypeId: parsedEventTypeId,
-              description: trimmedDescription || report.damageContent || plan.title || '',
-              notes: trimmedHandlerNotes || previousHandlerNotes || '', // Ensure notes is never null
-              status: EventStatus.Completed,
-              eventDate: completedAt,
-              startDate: report.handlingDate ? new Date(report.handlingDate) : completedAt,
-              endDate: completedAt,
-              staffId: report.handlerId || null,
-              relatedReportId: id,
-              metadata,
-              createdBy: user.userId,
-              createdAt: completedAt,
-              updatedBy: user.userId,
-              updatedAt: completedAt,
-            });
-          });
-
-          await Promise.all(eventPromises);
-        } else {
-          // For regular reports, create a single event
-          await eventService.create({
-            title:
-              trimmedTitle ||
-              (report.deviceName
-                ? `Hoàn thành xử lý - ${report.deviceName}`
-                : `Hoàn thành xử lý báo cáo #${id}`),
-            deviceId: resolvedDeviceId || null,
-            eventTypeId: parsedEventTypeId,
-            description: trimmedDescription || report.damageContent || '',
-            notes: trimmedHandlerNotes || previousHandlerNotes || '', // Ensure notes is never null
-            status: EventStatus.Completed,
-            eventDate: completedAt,
-            startDate: report.handlingDate ? new Date(report.handlingDate) : completedAt,
-            endDate: completedAt,
-            staffId: report.handlerId || null,
-            relatedReportId: id,
-            metadata,
-            createdBy: user.userId,
-            createdAt: completedAt,
-            updatedBy: user.userId,
-            updatedAt: completedAt,
-          });
-        }
-      } catch (eventError: any) {
-        // Revert handler notes if updated
-        if (handlerNotesUpdated) {
-          try {
-            await damageReportService.updateHandlerNotes(id, previousHandlerNotes, user.userId);
-          } catch (revertError) {
-            console.error('Failed to revert handler notes after event creation error:', revertError);
-          }
-        }
-        // Revert status and completion date
-        try {
-          await damageReportService.updateStatus(id, previousStatus, user.userId);
-        } catch (revertStatusError) {
-          console.error('Failed to revert status after event creation error:', revertStatusError);
-        }
-        try {
-          await damageReportService.updateCompletionDate(id, previousCompletedDate, user.userId);
-        } catch (revertCompletionError) {
-          console.error('Failed to revert completion date after event creation error:', revertCompletionError);
-        }
-
-        console.error('Failed to create completion event:', eventError);
-        return NextResponse.json(
-          { status: false, error: eventError.message || 'Không thể tạo sự kiện cho thiết bị' },
-          { status: 500 }
-        );
-      }
+        },
+        createdBy: user.userId,
+        createdAt: completedAt,
+        updatedBy: user.userId,
+        updatedAt: completedAt,
+      });
     }
 
     return NextResponse.json({

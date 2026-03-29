@@ -15,7 +15,7 @@ export async function generateExcelFile(data: {
   
   // Create workbook
   const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Báo cáo hư hỏng');
+  const worksheet = workbook.addWorksheet('Báo cáo');
 
   // Add title row
   const titleRow = worksheet.addRow([data.title]);

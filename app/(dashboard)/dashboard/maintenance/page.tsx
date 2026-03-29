@@ -6,7 +6,9 @@ import { toast } from 'react-toastify';
 import { formatDateDisplay, formatDateInput } from '@/lib/utils/dateFormat';
 import DateInput from '@/components/DateInput';
 import AdminRoute from '@/components/AdminRoute';
-import { DeviceCategory, EventType, DeviceVM } from '@/types';
+import { DeviceCategory, EventType, DeviceVM, DamageReportVM } from '@/types';
+import QuickViewReportModal from '@/components/QuickViewReportModal';
+import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
 
 interface UpcomingPlan {
   id: number;
@@ -19,6 +21,26 @@ interface UpcomingPlan {
   maintenanceProvider: string | null;
   maintenanceBatchId: string | null;
 }
+
+const getShortTitle = (title?: string | null): string => {
+  if (!title) return 'Không có tiêu đề';
+  
+  let shortTitle = title.trim();
+
+  // Xử lý các phần trùng lặp (ví dụ "Máy lạnh - Máy lạnh") do backend nhóm chuỗi
+  let parts = shortTitle.split(' - ').map(p => p.trim()).filter(Boolean);
+  const uniqueParts: string[] = [];
+  parts.forEach(part => {
+    if (!uniqueParts.some(up => up.toLowerCase() === part.toLowerCase())) {
+      uniqueParts.push(part);
+    }
+  });
+  
+  if (uniqueParts.length === 0) return title;
+  
+  const result = uniqueParts.join(' - ');
+  return result.charAt(0).toUpperCase() + result.slice(1);
+};
 
 interface MaintenanceBatch {
   batchId: string;
@@ -96,6 +118,7 @@ interface BatchEvent {
   maintenanceBatchId: string;
   maintenanceType: string;
   maintenanceProvider: string;
+  relatedReportId?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -107,6 +130,7 @@ function MaintenancePageContent() {
   const [batches, setBatches] = useState<MaintenanceBatch[]>([]);
   const [allPlans, setAllPlans] = useState<DeviceReminderPlanVM[]>([]);
   const [planEvents, setPlanEvents] = useState<Record<number, BatchEvent>>({}); // Map planId -> latest event
+  const [maintenanceReports, setMaintenanceReports] = useState<DamageReportVM[]>([]); // All damage reports for matching
   const [loading, setLoading] = useState(false);
 
   // Modals
@@ -136,7 +160,18 @@ function MaintenancePageContent() {
     batchId: string;
     title: string;
     plans: DeviceReminderPlanVM[];
+    metadata?: Record<string, any> | null;
   } | null>(null);
+  const [editBatchTitle, setEditBatchTitle] = useState('');
+  const [editBatchDescription, setEditBatchDescription] = useState('');
+  const [editBatchMaintenanceType, setEditBatchMaintenanceType] = useState<'internal' | 'outsource'>('internal');
+  const [editBatchProvider, setEditBatchProvider] = useState('');
+  const [editBatchCost, setEditBatchCost] = useState(0);
+  const [editBatchEventTypeId, setEditBatchEventTypeId] = useState(0);
+  const [editBatchStartFrom, setEditBatchStartFrom] = useState('');
+  const [editBatchEndAt, setEditBatchEndAt] = useState('');
+  const [selectedBatchTitle, setSelectedBatchTitle] = useState('');
+  const [savingBatchEdit, setSavingBatchEdit] = useState(false);
 
   // Batch actions
   const [showBatchRescheduleModal, setShowBatchRescheduleModal] = useState(false);
@@ -208,6 +243,8 @@ function MaintenancePageContent() {
     cost: 0,
   });
   const [submitting, setSubmitting] = useState(false);
+  const [showQuickView, setShowQuickView] = useState(false);
+  const [selectedQuickReportId, setSelectedQuickReportId] = useState<number | null>(null);
 
   // Read tab from URL query parameter on mount
   useEffect(() => {
@@ -235,10 +272,16 @@ function MaintenancePageContent() {
   useEffect(() => {
     if (formData.selectionType === 'category' && formData.categoryId > 0) {
       loadCategoryDevices(formData.categoryId);
+      
+      // Tự động điền tiêu đề từ tên danh mục nếu tiêu đề đang trống
+      const category = categories.find(c => c.id === formData.categoryId);
+      if (category && !formData.title.trim()) {
+        setFormData(prev => ({ ...prev, title: category.name }));
+      }
     } else {
       setCategoryDevices([]);
     }
-  }, [formData.categoryId, formData.selectionType]);
+  }, [formData.categoryId, formData.selectionType, categories]);
 
   // Load selected devices info when needed (not auto on deviceIds change to avoid conflicts)
   // This will be called manually when needed
@@ -400,6 +443,11 @@ function MaintenancePageContent() {
     }
   };
 
+  const handleQuickViewReport = (reportId: number) => {
+    setSelectedQuickReportId(reportId);
+    setShowQuickView(true);
+  };
+
   const loadAllPlans = async () => {
     setLoading(true);
     try {
@@ -465,6 +513,16 @@ function MaintenancePageContent() {
         } catch (error) {
           console.error('Error loading events for plans:', error);
         }
+
+        // Load all damage reports for matching
+        try {
+          const reportsResponse = await api.get('/damage-reports');
+          if (reportsResponse.data.status) {
+            setMaintenanceReports(reportsResponse.data.data || []);
+          }
+        } catch (error) {
+          console.error('Error loading damage reports for maintenance:', error);
+        }
       } else {
         toast.error(response.data.error || 'Lỗi khi tải danh sách kế hoạch');
       }
@@ -498,6 +556,10 @@ function MaintenancePageContent() {
       canModifyDevices: boolean; // Can add/remove devices if all plans haven't reached due date
       lastMaintenanceDate: Date | null; // Ngày bảo trì lần trước (từ lastCompletedEvent)
       nextMaintenanceDate: Date | null; // Ngày bảo trì sắp đến (từ nextDueDate)
+      isCancelledBatch?: boolean; // Indicates if all plans in batch are inactive
+      inProgressCount?: number; // Number of currently active events for the batch
+      plannedCount?: number; // Number of currently planned events for the batch
+      matchedReport?: DamageReportVM | null; // Report that corresponds to 'due' maintenance
     }> = {};
 
     const today = new Date();
@@ -611,6 +673,50 @@ function MaintenancePageContent() {
           return dueDate > today;
         });
       }
+
+      // Compute batch current status based on active events
+      let inProgressCount = 0;
+      let plannedCount = 0;
+      
+      activePlans.forEach((plan) => {
+        const currentEvent = planEvents[plan.id];
+        if (currentEvent) {
+          if (currentEvent.status === 'in_progress') inProgressCount++;
+          else if (currentEvent.status === 'planned') plannedCount++;
+        }
+      });
+      
+      (group as any).inProgressCount = inProgressCount;
+      (group as any).plannedCount = plannedCount;
+
+      // Tìm báo cáo phù hợp (reportDate >= nextMaintenanceDate) cho batch này
+      if (group.nextMaintenanceDate && group.batchId !== 'no-batch') {
+        const nextDate = new Date(group.nextMaintenanceDate);
+        nextDate.setHours(0, 0, 0, 0);
+
+        // Tìm các báo cáo liên quan đến batch này
+        const relatedReports = maintenanceReports.filter(r => 
+          r.maintenanceBatchId && group.batchId && 
+          String(r.maintenanceBatchId).toLowerCase() === String(group.batchId).toLowerCase()
+        );
+
+        if (relatedReports.length > 0) {
+          // Lọc các báo cáo có reportDate >= nextMaintenanceDate
+          const matchingReports = relatedReports.filter(r => {
+            if (!r.reportDate) return false;
+            const rDate = new Date(r.reportDate);
+            rDate.setHours(0, 0, 0, 0);
+            return rDate.getTime() >= nextDate.getTime();
+          }).sort((a, b) => {
+            // Lấy báo cáo mới nhất khớp
+            return new Date(b.reportDate).getTime() - new Date(a.reportDate).getTime();
+          });
+
+          if (matchingReports.length > 0) {
+            group.matchedReport = matchingReports[0];
+          }
+        }
+      }
     });
 
     // Lọc groups dựa trên activeTab
@@ -625,7 +731,7 @@ function MaintenancePageContent() {
     }
 
     return finalGroups;
-  }, [allPlans, activeTab, planEvents]);
+  }, [allPlans, activeTab, planEvents, maintenanceReports]);
 
   const loadBatchDetails = async (batchId: string) => {
     setLoadingBatchDetails(true);
@@ -678,8 +784,9 @@ function MaintenancePageContent() {
     }
   };
 
-  const handleViewBatch = (batchId: string) => {
+  const handleViewBatch = (batchId: string, title?: string) => {
     setSelectedBatchId(batchId);
+    setSelectedBatchTitle(title || '');
     setShowBatchModal(true);
     setBatchModalTab('events');
     loadBatchDetails(batchId);
@@ -814,63 +921,76 @@ function MaintenancePageContent() {
     }
   };
 
-  const handleEditInterval = async () => {
-    if (!selectedGroupForInterval || !editIntervalValue || editIntervalValue <= 0) {
+  const handleBatchUpdate = async () => {
+    if (!selectedGroupForInterval || editIntervalValue <= 0) {
       toast.error('Vui lòng nhập chu kỳ hợp lệ');
       return;
     }
 
-    if (!confirm(`Bạn có chắc chắn muốn cập nhật chu kỳ cho tất cả ${selectedGroupForInterval.plans.length} kế hoạch trong nhóm này?`)) {
+    if (!editBatchTitle.trim()) {
+      toast.error('Vui lòng nhập tiêu đề');
       return;
     }
 
+    if (!editBatchStartFrom) {
+      toast.error('Vui lòng chọn ngày bắt đầu');
+      return;
+    }
+
+    if (!confirm(`Bạn có chắc chắn muốn cập nhật thông tin cho tất cả ${selectedGroupForInterval.plans.length} kế hoạch trong nhóm này?`)) {
+      return;
+    }
+
+    setSavingBatchEdit(true);
     try {
-      const activePlans = selectedGroupForInterval.plans.filter(p => p.isActive);
+      const plans = selectedGroupForInterval.plans; // Update all plans in batch to keep consistency
       let successCount = 0;
       let errorCount = 0;
 
-      for (const plan of activePlans) {
+      for (const plan of plans) {
         try {
-          // Tính toán nextDueDate mới dựa trên chu kỳ mới
+          // Tính toán nextDueDate mới
           let newNextDueDate = plan.nextDueDate ? new Date(plan.nextDueDate) : null;
-          if (plan.startFrom && !newNextDueDate) {
-            newNextDueDate = new Date(plan.startFrom);
-          }
-
-          if (newNextDueDate && plan.startFrom) {
-            // Tính từ startFrom với chu kỳ mới
-            const startFrom = new Date(plan.startFrom);
-            newNextDueDate = new Date(startFrom);
-
+          
+          const intervalChanged = plan.intervalValue !== editIntervalValue || plan.intervalUnit !== editIntervalUnit;
+          const startFromChanged = formatDateInput(plan.startFrom || '') !== editBatchStartFrom;
+          
+          if ((intervalChanged || startFromChanged) && editBatchStartFrom) {
+            // Nếu đổi chu kỳ hoặc ngày bắt đầu, tính lại nextDueDate từ startFrom mới 
+            // hoặc hoàn thành gần nhất (ưu tiên startFrom mới cho kế hoạch chưa chạy)
+            const baseDate = plan.lastCompletedEvent?.endDate 
+              ? new Date(plan.lastCompletedEvent.endDate) 
+              : new Date(editBatchStartFrom);
+            
+            newNextDueDate = new Date(baseDate);
             switch (editIntervalUnit) {
-              case 'day':
-                newNextDueDate.setDate(newNextDueDate.getDate() + editIntervalValue);
-                break;
-              case 'week':
-                newNextDueDate.setDate(newNextDueDate.getDate() + editIntervalValue * 7);
-                break;
-              case 'month':
-                newNextDueDate.setMonth(newNextDueDate.getMonth() + editIntervalValue);
-                break;
-              case 'year':
-                newNextDueDate.setFullYear(newNextDueDate.getFullYear() + editIntervalValue);
-                break;
+              case 'day': newNextDueDate.setDate(newNextDueDate.getDate() + editIntervalValue); break;
+              case 'week': newNextDueDate.setDate(newNextDueDate.getDate() + editIntervalValue * 7); break;
+              case 'month': newNextDueDate.setMonth(newNextDueDate.getMonth() + editIntervalValue); break;
+              case 'year': newNextDueDate.setFullYear(newNextDueDate.getFullYear() + editIntervalValue); break;
             }
           }
+
+          const metadata = {
+            ...(plan.metadata || {}),
+            maintenanceType: editBatchMaintenanceType,
+            maintenanceProvider: editBatchMaintenanceType === 'outsource' ? editBatchProvider : undefined,
+            cost: editBatchMaintenanceType === 'outsource' ? editBatchCost : undefined,
+          };
 
           const response = await api.put(`/device-reminder-plans/${plan.id}`, {
             deviceId: plan.deviceId,
             reminderType: plan.reminderType,
-            eventTypeId: plan.eventTypeId,
-            title: plan.title,
-            description: plan.description,
+            eventTypeId: editBatchEventTypeId || plan.eventTypeId,
+            title: editBatchTitle,
+            description: editBatchDescription,
             intervalValue: editIntervalValue,
             intervalUnit: editIntervalUnit,
-            startFrom: plan.startFrom,
-            endAt: plan.endAt,
+            startFrom: editBatchStartFrom,
+            endAt: editBatchEndAt || null,
             nextDueDate: newNextDueDate ? newNextDueDate.toISOString().split('T')[0] : null,
             isActive: plan.isActive,
-            metadata: plan.metadata,
+            metadata: metadata,
           });
 
           if (response.data.status) {
@@ -885,25 +1005,24 @@ function MaintenancePageContent() {
       }
 
       if (successCount > 0) {
-        toast.success(`Đã cập nhật chu kỳ thành công cho ${successCount} kế hoạch`);
+        toast.success(`Đã cập nhật thành công cho ${successCount} kế hoạch`);
         if (errorCount > 0) {
           toast.warning(`${errorCount} kế hoạch gặp lỗi khi cập nhật`);
         }
         setShowEditIntervalModal(false);
-        setEditIntervalValue(6);
-        setEditIntervalUnit('month');
         setSelectedGroupForInterval(null);
-        if (activeTab === 'plans') {
-          loadAllPlans();
-        } else {
-          loadData();
-        }
+        
+        // Refresh all data levels
+        loadAllPlans();
+        loadData();
       } else {
         toast.error('Không có kế hoạch nào được cập nhật');
       }
     } catch (error: any) {
-      console.error('Error updating interval:', error);
-      toast.error(error.response?.data?.error || 'Lỗi khi cập nhật chu kỳ');
+      console.error('Error updating batch:', error);
+      toast.error('Lỗi khi cập nhật kế hoạch');
+    } finally {
+      setSavingBatchEdit(false);
     }
   };
 
@@ -1177,6 +1296,52 @@ function MaintenancePageContent() {
       console.error('Error batch completing:', error);
       toast.error('Lỗi khi ghi nhận hoàn thành hàng loạt');
     }
+  };
+
+  const handleOpenEditBatch = async (batchId: string, title: string) => {
+    let plansInBatch = allPlans.filter(p => p.metadata?.maintenanceBatchId === batchId);
+    
+    if (plansInBatch.length === 0) {
+      setLoading(true);
+      try {
+        const response = await api.get('/device-reminder-plans');
+        if (response.data.status) {
+          const plans = response.data.data || [];
+          setAllPlans(plans);
+          plansInBatch = plans.filter((p: any) => p.metadata?.maintenanceBatchId === batchId);
+        }
+      } catch (err) {
+        console.error('Error loading plans for edit:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    if (plansInBatch.length === 0) {
+      toast.error('Vui lòng vào tab "Đang Hoạt Động" để có thể chỉnh sửa chi tiết các kế hoạch');
+      return;
+    }
+    
+    const firstPlan = plansInBatch[0];
+    setSelectedGroupForInterval({
+      batchId: batchId,
+      title: title,
+      plans: plansInBatch,
+      metadata: firstPlan.metadata
+    });
+    
+    setEditBatchTitle(getShortTitle(title));
+    setEditBatchDescription(firstPlan.description || '');
+    setEditIntervalValue(firstPlan.intervalValue || 6);
+    setEditIntervalUnit((firstPlan.intervalUnit as any) || 'month');
+    setEditBatchStartFrom(firstPlan.startFrom ? formatDateInput(firstPlan.startFrom) : '');
+    setEditBatchEndAt(firstPlan.endAt ? formatDateInput(firstPlan.endAt) : '');
+    setEditBatchMaintenanceType(firstPlan.metadata?.maintenanceType || 'internal');
+    setEditBatchProvider(firstPlan.metadata?.maintenanceProvider || '');
+    setEditBatchCost(firstPlan.metadata?.cost || 0);
+    setEditBatchEventTypeId(firstPlan.eventTypeId || 0);
+    
+    setShowEditIntervalModal(true);
   };
 
   const handleBatchDelete = async (group: { batchId: string; title: string; plans: DeviceReminderPlanVM[] }) => {
@@ -1582,7 +1747,7 @@ function MaintenancePageContent() {
     try {
       const payload: any = {
         eventTypeId: formData.eventTypeId,
-        title: formData.title.trim(),
+        title: getShortTitle(formData.title.trim()),
         description: formData.description.trim() || undefined,
         intervalValue: formData.intervalValue,
         intervalUnit: formData.intervalUnit,
@@ -2141,11 +2306,15 @@ function MaintenancePageContent() {
                       <div key={batch.batchId} className="col-md-6 col-lg-4 mb-4">
                         <div className={`card h-100 ${batch.isCancelled ? 'border-danger border-opacity-25' : ''}`}>
                           <div className={`card-header d-flex justify-content-between align-items-center ${batch.isCancelled ? 'bg-danger bg-opacity-10 text-danger' : ''}`}>
-                            <div className="text-truncate" style={{ maxWidth: '80%' }}>
-                              <h6 className="mb-0 text-truncate" title={batch.title}>{batch.title}</h6>
-                              <small className={`${batch.isCancelled ? 'text-danger text-opacity-75' : 'text-muted'}`}>{batch.batchId}</small>
+                            <div className="text-truncate" style={{ maxWidth: '90%' }}>
+                              <h6 className="mb-0 text-truncate" title={`${batch.title}${batch.batchId ? ` (${batch.batchId})` : ''}`}>
+                                {getShortTitle(batch.title)}
+                              </h6>
                             </div>
-                            {batch.isCancelled && <span className="badge bg-danger shadow-sm">ĐÃ HỦY</span>}
+                            <div className="d-flex align-items-center gap-1">
+                              {batch.inProgress > 0 && <span className="badge bg-primary small fw-normal"><i className="fas fa-tools me-1"></i>{batch.inProgress} đang BT</span>}
+                              {batch.isCancelled && <span className="badge bg-danger shadow-sm">ĐÃ HỦY</span>}
+                            </div>
                           </div>
                           <div className="card-body">
                             <div className="mb-3">
@@ -2164,27 +2333,38 @@ function MaintenancePageContent() {
                               </div>
                             </div>
                             <div className="row text-center">
-                              <div className="col-4 mb-2">
+                              <div className="col-3 mb-2">
                                 <div className="text-muted small">Tổng</div>
                                 <div className="fw-bold">{batch.totalDevices}</div>
                               </div>
-                              <div className="col-4 mb-2">
-                                <div className="text-muted small">Đang chạy</div>
-                                <div className="fw-bold text-primary">{batch.activePlansCount || 0}</div>
+                              <div className="col-3 mb-2">
+                                <div className="text-muted small">Chưa hủy</div>
+                                <div className="fw-bold text-dark">{batch.activePlansCount || 0}</div>
                               </div>
-                              <div className="col-4 mb-2">
+                              <div className="col-3 mb-2">
+                                <div className="text-muted small">Đang BT</div>
+                                <div className="fw-bold text-primary">{batch.inProgress || 0}</div>
+                              </div>
+                              <div className="col-3 mb-2">
                                 <div className="text-muted small">Xong</div>
                                 <div className="fw-bold text-success">{batch.completed}</div>
                               </div>
                             </div>
                           </div>
-                          <div className="card-footer">
+                          <div className="card-footer d-flex gap-2">
                             <button
-                              className="btn btn-sm btn-outline-primary w-100"
-                              onClick={() => handleViewBatch(batch.batchId)}
+                              className="btn btn-sm btn-outline-primary flex-grow-1"
+                              onClick={() => handleViewBatch(batch.batchId, batch.title)}
                             >
                               <i className="fas fa-eye me-2"></i>
-                              Xem Chi Tiết
+                              Chi Tiết
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline-info"
+                              onClick={() => handleOpenEditBatch(batch.batchId, batch.title)}
+                              title="Sửa kế hoạch"
+                            >
+                              <i className="fas fa-edit"></i>
                             </button>
                           </div>
                         </div>
@@ -2201,7 +2381,7 @@ function MaintenancePageContent() {
               <div className="card-header d-flex justify-content-between align-items-center">
                 <h5 className="mb-0">
                   <i className={`fas ${activeTab === 'plans' ? 'fa-list-alt' : 'fa-ban'} me-2`}></i>
-                  {activeTab === 'plans' ? 'Danh Sách Kế Hoạch Đang Hoạt Động' : 'Danh Sách Kế Hoạch Đã Hủy'}
+                  {activeTab === 'plans' ? 'Danh Sách Batch Đang Hoạt Động' : 'Danh Sách Batch Đã Hủy'}
                 </h5>
                 <button className="btn btn-sm btn-primary" onClick={loadAllPlans}>
                   <i className="fas fa-sync me-2"></i>
@@ -2217,7 +2397,7 @@ function MaintenancePageContent() {
                 ) : groupedPlans.length === 0 ? (
                   <div className="text-center py-5 text-muted">
                     <i className="fas fa-inbox fa-3x mb-3"></i>
-                    <p>{activeTab === 'plans' ? 'Không có kế hoạch đang hoạt động' : 'Không có kế hoạch đã hủy'}</p>
+                    <p>{activeTab === 'plans' ? 'Không có batch đang hoạt động' : 'Không có batch đã hủy'}</p>
                   </div>
                 ) : (
                   <div className="accordion" id="plansAccordion">
@@ -2275,37 +2455,41 @@ function MaintenancePageContent() {
                                   {/* Hàng trên: Tiêu đề và Batch ID */}
                                   <div className="d-flex align-items-center gap-2">
                                     <i className="fas fa-layer-group text-primary"></i>
-                                    <strong>{group.title}</strong>
-                                    {group.batchId !== 'no-batch' && (
-                                      <span className="badge bg-secondary small">{group.batchId}</span>
-                                    )}
+                                    <h6 className="mb-0 fw-bold">{getShortTitle(group.title)}</h6>
                                   </div>
 
                                   {/* Hàng dưới: Lịch trình */}
                                   {(group.lastMaintenanceDate || group.nextMaintenanceDate) && (
-                                    <div className="d-flex align-items-center text-muted small">
-                                      <i className="fas fa-calendar-check text-success me-1"></i>
-                                      {group.lastMaintenanceDate ? (
-                                        <>BT trước: <strong className="ms-1">{formatDateDisplay(group.lastMaintenanceDate)}</strong></>
-                                      ) : (
-                                        <>BT trước: <strong className="ms-1">-</strong></>
-                                      )}
-                                      <span className="mx-2">→</span>
-                                      <i className="fas fa-clock text-primary me-1"></i>
-                                      {group.nextMaintenanceDate ? (() => {
-                                        const nextDate = group.nextMaintenanceDate instanceof Date
-                                          ? group.nextMaintenanceDate
-                                          : new Date(group.nextMaintenanceDate);
-                                        const today = new Date();
-                                        today.setHours(0, 0, 0, 0);
-                                        nextDate.setHours(0, 0, 0, 0);
-                                        const daysUntilDue = Math.ceil((nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                                        return (
-                                          <>BT sắp đến: <strong className="ms-1">{formatDateDisplay(group.nextMaintenanceDate)}</strong> <span className="text-muted">(còn lại {daysUntilDue > 0 ? `${daysUntilDue} ngày` : daysUntilDue === 0 ? 'hôm nay' : `quá ${Math.abs(daysUntilDue)} ngày`})</span></>
-                                        );
-                                      })() : (
-                                        <>BT sắp đến: <strong className="ms-1">-</strong></>
-                                      )}
+                                    <div className="d-flex flex-wrap align-items-center text-muted small" style={{ rowGap: '4px' }}>
+                                      <div className="d-flex align-items-center me-3">
+                                        <i className="fas fa-calendar-check text-success me-1"></i>
+                                        <span>BT trước: <strong>{formatDateDisplay(group.lastMaintenanceDate) || '-'}</strong></span>
+                                      </div>
+                                      
+                                      <div className="d-flex align-items-center">
+                                        <i className="fas fa-clock text-primary me-1"></i>
+                                        <span>BT sắp đến: <strong>{formatDateDisplay(group.nextMaintenanceDate) || '-'}</strong></span>
+                                        {group.nextMaintenanceDate && (() => {
+                                          const nextDate = group.nextMaintenanceDate instanceof Date
+                                            ? group.nextMaintenanceDate
+                                            : new Date(group.nextMaintenanceDate);
+                                          const today = new Date();
+                                          today.setHours(0, 0, 0, 0);
+                                          nextDate.setHours(0, 0, 0, 0);
+                                          const daysUntilDue = Math.ceil((nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                                          
+                                          if (daysUntilDue <= 0 && group.matchedReport) {
+                                            return (
+                                              <span className="ms-2 px-2 py-0 border border-info border-opacity-50 text-info rounded bg-info bg-opacity-10 d-inline-flex align-items-center" style={{ fontSize: '0.75rem' }}>
+                                                <i className="fas fa-tools me-1"></i>đang thực hiện: {formatDateDisplay(group.matchedReport.reportDate)}
+                                              </span>
+                                            );
+                                          }
+
+                                          const statusText = daysUntilDue > 0 ? `còn lại ${daysUntilDue} ngày` : daysUntilDue === 0 ? 'hôm nay' : `quá ${Math.abs(daysUntilDue)} ngày`;
+                                          return <span className="ms-1">({statusText})</span>;
+                                        })()}
+                                      </div>
                                     </div>
                                   )}
                                 </div>
@@ -2322,6 +2506,17 @@ function MaintenancePageContent() {
                                     {activeTab === 'plans' ? null : group.inactiveCount > 0 && (
                                       <span className="badge bg-secondary small">{group.inactiveCount} đã hủy</span>
                                     )}
+                                    {/* Batch Status Indicator based on current events */}
+                                    {(() => {
+                                      const inProgress = (group as any).inProgressCount || 0;
+                                      const planned = (group as any).plannedCount || 0;
+                                      if (inProgress > 0) {
+                                        return <span className="badge bg-primary small fw-normal"><i className="fas fa-tools me-1"></i>{inProgress} đang bảo trì</span>;
+                                      } else if (planned > 0) {
+                                        return <span className="badge bg-warning text-dark small fw-normal"><i className="fas fa-hourglass-half me-1"></i>{planned} chờ xử lý</span>;
+                                      }
+                                      return null;
+                                    })()}
                                     {group.maintenanceType === 'outsource' && group.maintenanceProvider && (
                                       <span className="text-info small">
                                         <i className="fas fa-building me-1"></i>
@@ -2329,7 +2524,7 @@ function MaintenancePageContent() {
                                       </span>
                                     )}
                                     {group.maintenanceType === 'internal' && (
-                                      <span className="badge bg-primary small">Nội bộ</span>
+                                      <span className="badge bg-secondary small">Nội bộ</span>
                                     )}
                                   </div>
 
@@ -2347,9 +2542,7 @@ function MaintenancePageContent() {
                                       }}
                                       title="Xem chi tiết kế hoạch"
                                     >
-                                      <i className="fas fa-eye d-md-none"></i>
-                                      <i className="fas fa-eye d-none d-md-inline me-1"></i>
-                                      <span className="d-none d-md-inline">Xem</span>
+                                      <i className="fas fa-eye"></i>
                                     </button>
                                     {group.activeCount > 0 && (
                                       <>
@@ -2375,33 +2568,18 @@ function MaintenancePageContent() {
                                                 loadStaffList();
                                                 setShowBatchCompleteModal(true);
                                               }}
-                                              title="Đã xong tất cả"
+                                              title="Ghi nhận hoàn thành tất cả"
                                             >
-                                              <i className="fas fa-check-double d-md-none"></i>
-                                              <i className="fas fa-check-double d-none d-md-inline me-1"></i>
-                                              <span className="d-none d-md-inline">Đã xong</span>
+                                              <i className="fas fa-check-double"></i>
                                             </button>
                                           ) : null;
                                         })()}
                                         <button
                                           className="btn btn-outline-info"
-                                          onClick={() => {
-                                            setSelectedGroupForInterval({
-                                              batchId: group.batchId,
-                                              title: group.title,
-                                              plans: group.plans,
-                                            });
-                                            // Lấy chu kỳ từ plan đầu tiên (tất cả plans trong batch có cùng chu kỳ)
-                                            const firstPlan = group.plans.find(p => p.isActive) || group.plans[0];
-                                            setEditIntervalValue(firstPlan?.intervalValue || 6);
-                                            setEditIntervalUnit((firstPlan?.intervalUnit as 'day' | 'week' | 'month' | 'year') || 'month');
-                                            setShowEditIntervalModal(true);
-                                          }}
-                                          title="Sửa chu kỳ"
+                                          onClick={() => handleOpenEditBatch(group.batchId, group.title)}
+                                          title="Sửa thông tin kế hoạch"
                                         >
-                                          <i className="fas fa-edit d-md-none"></i>
-                                          <i className="fas fa-edit d-none d-md-inline me-1"></i>
-                                          <span className="d-none d-md-inline">Sửa chu kỳ</span>
+                                          <i className="fas fa-edit"></i>
                                         </button>
                                         <button
                                           className="btn btn-outline-warning"
@@ -2416,11 +2594,9 @@ function MaintenancePageContent() {
                                             setBatchRescheduleDate(earliestDate ? formatDateInput(earliestDate) : formatDateInput(new Date()));
                                             setShowBatchRescheduleModal(true);
                                           }}
-                                          title="Dời lịch tất cả"
+                                          title="Dời lịch bảo trì tất cả"
                                         >
-                                          <i className="fas fa-calendar-alt d-md-none"></i>
-                                          <i className="fas fa-calendar-alt d-none d-md-inline me-1"></i>
-                                          <span className="d-none d-md-inline">Dời lịch</span>
+                                          <i className="fas fa-calendar-alt"></i>
                                         </button>
                                         <button
                                           className="btn btn-outline-danger"
@@ -2428,22 +2604,18 @@ function MaintenancePageContent() {
                                             setSelectedGroup(group);
                                             setShowBatchCancelModal(true);
                                           }}
-                                          title="Hủy tất cả"
+                                          title="Hủy kế hoạch tất cả"
                                         >
-                                          <i className="fas fa-times d-md-none"></i>
-                                          <i className="fas fa-times d-none d-md-inline me-1"></i>
-                                          <span className="d-none d-md-inline">Hủy</span>
+                                          <i className="fas fa-times"></i>
                                         </button>
                                       </>
                                     )}
                                     <button
                                       className="btn btn-outline-danger"
                                       onClick={() => handleBatchDelete(group)}
-                                      title="Xóa tất cả"
+                                      title="Xóa kế hoạch tất cả"
                                     >
-                                      <i className="fas fa-trash d-md-none"></i>
-                                      <i className="fas fa-trash d-none d-md-inline me-1"></i>
-                                      <span className="d-none d-md-inline">Xóa</span>
+                                      <i className="fas fa-trash"></i>
                                     </button>
                                   </div>
                                 </div>
@@ -2456,158 +2628,70 @@ function MaintenancePageContent() {
                             aria-labelledby={`heading-${group.batchId}`}
                           >
                             <div className="accordion-body p-0">
-                              {group.canModifyDevices && (
-                                <div className="d-flex justify-content-end gap-2 p-3 pb-0">
-                                  <button
-                                    className="btn btn-outline-success btn-sm"
-                                    onClick={() => {
-                                      setSelectedGroupForDevices({
-                                        batchId: group.batchId,
-                                        title: group.title,
-                                        plans: group.plans,
-                                        metadata: group.metadata,
-                                      });
-                                      setDevicesToAdd([]);
-                                      loadAllDevicesForModal();
-                                      setShowAddDevicesModal(true);
-                                    }}
-                                    title="Thêm thiết bị"
-                                  >
-                                    <i className="fas fa-plus"></i>
-                                  </button>
-                                  <button
-                                    className="btn btn-outline-secondary btn-sm"
-                                    onClick={async () => {
-                                      setSelectedGroupForDevices({
-                                        batchId: group.batchId,
-                                        title: group.title,
-                                        plans: group.plans,
-                                        metadata: group.metadata,
-                                      });
-                                      setDevicesToRemove([]);
-                                      await loadAllDevicesForModal();
-                                      setShowRemoveDevicesModal(true);
-                                    }}
-                                    title="Bớt thiết bị"
-                                  >
-                                    <i className="fas fa-minus"></i>
-                                  </button>
-                                </div>
-                              )}
                               <div className="table-responsive">
                                 <table className="table table-hover mb-0">
                                   <thead className="table-light">
                                     <tr>
-                                      <th>Thiết Bị</th>
-                                      <th>Loại Sự Kiện</th>
-                                      <th>Ngày Bắt Đầu</th>
-                                      <th>Ngày Đến Hạn</th>
-                                      <th>Chu Kỳ</th>
-                                      <th>Trạng Thái Kế Hoạch</th>
-                                      <th>Trạng Thái Event</th>
-                                      <th>Thao Tác</th>
+                                      <th style={{ width: '50px' }} className="align-middle text-center">#</th>
+                                      <th className="align-middle">
+                                        <div className="d-flex align-items-center gap-2">
+                                          <span>Thiết Bị ({group.totalDevices})</span>
+                                          {group.canModifyDevices && (
+                                            <div className="d-flex gap-1 ms-2">
+                                              <button
+                                                className="btn btn-outline-success p-0 d-flex align-items-center justify-content-center"
+                                                style={{ width: '20px', height: '20px', fontSize: '0.7rem', borderRadius: '4px' }}
+                                                onClick={() => {
+                                                  setSelectedGroupForDevices({
+                                                    batchId: group.batchId,
+                                                    title: group.title,
+                                                    plans: group.plans,
+                                                    metadata: group.metadata,
+                                                  });
+                                                  setDevicesToAdd([]);
+                                                  loadAllDevicesForModal();
+                                                  setShowAddDevicesModal(true);
+                                                }}
+                                                title="Thêm thiết bị"
+                                              >
+                                                <i className="fas fa-plus"></i>
+                                              </button>
+                                              <button
+                                                className="btn btn-outline-secondary p-0 d-flex align-items-center justify-content-center"
+                                                style={{ width: '20px', height: '20px', fontSize: '0.7rem', borderRadius: '4px' }}
+                                                onClick={async () => {
+                                                  setSelectedGroupForDevices({
+                                                    batchId: group.batchId,
+                                                    title: group.title,
+                                                    plans: group.plans,
+                                                    metadata: group.metadata,
+                                                  });
+                                                  setDevicesToRemove([]);
+                                                  await loadAllDevicesForModal();
+                                                  setShowRemoveDevicesModal(true);
+                                                }}
+                                                title="Bớt thiết bị"
+                                              >
+                                                <i className="fas fa-minus"></i>
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </th>
+                                      <th className="text-end align-middle px-3" style={{ width: '150px' }}>Thao Tác</th>
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {group.plans.map((plan) => {
+                                    {group.plans.map((plan, index) => {
                                       const event = planEvents[plan.id];
                                       const hasEvent = !!event;
                                       const eventStatus = event?.status;
 
-                                      // Helper function to check if plan is active for event actions
-                                      const isPlanActive = plan.isActive;
-
                                       return (
                                         <tr key={plan.id}>
-                                          <td>
+                                          <td className="align-middle text-muted small">{index + 1}</td>
+                                          <td className="align-middle">
                                             <strong>{plan.deviceName || `Thiết bị #${plan.deviceId}`}</strong>
-                                          </td>
-                                          <td>{plan.eventTypeName || '-'}</td>
-                                          <td>{plan.startFrom ? formatDateDisplay(plan.startFrom) : '-'}</td>
-                                          <td>
-                                            {plan.nextDueDate ? (
-                                              <span className={getDaysUntilDueColor(
-                                                plan.nextDueDate
-                                                  ? Math.ceil(
-                                                    (new Date(plan.nextDueDate).getTime() - new Date().getTime()) /
-                                                    (1000 * 60 * 60 * 24)
-                                                  )
-                                                  : null
-                                              )}>
-                                                {formatDateDisplay(plan.nextDueDate)}
-                                              </span>
-                                            ) : (
-                                              '-'
-                                            )}
-                                          </td>
-                                          <td>
-                                            {plan.intervalValue && plan.intervalUnit
-                                              ? `${plan.intervalValue} ${plan.intervalUnit === 'day' ? 'ngày' : plan.intervalUnit === 'week' ? 'tuần' : plan.intervalUnit === 'month' ? 'tháng' : 'năm'}`
-                                              : '-'}
-                                          </td>
-                                          <td>
-                                            {plan.isActive ? (
-                                              <span className="badge bg-success">Hoạt động</span>
-                                            ) : (
-                                              <span className="badge bg-secondary">Đã hủy</span>
-                                            )}
-                                          </td>
-                                          <td>
-                                            {hasEvent ? (() => {
-                                              // Kiểm tra nếu đã hoàn thành và đã qua ngày hôm nay (chỉ cho lịch đang hoạt động)
-                                              let displayStatus = eventStatus;
-                                              let displayText = '';
-                                              let badgeClass = '';
-
-                                              if (eventStatus === 'completed') {
-                                                // Chỉ áp dụng logic "Chờ đợt tiếp theo" cho lịch đang hoạt động
-                                                if (plan.isActive) {
-                                                  const today = new Date();
-                                                  today.setHours(0, 0, 0, 0);
-
-                                                  // Kiểm tra endDate hoặc eventDate
-                                                  const endDate = event?.endDate ? new Date(event.endDate) : null;
-                                                  const eventDate = event?.eventDate ? new Date(event.eventDate) : null;
-                                                  const completedDate = endDate || eventDate;
-
-                                                  if (completedDate) {
-                                                    completedDate.setHours(0, 0, 0, 0);
-                                                    // Nếu đã qua ngày hôm nay, hiển thị "Chờ đợt tiếp theo"
-                                                    if (completedDate < today) {
-                                                      displayText = 'Chờ đợt tiếp theo';
-                                                      badgeClass = 'bg-secondary';
-                                                    } else {
-                                                      displayText = 'Đã hoàn thành';
-                                                      badgeClass = 'bg-success';
-                                                    }
-                                                  } else {
-                                                    displayText = 'Đã hoàn thành';
-                                                    badgeClass = 'bg-success';
-                                                  }
-                                                } else {
-                                                  // Lịch đã hủy, luôn hiển thị "Đã hoàn thành"
-                                                  displayText = 'Đã hoàn thành';
-                                                  badgeClass = 'bg-success';
-                                                }
-                                              } else if (eventStatus === 'in_progress') {
-                                                displayText = 'Đang tiến hành';
-                                                badgeClass = 'bg-info';
-                                              } else if (eventStatus === 'planned') {
-                                                displayText = 'Đã lên kế hoạch';
-                                                badgeClass = 'bg-secondary';
-                                              } else {
-                                                displayText = 'Đã hủy';
-                                                badgeClass = 'bg-danger';
-                                              }
-
-                                              return (
-                                                <span className={`badge ${badgeClass}`}>
-                                                  {displayText}
-                                                </span>
-                                              );
-                                            })() : (
-                                              <span className="badge bg-light text-dark">Chưa có event</span>
-                                            )}
                                           </td>
                                           <td className="text-end">
                                             {plan.isActive ? (
@@ -2625,8 +2709,7 @@ function MaintenancePageContent() {
                                                     }}
                                                     title="Bắt đầu bảo trì"
                                                   >
-                                                    <i className="fas fa-play me-1"></i>
-                                                    Bắt đầu
+                                                    <i className="fas fa-play"></i>
                                                   </button>
                                                 )}
                                                 {hasEvent && eventStatus === 'in_progress' && (
@@ -2642,8 +2725,7 @@ function MaintenancePageContent() {
                                                     }}
                                                     title="Ghi nhận hoàn thành"
                                                   >
-                                                    <i className="fas fa-check me-1"></i>
-                                                    Hoàn thành
+                                                    <i className="fas fa-check"></i>
                                                   </button>
                                                 )}
 
@@ -2679,8 +2761,7 @@ function MaintenancePageContent() {
                                               </div>
                                             ) : (
                                               <span className="text-muted small">
-                                                <i className="fas fa-lock me-1"></i>
-                                                Chỉ xem
+                                                <i className="fas fa-lock me-1" title="Chỉ xem"></i>
                                               </span>
                                             )}
                                           </td>
@@ -2697,6 +2778,38 @@ function MaintenancePageContent() {
                     })}
                   </div>
                 )}
+                
+                {activeTab === 'plans' && groupedPlans.length > 0 && (
+                  <div className="card mt-4 border-0 shadow-sm bg-light">
+                    <div className="card-header bg-white border-0 py-2">
+                      <h6 className="mb-0 text-muted small"><i className="fas fa-info-circle me-2"></i>Chú thích thao tác (Dành cho đợt bảo trì)</h6>
+                    </div>
+                    <div className="card-body py-2">
+                      <div className="row g-2">
+                        <div className="col-md-auto col-6 d-flex align-items-center me-3">
+                          <span className="badge bg-outline-info text-info border border-info me-2"><i className="fas fa-eye"></i></span>
+                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Xem chi tiết</small>
+                        </div>
+                        <div className="col-md-auto col-6 d-flex align-items-center me-3">
+                          <span className="badge bg-outline-success text-success border border-success me-2"><i className="fas fa-check-double"></i></span>
+                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Hoàn thành tất cả</small>
+                        </div>
+                        <div className="col-md-auto col-6 d-flex align-items-center me-3">
+                          <span className="badge bg-outline-primary text-primary border border-primary me-2"><i className="fas fa-edit"></i></span>
+                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Sửa kế hoạch</small>
+                        </div>
+                        <div className="col-md-auto col-6 d-flex align-items-center me-3">
+                          <span className="badge bg-outline-warning text-warning border border-warning me-2"><i className="fas fa-calendar-alt"></i></span>
+                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Dời lịch bảo trì</small>
+                        </div>
+                        <div className="col-md-auto col-6 d-flex align-items-center">
+                          <span className="badge bg-outline-danger text-danger border border-danger me-2"><i className="fas fa-times"></i></span>
+                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Hủy/Xóa kế hoạch</small>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -2708,7 +2821,10 @@ function MaintenancePageContent() {
             <div className="modal-dialog modal-lg">
               <div className="modal-content">
                 <div className="modal-header">
-                  <h5 className="modal-title">Chi Tiết Batch: {selectedBatchId}</h5>
+                  <h5 className="modal-title">
+                    <i className="fas fa-layer-group me-2"></i>
+                    Chi Tiết Batch: {getShortTitle(selectedBatchTitle || selectedBatchId || '')}
+                  </h5>
                   <button
                     type="button"
                     className="btn-close"
@@ -2852,7 +2968,17 @@ function MaintenancePageContent() {
                                       }
 
                                       return (
-                                        <>
+                                        <div className="d-flex align-items-center justify-content-end gap-2">
+                                          {event.relatedReportId && (
+                                            <button
+                                              className="btn btn-sm btn-outline-info"
+                                              onClick={() => handleQuickViewReport(event.relatedReportId!)}
+                                              title="Xem báo cáo liên quan"
+                                            >
+                                              <i className="fas fa-file-alt"></i>
+                                            </button>
+                                          )}
+                                          
                                           {event.status === 'planned' && (
                                             <button
                                               className="btn btn-sm btn-primary"
@@ -2886,7 +3012,7 @@ function MaintenancePageContent() {
                                               Hoàn thành
                                             </button>
                                           )}
-                                        </>
+                                        </div>
                                       );
                                     })()}
                                   </td>
@@ -3133,16 +3259,26 @@ function MaintenancePageContent() {
                                         </td>
                                         <td>
                                           {event.relatedReportId ? (
-                                            <a
-                                              href={`/dashboard/damage-reports?search=${event.relatedReportId}`}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="btn btn-sm btn-outline-primary"
-                                              title="Xem báo cáo công việc"
-                                            >
-                                              <i className="fas fa-external-link-alt me-1"></i>
-                                              CV-{event.relatedReportId}
-                                            </a>
+                                            <div className="d-flex flex-column gap-1">
+                                              <button
+                                                type="button"
+                                                className="btn btn-sm btn-outline-primary"
+                                                onClick={() => handleQuickViewReport(event.relatedReportId!)}
+                                                title="Xem nhanh báo cáo"
+                                              >
+                                                <i className="fas fa-eye me-1"></i>
+                                                Xem nhanh
+                                              </button>
+                                              <a
+                                                href={`/dashboard/damage-reports?search=${event.relatedReportId}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="btn btn-sm btn-link p-0 text-decoration-none"
+                                                style={{ fontSize: '0.75rem' }}
+                                              >
+                                                Mở chi tiết
+                                              </a>
+                                            </div>
                                           ) : (
                                             <span className="text-muted">-</span>
                                           )}
@@ -3220,16 +3356,26 @@ function MaintenancePageContent() {
                                           </span>
                                         </td>
                                         <td>
-                                          <a
-                                            href={`/dashboard/damage-reports?search=${report.id}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="btn btn-sm btn-outline-primary"
-                                            title="Xem chi tiết"
-                                          >
-                                            <i className="fas fa-eye me-1"></i>
-                                            Xem
-                                          </a>
+                                            <div className="d-flex flex-column gap-1">
+                                              <button
+                                                type="button"
+                                                className="btn btn-sm btn-outline-primary"
+                                                onClick={() => handleQuickViewReport(report.id)}
+                                                title="Xem nhanh"
+                                              >
+                                                <i className="fas fa-eye me-1"></i>
+                                                Xem
+                                              </button>
+                                              <a
+                                                href={`/dashboard/damage-reports?search=${report.id}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="btn btn-sm btn-link p-0 text-decoration-none"
+                                                style={{ fontSize: '0.75rem' }}
+                                              >
+                                                Mở mới
+                                              </a>
+                                            </div>
                                         </td>
                                       </tr>
                                     );
@@ -3485,8 +3631,8 @@ function MaintenancePageContent() {
                   <div className="modal-body py-3">
                     {/* Tiêu đề */}
                     <div className="mb-3">
-                      <div className="text-muted small mb-1">Tiêu đề</div>
-                      <div className="fw-bold">{selectedGroup.title}</div>
+                      <div className="text-muted small mb-1">Tên kế hoạch bảo trì</div>
+                      <div className="h5 fw-bold text-primary mb-0">{getShortTitle(selectedGroup.title)}</div>
                     </div>
 
                     {/* Mô tả */}
@@ -3590,6 +3736,17 @@ function MaintenancePageContent() {
                   <div className="modal-footer py-2">
                     <button
                       type="button"
+                      className="btn btn-sm btn-outline-primary"
+                      onClick={() => {
+                        setShowViewPlanModal(false);
+                        handleOpenEditBatch(selectedGroup.batchId, selectedGroup.title);
+                      }}
+                    >
+                      <i className="fas fa-edit me-1"></i>
+                      Chỉnh sửa
+                    </button>
+                    <button
+                      type="button"
                       className="btn btn-sm btn-secondary"
                       onClick={() => {
                         setShowViewPlanModal(false);
@@ -3605,15 +3762,15 @@ function MaintenancePageContent() {
           );
         })()}
 
-        {/* Edit Interval Modal */}
+        {/* Edit Batch Modal */}
         {showEditIntervalModal && selectedGroupForInterval && (
           <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-            <div className="modal-dialog">
+            <div className="modal-dialog modal-lg">
               <div className="modal-content">
                 <div className="modal-header">
                   <h5 className="modal-title">
                     <i className="fas fa-edit me-2"></i>
-                    Sửa Chu Kỳ Bảo Trì: {selectedGroupForInterval.title}
+                    Chỉnh Sửa Kế Hoạch Bảo Trì
                   </h5>
                   <button
                     type="button"
@@ -3621,66 +3778,161 @@ function MaintenancePageContent() {
                     onClick={() => {
                       setShowEditIntervalModal(false);
                       setSelectedGroupForInterval(null);
-                      setEditIntervalValue(6);
-                      setEditIntervalUnit('month');
                     }}
                   ></button>
                 </div>
                 <div className="modal-body">
+                  {/* Tiêu đề */}
                   <div className="mb-3">
-                    <label className="form-label">Số Lượng Kế Hoạch</label>
+                    <label className="form-label fw-bold">Tiêu Đề <span className="text-danger">*</span></label>
                     <input
                       type="text"
                       className="form-control"
-                      value={`${selectedGroupForInterval.plans.filter(p => p.isActive).length} kế hoạch đang hoạt động`}
-                      disabled
+                      value={editBatchTitle}
+                      onChange={(e) => setEditBatchTitle(e.target.value)}
+                      placeholder="Nhập tiêu đề bảo trì..."
                     />
                   </div>
+
+                  {/* Mô tả */}
                   <div className="mb-3">
-                    <label className="form-label">Chu Kỳ Hiện Tại</label>
-                    <input
-                      type="text"
+                    <label className="form-label fw-bold">Mô Tả</label>
+                    <textarea
                       className="form-control"
-                      value={editIntervalValue && editIntervalUnit
-                        ? `${editIntervalValue} ${editIntervalUnit === 'day' ? 'ngày' : editIntervalUnit === 'week' ? 'tuần' : editIntervalUnit === 'month' ? 'tháng' : 'năm'}`
-                        : '-'}
-                      disabled
+                      rows={2}
+                      value={editBatchDescription}
+                      onChange={(e) => setEditBatchDescription(e.target.value)}
+                      placeholder="Mô tả chi tiết kế hoạch..."
                     />
                   </div>
+
+                  <div className="row">
+                    {/* Loại sự kiện */}
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label fw-bold">Loại Sự Kiện</label>
+                        <select
+                          className="form-select"
+                          value={editBatchEventTypeId}
+                          onChange={(e) => setEditBatchEventTypeId(Number(e.target.value))}
+                        >
+                          <option value="0">-- Chọn loại sự kiện --</option>
+                          {eventTypes.map(et => (
+                            <option key={et.id} value={et.id}>{et.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    {/* Chu kỳ */}
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label fw-bold">Chu Kỳ Bảo Trì <span className="text-danger">*</span></label>
+                        <div className="input-group">
+                          <input
+                            type="number"
+                            className="form-control"
+                            min="1"
+                            value={editIntervalValue}
+                            onChange={(e) => setEditIntervalValue(Number(e.target.value))}
+                          />
+                          <select
+                            className="form-select"
+                            value={editIntervalUnit}
+                            onChange={(e) => setEditIntervalUnit(e.target.value as any)}
+                            style={{ flex: '0 0 100px' }}
+                          >
+                            <option value="day">Ngày</option>
+                            <option value="week">Tuần</option>
+                            <option value="month">Tháng</option>
+                            <option value="year">Năm</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Ngày tính toán */}
                   <div className="row">
                     <div className="col-md-6">
                       <div className="mb-3">
-                        <label className="form-label">Giá Trị Chu Kỳ Mới <span className="text-danger">*</span></label>
-                        <input
-                          type="number"
-                          className="form-control"
-                          min="1"
-                          value={editIntervalValue}
-                          onChange={(e) => setEditIntervalValue(Number(e.target.value))}
+                        <label className="form-label fw-bold">Ngày Bắt Đầu <span className="text-danger">*</span></label>
+                        <DateInput
+                          value={editBatchStartFrom}
+                          onChange={(value) => setEditBatchStartFrom(value)}
                           required
                         />
                       </div>
                     </div>
                     <div className="col-md-6">
                       <div className="mb-3">
-                        <label className="form-label">Đơn Vị <span className="text-danger">*</span></label>
-                        <select
-                          className="form-select"
-                          value={editIntervalUnit}
-                          onChange={(e) => setEditIntervalUnit(e.target.value as 'day' | 'week' | 'month' | 'year')}
-                          required
-                        >
-                          <option value="day">Ngày</option>
-                          <option value="week">Tuần</option>
-                          <option value="month">Tháng</option>
-                          <option value="year">Năm</option>
-                        </select>
+                        <label className="form-label fw-bold">Ngày Kết Thúc</label>
+                        <DateInput
+                          value={editBatchEndAt}
+                          onChange={(value) => setEditBatchEndAt(value)}
+                        />
                       </div>
                     </div>
                   </div>
-                  <div className="alert alert-info">
+
+                  {/* Hình thức bảo trì */}
+                  <div className="mb-3">
+                    <label className="form-label fw-bold">Hình Thức Bảo Trì</label>
+                    <div className="d-flex gap-4">
+                      <div className="form-check">
+                        <input
+                          className="form-check-input"
+                          type="radio"
+                          id="editInternal"
+                          checked={editBatchMaintenanceType === 'internal'}
+                          onChange={() => setEditBatchMaintenanceType('internal')}
+                        />
+                        <label className="form-check-label" htmlFor="editInternal">Nội bộ</label>
+                      </div>
+                      <div className="form-check">
+                        <input
+                          className="form-check-input"
+                          type="radio"
+                          id="editOutsource"
+                          checked={editBatchMaintenanceType === 'outsource'}
+                          onChange={() => setEditBatchMaintenanceType('outsource')}
+                        />
+                        <label className="form-check-label" htmlFor="editOutsource">Thuê ngoài</label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {editBatchMaintenanceType === 'outsource' && (
+                    <div className="row">
+                      <div className="col-md-8">
+                        <div className="mb-3">
+                          <label className="form-label fw-bold">Nhà Cung Cấp <span className="text-danger">*</span></label>
+                          <input
+                            type="text"
+                            className="form-control"
+                            value={editBatchProvider}
+                            onChange={(e) => setEditBatchProvider(e.target.value)}
+                            placeholder="Tên công ty/nhà cung cấp..."
+                          />
+                        </div>
+                      </div>
+                      <div className="col-md-4">
+                        <div className="mb-3">
+                          <label className="form-label fw-bold">Dự Kiến Chi Phí</label>
+                          <input
+                            type="number"
+                            className="form-control"
+                            value={editBatchCost}
+                            onChange={(e) => setEditBatchCost(Number(e.target.value))}
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="alert alert-info py-2 small mb-0 mt-2">
                     <i className="fas fa-info-circle me-2"></i>
-                    Chu kỳ mới sẽ được áp dụng cho tất cả các kế hoạch đang hoạt động trong batch này. Ngày đến hạn tiếp theo sẽ được tính lại dựa trên chu kỳ mới từ ngày bắt đầu của mỗi kế hoạch.
+                    Thay đổi sẽ được áp dụng cho tất cả <strong>{selectedGroupForInterval.plans.filter(p => p.isActive).length}</strong> kế hoạch đang hoạt động trong batch này.
                   </div>
                 </div>
                 <div className="modal-footer">
@@ -3690,8 +3942,6 @@ function MaintenancePageContent() {
                     onClick={() => {
                       setShowEditIntervalModal(false);
                       setSelectedGroupForInterval(null);
-                      setEditIntervalValue(6);
-                      setEditIntervalUnit('month');
                     }}
                   >
                     Hủy
@@ -3699,10 +3949,20 @@ function MaintenancePageContent() {
                   <button
                     type="button"
                     className="btn btn-primary"
-                    onClick={handleEditInterval}
+                    onClick={handleBatchUpdate}
+                    disabled={savingBatchEdit}
                   >
-                    <i className="fas fa-save me-2"></i>
-                    Lưu
+                    {savingBatchEdit ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2"></span>
+                        Đang lưu...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-save me-2"></i>
+                        Lưu Thay Đổi
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -4390,13 +4650,8 @@ function MaintenancePageContent() {
                     />
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">Tiêu Đề</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={selectedEvent.title || '-'}
-                      disabled
-                    />
+                    <label className="form-label text-muted small mb-1">Tiêu Đề</label>
+                    <div className="fw-bold">{getShortTitle(selectedEvent.title)}</div>
                   </div>
                   <div className="mb-3">
                     <label className="form-label">Ngày Hoàn Thành <span className="text-danger">*</span></label>
@@ -4588,6 +4843,12 @@ function MaintenancePageContent() {
             </div>
           </div>
         )}
+
+        <QuickViewReportModal
+          isOpen={showQuickView}
+          reportId={selectedQuickReportId || 0}
+          onClose={() => setShowQuickView(false)}
+        />
       </div>
     </>
   );

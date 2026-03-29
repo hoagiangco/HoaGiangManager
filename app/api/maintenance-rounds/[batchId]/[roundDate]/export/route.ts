@@ -144,7 +144,7 @@ export async function GET(
           maintenanceProvider: metadata.maintenanceProvider || null,
         };
       })
-      .filter((event: any) => event !== null);
+      .filter((event: any) => event !== null) as any[];
 
     if (events.length === 0) {
       return NextResponse.json(
@@ -154,9 +154,9 @@ export async function GET(
     }
 
     // Get batch title from first event
-    const batchTitle = events[0].title || `Bảo trì - ${batchId}`;
-    const maintenanceType = events[0].maintenanceType;
-    const maintenanceProvider = events[0].maintenanceProvider;
+    const batchTitle = events[0]!.title || `Bảo trì - ${batchId}`;
+    const maintenanceType = events[0]!.maintenanceType;
+    const maintenanceProvider = events[0]!.maintenanceProvider;
 
     // Generate Excel
     const ExcelJS = require('exceljs');

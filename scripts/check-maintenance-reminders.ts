@@ -135,38 +135,92 @@ async function checkMaintenanceReminders() {
           maintenanceBatchId: metadata?.maintenanceBatchId || null,
         };
 
-        const now = new Date();
-        const eventResult = await client.query(
-          `INSERT INTO "Event" (
-            "Title", "DeviceID", "EventTypeID", "Description", "Notes",
-            "Status", "EventDate", "StartDate", "EndDate", "StaffID",
-            "RelatedReportID", "Metadata", "CreatedBy", "CreatedAt",
-            "UpdatedBy", "UpdatedAt"
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-          RETURNING "ID"`,
-          [
-            row.title || `Bảo trì định kỳ - ${nextDueDate.toISOString().split('T')[0]}`,
-            row.deviceId,
-            row.eventTypeId,
-            row.description || null,
-            null, // Notes field is not used
-            EventStatus.Planned,
-            nextDueDate,
-            nextDueDate,
-            null,
-            null,
-            null,
-            eventMetadata ? JSON.stringify(eventMetadata) : null,
-            row.createdBy || 'system',
-            now,
-            row.createdBy || 'system',
-            now,
-          ]
+        // Check if there is an existing DamageReport for this maintenanceBatchId
+        let newEventStatus = EventStatus.Planned;
+        let relatedReportId = null;
+        let handlerId = null;
+        let startDate = nextDueDate;
+        let endDate = null;
+
+        if (eventMetadata.maintenanceBatchId) {
+          const reportRes = await client.query(
+            `SELECT "ID", "Status", "HandlerID", "HandlingDate", "CompletedDate" FROM "DamageReport" 
+             WHERE "MaintenanceBatchId" = $1
+             ORDER BY "CreatedAt" DESC LIMIT 1`,
+            [eventMetadata.maintenanceBatchId]
+          );
+
+          if (reportRes.rows.length > 0) {
+            const report = reportRes.rows[0];
+            relatedReportId = report.ID;
+            handlerId = report.HandlerID;
+            
+            // Map DamageReportStatus to EventStatus
+            if (report.Status === 1 || report.Status === 2) { // Pending or Assigned
+              newEventStatus = EventStatus.Planned;
+            } else if (report.Status === 3) { // InProgress
+              newEventStatus = EventStatus.InProgress;
+              if (report.HandlingDate) startDate = report.HandlingDate;
+            } else if (report.Status === 4) { // Completed
+              newEventStatus = EventStatus.Completed;
+              if (report.HandlingDate) startDate = report.HandlingDate;
+              if (report.CompletedDate) endDate = report.CompletedDate;
+              else endDate = new Date();
+            } else if (report.Status === 5 || report.Status === 6) { // Cancelled or Rejected
+              newEventStatus = EventStatus.Cancelled;
+            }
+          }
+        }
+
+        // Avoid duplicating if an event with this batchId and deviceId and EventDate already exists (e.g. created by DamageReport completion)
+        const checkExistingEvent = await client.query(
+          `SELECT "ID" FROM "Event"
+           WHERE "DeviceID" = $1 
+             AND "Metadata"::text LIKE $2
+             AND ("EventDate"::date = $3::date OR "Status" = 'completed')
+           ORDER BY "CreatedAt" DESC LIMIT 1`,
+          [row.deviceId, `%"maintenanceBatchId":"${eventMetadata.maintenanceBatchId}"%`, nextDueDate]
         );
 
-        const eventId = eventResult.rows[0].ID;
-        console.log(`Đã tạo Event ${eventId} cho Device ${row.deviceId}`);
+        let eventId;
+        const now = new Date();
+
+        if (checkExistingEvent.rows.length > 0) {
+           eventId = checkExistingEvent.rows[0].ID;
+           console.log(`Event ${eventId} đã tồn tại cho Device ${row.deviceId} tại batch này, bỏ qua tạo mới`);
+        } else {
+          const eventResult = await client.query(
+            `INSERT INTO "Event" (
+              "Title", "DeviceID", "EventTypeID", "Description", "Notes",
+              "Status", "EventDate", "StartDate", "EndDate", "StaffID",
+              "RelatedReportID", "Metadata", "CreatedBy", "CreatedAt",
+              "UpdatedBy", "UpdatedAt"
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            RETURNING "ID"`,
+            [
+              row.title || `Bảo trì định kỳ - ${nextDueDate.toISOString().split('T')[0]}`,
+              row.deviceId,
+              row.eventTypeId,
+              row.description || null,
+              null, // Notes field is not used
+              newEventStatus,
+              nextDueDate,
+              startDate,
+              endDate,
+              handlerId,
+              relatedReportId,
+              eventMetadata ? JSON.stringify(eventMetadata) : null,
+              row.createdBy || 'system',
+              now,
+              row.createdBy || 'system',
+              now,
+            ]
+          );
+
+          eventId = eventResult.rows[0].ID;
+          console.log(`Đã tạo Event ${eventId} (Status: ${newEventStatus}) cho Device ${row.deviceId}`);
+        }
 
         // Calculate next due date
         const newNextDueDate = calculateNextDueDate(

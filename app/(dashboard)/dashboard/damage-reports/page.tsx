@@ -8,6 +8,7 @@ import { formatDateDisplay, formatDateInput, formatDateRange, formatDateFilename
 import FileManager from '@/components/FileManager';
 import DateInput from '@/components/DateInput';
 import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
+import QuickViewReportModal from '@/components/QuickViewReportModal';
 
 // Handler Notes Editor Component
 const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false, canEdit = true }: {
@@ -263,8 +264,7 @@ export default function DamageReportsPage() {
 
   // Quick view state
   const [showQuickView, setShowQuickView] = useState(false);
-  const [quickViewLoading, setQuickViewLoading] = useState(false);
-  const [quickReport, setQuickReport] = useState<DamageReportVM | null>(null);
+  const [selectedQuickReportId, setSelectedQuickReportId] = useState<number | null>(null);
 
   const cardBodyStyle = useMemo(() => {
     if (viewMode === 'card') {
@@ -336,29 +336,14 @@ export default function DamageReportsPage() {
     };
   }, []);
 
-  const openQuickView = async (reportId: number) => {
-    try {
-      setQuickViewLoading(true);
-      setShowQuickView(true);
-      // Fetch full record for reliable data
-      const res = await api.get(`/damage-reports/${reportId}`);
-      if (res.data.status) {
-        setQuickReport(res.data.data as DamageReportVM);
-      } else {
-        toast.error('Không tải được dữ liệu báo cáo');
-        setQuickReport(null);
-      }
-    } catch (e: any) {
-      toast.error(e.response?.data?.error || 'Lỗi khi tải báo cáo');
-      setQuickReport(null);
-    } finally {
-      setQuickViewLoading(false);
-    }
+  const openQuickView = (reportId: number) => {
+    setSelectedQuickReportId(reportId);
+    setShowQuickView(true);
   };
 
   const closeQuickView = () => {
     setShowQuickView(false);
-    setQuickReport(null);
+    setSelectedQuickReportId(null);
   };
 
   useEffect(() => {
@@ -1062,9 +1047,9 @@ export default function DamageReportsPage() {
     setCompletionModalError(null);
   };
 
-  const loadCompletionEventTypes = async () => {
-    if (completionEventTypes.length > 0 || loadingCompletionTypes) {
-      return;
+  const loadCompletionEventTypes = async (): Promise<EventType[]> => {
+    if (completionEventTypes.length > 0) {
+      return completionEventTypes;
     }
     try {
       setLoadingCompletionTypes(true);
@@ -1073,10 +1058,13 @@ export default function DamageReportsPage() {
         const list: EventType[] = response.data.data || [];
         const filtered = list.filter((type) => !type.isReminder);
         setCompletionEventTypes(filtered);
+        return filtered;
       }
+      return [];
     } catch (error) {
       console.error('Error loading completion event types:', error);
       toast.error('Không thể tải danh sách loại sự kiện');
+      return [];
     } finally {
       setLoadingCompletionTypes(false);
     }
@@ -1169,10 +1157,12 @@ export default function DamageReportsPage() {
     }
 
     try {
-      // Load event types to find maintenance type
-      await loadCompletionEventTypes();
-      const maintenanceEventType = completionEventTypes.find(
-        (type) => type.category === 'maintenance' || type.name?.toLowerCase().includes('bảo trì')
+      // Load event types to find maintenance type - wait for results to avoid race condition
+      const types = await loadCompletionEventTypes();
+      const maintenanceEventType = types.find(
+        (type) => type.category === 'maintenance' || 
+                 type.name?.toLowerCase().includes('bảo trì') ||
+                 type.code?.toLowerCase().includes('maintenance')
       );
 
       if (!maintenanceEventType) {
@@ -1493,7 +1483,7 @@ export default function DamageReportsPage() {
 
   // Main render
   const __view = (
-    <div className="container-fluid" style={{ marginLeft: 0, marginRight: 0, paddingLeft: 0, paddingRight: 0 }}>
+    <div className="container-fluid">
       <div className="card">
         <div className="card-header" style={{ padding: '0.75rem' }}>
           <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap" style={{ gap: '0.5rem' }}>
@@ -1814,10 +1804,10 @@ export default function DamageReportsPage() {
                               />
                               <button
                                 type="button"
-                                className="btn btn-outline-secondary btn-sm"
+                                className="btn btn-link text-primary p-0 border-0 shadow-none"
                                 title="Xem nhanh"
                                 onClick={(e) => { e.stopPropagation(); openQuickView(report.id); }}
-                                style={{ padding: '0.15rem 0.35rem', lineHeight: 1 }}
+                                style={{ lineHeight: 1 }}
                               >
                                 <i className="fas fa-eye"></i>
                               </button>
@@ -1870,7 +1860,7 @@ export default function DamageReportsPage() {
                               className="form-control form-control-sm damage-report-priority-select"
                               value={report.priority}
                               onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
-                              disabled={!userPermissions.canEdit}
+                              disabled={!userPermissions.canEdit || report.status === DamageReportStatus.Completed}
                               style={{
                                 width: 'auto',
                                 minWidth: '80px',
@@ -1906,7 +1896,7 @@ export default function DamageReportsPage() {
                               reportId={report.id}
                               value={report.handlerNotes || ''}
                               onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
-                              canEdit={userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)}
+                              canEdit={(userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && report.status !== DamageReportStatus.Completed}
                             />
                           </td>
                         </tr>
@@ -1929,22 +1919,25 @@ export default function DamageReportsPage() {
                 currentReports.map((report) => (
                   <div key={report.id} className="col-12 col-md-6 col-lg-4">
                     <div
-                      className="card h-100 shadow-sm damage-report-card"
+                      className="card h-100 damage-report-card"
                       style={{
-                        borderLeft: `4px solid ${getPriorityStyle(report.priority).borderColor || '#dee2e6'}`,
-                        borderBottom: `3px solid ${getPriorityStyle(report.priority).borderColor || '#dee2e6'}`,
+                        border: '1px solid rgba(0,0,0,0.1)',
+                        borderTop: `4px solid ${getPriorityStyle(report.priority).borderColor || '#dee2e6'}`,
+                        borderLeft: `1px solid rgba(0,0,0,0.05)`,
                         cursor: 'default',
-                        borderRadius: '8px',
+                        borderRadius: '12px',
                         overflow: 'hidden',
-                        backgroundColor: '#ffffff'
+                        backgroundColor: '#ffffff',
+                        boxShadow: '0 8px 20px rgba(0,0,0,0.08)',
+                        transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
                       }}
                     >
                       {/* Card Header */}
                       <div
                         className="card-header p-3"
                         style={{
-                          backgroundColor: '#f0f2f5',
-                          borderBottom: '2px solid #e9ecef',
+                          backgroundColor: `${getPriorityStyle(report.priority).backgroundColor}22` || '#f8f9fa',
+                          borderBottom: '1px solid rgba(0,0,0,0.05)',
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'flex-start',
@@ -1954,14 +1947,15 @@ export default function DamageReportsPage() {
                         onClick={() => handleCheckboxChange(report.id)}
                       >
                         <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                          <h6 className="mb-1" style={{
-                            fontSize: '0.95rem',
-                            fontWeight: '600',
-                            color: '#212529',
-                            lineHeight: '1.3',
+                          <h6 className="mb-1 d-flex align-items-start gap-2" style={{
+                            fontSize: '1rem',
+                            fontWeight: '800',
+                            color: '#1a1d20',
+                            lineHeight: '1.4',
                             wordBreak: 'break-word'
                           }}>
-                            {report.displayLocation || 'Không xác định'}
+                            <i className="fas fa-map-marker-alt text-primary mt-1" style={{ fontSize: '0.85rem' }}></i>
+                            <span>{report.displayLocation || 'Không xác định'}</span>
                             {report.isOverdue && (
                               <i className="fas fa-exclamation-triangle text-danger ms-1" title="Quá hạn"></i>
                             )}
@@ -1993,17 +1987,17 @@ export default function DamageReportsPage() {
                           />
                           <button
                             type="button"
-                            className="btn btn-outline-secondary btn-sm"
+                            className="btn btn-link text-primary p-0 border-0 shadow-none"
                             title="Xem nhanh"
                             onClick={(e) => { e.stopPropagation(); openQuickView(report.id); }}
                             style={{
-                              padding: '0.28rem 0.35rem',
                               lineHeight: 1,
                               marginTop: '0.25rem',
                               fontSize: '1.3rem',
                               minWidth: 'auto',
                               width: 'auto',
-                              height: 'auto'
+                              height: 'auto',
+                              textDecoration: 'none'
                             }}
                           >
                             <i className="fas fa-eye"></i>
@@ -2012,11 +2006,11 @@ export default function DamageReportsPage() {
                       </div>
 
                       {/* Card Body */}
-                      <div className="card-body p-3" style={{ backgroundColor: '#fafbfc' }}>
+                      <div className="card-body p-3" style={{ backgroundColor: '#ffffff' }}>
                         {/* Status and Priority Row */}
                         <div className="row g-2 mb-3">
                           <div className="col-6">
-                            <label className="small text-muted d-block mb-1" style={{ fontSize: '0.7rem', fontWeight: '500' }}>
+                            <label className="small text-muted d-block mb-1" style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6c757d' }}>
                               Trạng thái
                             </label>
                             <select
@@ -2046,14 +2040,14 @@ export default function DamageReportsPage() {
                             </select>
                           </div>
                           <div className="col-6">
-                            <label className="small text-muted d-block mb-1" style={{ fontSize: '0.7rem', fontWeight: '500' }}>
+                            <label className="small text-muted d-block mb-1" style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6c757d' }}>
                               Ưu tiên
                             </label>
                             <select
                               className="form-control form-control-sm damage-report-priority-select"
                               value={report.priority}
                               onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
-                              disabled={!userPermissions.canEdit}
+                              disabled={!userPermissions.canEdit || report.status === DamageReportStatus.Completed}
                               style={{
                                 width: '100%',
                                 fontSize: '0.75rem',
@@ -2084,7 +2078,7 @@ export default function DamageReportsPage() {
                                 Người báo cáo
                               </label>
                             </div>
-                            <div style={{ fontSize: '0.8rem', fontWeight: '500', color: '#495057', lineHeight: '1.3' }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#1a1d20', lineHeight: '1.3' }}>
                               {report.reporterName || 'N/A'}
                             </div>
                           </div>
@@ -2095,7 +2089,7 @@ export default function DamageReportsPage() {
                                 Người xử lý
                               </label>
                             </div>
-                            <div style={{ fontSize: '0.8rem', fontWeight: '500', color: report.handlerName ? '#495057' : '#6c757d', lineHeight: '1.3', fontStyle: report.handlerName ? 'normal' : 'italic' }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: report.handlerName ? '#1a1d20' : '#868e96', lineHeight: '1.3', fontStyle: report.handlerName ? 'normal' : 'italic' }}>
                               {report.handlerName || 'Chưa phân công'}
                             </div>
                           </div>
@@ -2111,8 +2105,9 @@ export default function DamageReportsPage() {
                           </div>
                           <div
                             style={{
-                              fontSize: '0.8rem',
-                              color: '#495057',
+                              fontSize: '0.85rem',
+                              color: '#212529',
+                              fontWeight: '500',
                               lineHeight: '1.5',
                               maxHeight: '80px',
                               overflow: 'hidden',
@@ -2140,7 +2135,7 @@ export default function DamageReportsPage() {
                             value={report.handlerNotes || ''}
                             onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
                             isCard={true}
-                            canEdit={userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)}
+                            canEdit={(userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && report.status !== DamageReportStatus.Completed}
                           />
                         </div>
 
@@ -2613,186 +2608,16 @@ export default function DamageReportsPage() {
       )}
 
       {showQuickView && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={closeQuickView}>
-          <div className="modal-dialog modal-lg modal-dialog-scrollable" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Xem nhanh báo cáo</h5>
-                <button type="button" className="btn-close" onClick={closeQuickView}></button>
-              </div>
-              <div className="modal-body">
-                {quickViewLoading ? (
-                  <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '200px' }}>
-                    <div className="spinner-border text-primary" role="status">
-                      <span className="visually-hidden">Loading...</span>
-                    </div>
-                  </div>
-                ) : !quickReport ? (
-                  <div className="text-muted">Không tìm thấy dữ liệu.</div>
-                ) : (
-                  <div className="container-fluid" style={{ padding: '0.5rem 0 0.75rem' }}>
-                    <div className="d-flex flex-column" style={{ gap: '16px' }}>
-                      <div className="d-flex align-items-start justify-content-between" style={{ gap: '12px' }}>
-                        <div>
-                          <div className="fw-semibold" style={{ fontSize: '1.05rem', lineHeight: 1.25 }}>{quickReport.displayLocation || 'Không xác định'}</div>
-                          <div className="text-muted" style={{ fontSize: '.85rem' }}>
-                            Mã: #{quickReport.id} · Ngày báo cáo: {formatDateDisplay(quickReport.reportDate) || '-'}
-                          </div>
-                        </div>
-                        <div className="d-flex gap-2 flex-wrap" style={{ justifyContent: 'flex-end' }}>
-                          {getStatusBadge(quickReport.status)}
-                          {getPriorityBadge(quickReport.priority)}
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                          gap: '12px 16px',
-                          alignItems: 'start',
-                        }}
-                      >
-                        <div>
-                          <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Người báo cáo</div>
-                          <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{quickReport.reporterName || '-'}</div>
-                        </div>
-                        <div>
-                          <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Người xử lý</div>
-                          <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{quickReport.handlerName || '-'}</div>
-                        </div>
-                        <div>
-                          <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ngày bắt đầu xử lý</div>
-                          <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{quickReport.handlingDate ? formatDateDisplay(quickReport.handlingDate) : '-'}</div>
-                        </div>
-                        <div>
-                          <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ngày hoàn thành</div>
-                          <div style={{ fontSize: '.95rem', fontWeight: 500 }}>{formatDateDisplay(quickReport.completedDate) || '-'}</div>
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          backgroundColor: '#f8f9fa',
-                          border: '1px solid #e9ecef',
-                          borderRadius: '8px',
-                          padding: '12px 14px',
-                        }}
-                      >
-                        <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
-                          Nội dung
-                        </div>
-                        <div style={{ fontSize: '.95rem', lineHeight: 1.5 }}>{quickReport.damageContent || '-'}</div>
-                      </div>
-
-                      <div
-                        style={{
-                          backgroundColor: '#f8f9fa',
-                          border: '1px solid #e9ecef',
-                          borderRadius: '8px',
-                          padding: '12px 14px',
-                        }}
-                      >
-                        <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
-                          Ghi chú người xử lý
-                        </div>
-                        <div style={{ fontSize: '.95rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', color: quickReport.handlerNotes ? '#212529' : '#6c757d' }}>
-                          {quickReport.handlerNotes || 'Chưa có ghi chú'}
-                        </div>
-                      </div>
-
-                      {quickReport.notes && (
-                        <div
-                          style={{
-                            backgroundColor: '#fff',
-                            border: '1px dashed #ced4da',
-                            borderRadius: '8px',
-                            padding: '12px 14px',
-                          }}
-                        >
-                          <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
-                            Ghi chú
-                          </div>
-                          <div style={{ fontSize: '.95rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{quickReport.notes}</div>
-                        </div>
-                      )}
-
-                      {Array.isArray(quickReport.images) && quickReport.images.length > 0 && (
-                        <div
-                          style={{
-                            backgroundColor: '#fff',
-                            borderRadius: '8px',
-                            border: '1px solid #e9ecef',
-                            padding: '12px 14px',
-                          }}
-                        >
-                          <div className="text-muted" style={{ fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>
-                            Hình ảnh
-                          </div>
-                          <div
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-                              gap: '10px',
-                            }}
-                          >
-                            {quickReport.images.map((img, idx) => (
-                              <div
-                                key={`${img}-${idx}`}
-                                onClick={() => {
-                                  if (Array.isArray(quickReport.images) && quickReport.images.length > 0) {
-                                    setSelectedImages(quickReport.images);
-                                    setCurrentImageIndex(idx);
-                                    setShowImageModal(true);
-                                  }
-                                }}
-                                style={{
-                                  position: 'relative',
-                                  width: '100%',
-                                  paddingBottom: '70%',
-                                  borderRadius: '6px',
-                                  overflow: 'hidden',
-                                  border: '1px solid #dee2e6',
-                                  cursor: 'pointer',
-                                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.transform = 'scale(1.03)';
-                                  e.currentTarget.style.boxShadow = '0 6px 18px rgba(33, 37, 41, 0.15)';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.transform = 'scale(1)';
-                                  e.currentTarget.style.boxShadow = 'none';
-                                }}
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={img}
-                                  alt="img"
-                                  style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    height: '100%',
-                                    objectFit: 'cover',
-                                  }}
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={closeQuickView}>Đóng</button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <QuickViewReportModal
+          isOpen={showQuickView}
+          reportId={selectedQuickReportId || 0}
+          onClose={closeQuickView}
+          onViewImages={(images, index) => {
+            setSelectedImages(images);
+            setCurrentImageIndex(index);
+            setShowImageModal(true);
+          }}
+        />
       )}
 
       {/* Completion Classification Modal */}
