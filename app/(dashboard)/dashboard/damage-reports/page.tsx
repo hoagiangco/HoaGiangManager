@@ -1667,78 +1667,93 @@ export default function DamageReportsPage() {
           </div>
 
           {/* Filter Section */}
-          <div className={`card mb-3 filter-card ${filtersOpen ? 'filter-open' : 'filter-collapsed'}`} style={{ backgroundColor: '#f8f9fa' }}>
-            <div className="card-body py-2">
-              <div className="row g-2">
-                <div className="col-12 col-md-6 col-lg-3">
-                  <label className="form-label small">Trạng thái</label>
-                  <select
-                    className="form-control form-control-sm"
-                    value={selectedStatus}
-                    onChange={(e) => setSelectedStatus(Number(e.target.value) as DamageReportStatus | 0)}
-                  >
-                    <option value="0">Tất cả</option>
-                    <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
-                    <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
-                    <option value={DamageReportStatus.Completed}>Hoàn thành</option>
-                    <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
-                    <option value={DamageReportStatus.Rejected}>Từ chối</option>
-                  </select>
+          <div className={`card mb-2 filter-card ${filtersOpen ? 'filter-open' : 'filter-collapsed'}`} style={{ backgroundColor: '#f8f9fa', border: '1px solid #e9ecef' }}>
+            <div className="card-body py-2 px-2 px-md-3">
+              <div className="row g-2 align-items-center">
+                {/* Status Filter */}
+                <div className="col-12 col-sm-6 col-md-auto">
+                  <div className="d-flex align-items-center gap-2 flex-nowrap container-fluid px-0">
+                    <span className="small text-muted fw-bold text-nowrap" style={{ minWidth: '70px' }}>Trạng thái:</span>
+                    <select
+                      className="form-control form-control-sm flex-grow-1"
+                      value={selectedStatus}
+                      onChange={(e) => setSelectedStatus(Number(e.target.value) as DamageReportStatus | 0)}
+                      style={{ borderRadius: '6px' }}
+                    >
+                      <option value="0">Tất cả</option>
+                      <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
+                      <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
+                      <option value={DamageReportStatus.Completed}>Hoàn thành</option>
+                      <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
+                      <option value={DamageReportStatus.Rejected}>Từ chối</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="col-12 col-md-6 col-lg-3">
-                  <label className="form-label small">Ưu tiên</label>
-                  <select
-                    className="form-control form-control-sm"
-                    value={selectedPriority}
-                    onChange={(e) => setSelectedPriority(Number(e.target.value) as DamageReportPriority | 0)}
-                  >
-                    <option value="0">Tất cả</option>
-                    <option value={DamageReportPriority.Low}>Thấp</option>
-                    <option value={DamageReportPriority.Normal}>Bình thường</option>
-                    <option value={DamageReportPriority.High}>Cao</option>
-                    <option value={DamageReportPriority.Urgent}>Khẩn cấp</option>
-                  </select>
+                
+                {/* Priority Filter */}
+                <div className="col-12 col-sm-6 col-md-auto">
+                  <div className="d-flex align-items-center gap-2 flex-nowrap container-fluid px-0">
+                    <span className="small text-muted fw-bold text-nowrap" style={{ minWidth: '70px' }}>Ưu tiên:</span>
+                    <select
+                      className="form-control form-control-sm flex-grow-1"
+                      value={selectedPriority}
+                      onChange={(e) => setSelectedPriority(Number(e.target.value) as DamageReportPriority | 0)}
+                      style={{ borderRadius: '6px' }}
+                    >
+                      <option value="0">Tất cả</option>
+                      <option value={DamageReportPriority.Low}>Thấp</option>
+                      <option value={DamageReportPriority.Normal}>Bình thường</option>
+                      <option value={DamageReportPriority.High}>Cao</option>
+                      <option value={DamageReportPriority.Urgent}>Khẩn cấp</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="col-12 col-md-6 col-lg-3">
-                  <label className="form-label small">Phòng ban</label>
-                  <select
-                    className="form-control form-control-sm"
-                    value={selectedDepartment}
-                    onChange={(e) => setSelectedDepartment(Number(e.target.value))}
-                  >
-                    <option value="0">Tất cả</option>
-                    {departments.map(dept => (
-                      <option key={dept.id} value={dept.id}>{dept.name}</option>
-                    ))}
-                  </select>
+
+                {/* Department Filter */}
+                <div className="col-12 col-md-auto">
+                  <div className="d-flex align-items-center gap-2 flex-nowrap container-fluid px-0">
+                    <span className="small text-muted fw-bold text-nowrap" style={{ minWidth: '70px' }}>Phòng ban:</span>
+                    <select
+                      className="form-control form-control-sm flex-grow-1"
+                      value={selectedDepartment}
+                      onChange={(e) => setSelectedDepartment(Number(e.target.value))}
+                      style={{ borderRadius: '6px' }}
+                    >
+                      <option value="0">Tất cả</option>
+                      {departments.map(dept => (
+                        <option key={dept.id} value={dept.id}>{dept.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <div className="col-12 col-md-6 col-lg-3">
-                  <label className="form-label small">Tìm kiếm</label>
-                  <div className="d-flex gap-1">
-                    <div className="input-group input-group-sm flex-grow-1">
-                      <input
-                        type="text"
-                        className="form-control"
-                        placeholder="Tìm kiếm..."
-                        value={searchInputValue}
-                        onChange={(e) => setSearchInputValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            setSearchKeyword(searchInputValue);
-                          }
-                        }}
-                      />
-                      <button
-                        className="btn btn-outline-secondary"
-                        type="button"
-                        onClick={() => setSearchKeyword(searchInputValue)}
-                        title="Tìm kiếm"
-                      >
-                        <i className="fas fa-search"></i>
-                      </button>
-                    </div>
+
+                {/* Search Bar */}
+                <div className="col-12 col-md">
+                  <div className="input-group input-group-sm">
+                    <span className="input-group-text bg-white border-end-0">
+                      <i className="fas fa-search text-muted"></i>
+                    </span>
+                    <input
+                      type="text"
+                      className="form-control border-start-0"
+                      placeholder="Tìm kiếm nội dung, thiết bị..."
+                      value={searchInputValue}
+                      onChange={(e) => setSearchInputValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          setSearchKeyword(searchInputValue);
+                        }
+                      }}
+                    />
                     <button
-                      className="btn btn-outline-secondary btn-sm"
+                      className="btn btn-outline-secondary"
+                      type="button"
+                      onClick={() => setSearchKeyword(searchInputValue)}
+                    >
+                      Lọc
+                    </button>
+                    <button
+                      className="btn btn-outline-danger"
                       type="button"
                       onClick={() => {
                         setSearchKeyword('');
@@ -1749,10 +1764,8 @@ export default function DamageReportsPage() {
                         setSelectedDevice(0);
                       }}
                       title="Xóa bộ lọc"
-                      style={{ whiteSpace: 'nowrap' }}
                     >
-                      <i className="fas fa-times-circle"></i>
-                      <span className="d-none d-md-inline ms-1">Xóa</span>
+                      <i className="fas fa-times"></i>
                     </button>
                   </div>
                 </div>
@@ -1843,35 +1856,31 @@ export default function DamageReportsPage() {
                           />
                         </div>
                       </th>
-                      {/* Ẩn cột Mã nhưng vẫn tìm kiếm được */}
-                      {/* <th style={{ cursor: 'pointer', minWidth: '70px' }} onClick={() => handleSort('id')}>
-                    Mã {getSortIcon('id')}
-                  </th> */}
-                      <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reportDate')}>
-                        Ngày b/c {getSortIcon('reportDate')}
-                      </th>
+                      <th style={{ minWidth: '200px' }}>Nội dung</th>
                       <th style={{ cursor: 'pointer', minWidth: '150px' }} onClick={() => handleSort('displayLocation')}>
                         Vị trí/Thiết bị {getSortIcon('displayLocation')}
                       </th>
-                      <th style={{ cursor: 'pointer', minWidth: '100px' }} onClick={() => handleSort('status')}>
-                        Trạng thái {getSortIcon('status')}
-                      </th>
-                      <th style={{ cursor: 'pointer', minWidth: '100px' }} onClick={() => handleSort('priority')}>
-                        Ưu tiên {getSortIcon('priority')}
+                      <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reportDate')}>
+                        Ngày b/c {getSortIcon('reportDate')}
                       </th>
                       <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reporterName')}>
                         Người b/c {getSortIcon('reporterName')}
                       </th>
                       <th style={{ minWidth: '120px' }}>Người xử lý</th>
                       <th style={{ minWidth: '120px' }}>Người cập nhật</th>
-                      <th style={{ minWidth: '200px' }}>Nội dung</th>
+                      <th style={{ cursor: 'pointer', minWidth: '100px' }} onClick={() => handleSort('status')}>
+                        Trạng thái {getSortIcon('status')}
+                      </th>
+                      <th style={{ cursor: 'pointer', minWidth: '100px' }} onClick={() => handleSort('priority')}>
+                        Ưu tiên {getSortIcon('priority')}
+                      </th>
                       <th style={{ minWidth: '200px' }}>Ghi chú người xử lý</th>
                     </tr>
                   </thead>
                   <tbody>
                     {currentReports.length === 0 ? (
                       <tr>
-                        <td colSpan={11} className="text-center py-4">
+                        <td colSpan={10} className="text-center py-4">
                           <span className="text-muted">Không có dữ liệu</span>
                         </td>
                       </tr>
@@ -1904,17 +1913,21 @@ export default function DamageReportsPage() {
                               </button>
                             </div>
                           </td>
-                          {/* Ẩn cột Mã nhưng vẫn tìm kiếm được */}
-                          {/* <td>
-                        <span className="badge bg-light text-dark border">{report.id}</span>
-                      </td> */}
-                           <td>{report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}</td>
+                          <td>
+                            <div style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {report.damageContent || 'N/A'}
+                            </div>
+                          </td>
                           <td>
                             {report.displayLocation || 'Không xác định'}
                             {report.isOverdue && (
                               <i className="fas fa-exclamation-triangle text-danger ms-1" title="Quá hạn"></i>
                             )}
                           </td>
+                          <td>{report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}</td>
+                          <td>{report.reporterName || 'N/A'}</td>
+                          <td>{report.handlerName || 'Chưa phân công'}</td>
+                          <td>{report.updatedByName || '-'}</td>
                           <td>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
                               <select
@@ -1979,14 +1992,6 @@ export default function DamageReportsPage() {
                               <option value={DamageReportPriority.High} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.7rem' }}>Cao</option>
                               <option value={DamageReportPriority.Urgent} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.7rem' }}>Khẩn cấp</option>
                             </select>
-                          </td>
-                          <td>{report.reporterName || 'N/A'}</td>
-                          <td>{report.handlerName || 'Chưa phân công'}</td>
-                          <td>{report.updatedByName || '-'}</td>
-                          <td>
-                            <div style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {report.damageContent || 'N/A'}
-                            </div>
                           </td>
                           <td onClick={(e) => e.stopPropagation()}>
                             <HandlerNotesEditor
