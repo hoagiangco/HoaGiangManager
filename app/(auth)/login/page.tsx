@@ -91,7 +91,7 @@ export default function LoginPage() {
               {/* Logo Section */}
               <div className="login-logo-container">
                 <div className="login-logo">
-                  <i className="fas fa-cube"></i>
+                  <img src="/icons/logo.png" alt="HoaGiang Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 </div>
                 <h2 className="login-title">HoaGiang Manager</h2>
                 <p className="login-subtitle">Hệ thống quản lý vật tư và thiết bị</p>

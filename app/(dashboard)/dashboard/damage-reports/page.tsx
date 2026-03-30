@@ -1538,7 +1538,7 @@ export default function DamageReportsPage() {
           const json = JSON.parse(text);
           errorMessage = json.error || errorMessage;
         } catch (e) {
-          // If response is not JSON, use default message
+          // If response is not JSON
           errorMessage = error.response.status === 403
             ? 'Bạn không có quyền xuất Excel'
             : errorMessage;
@@ -1564,10 +1564,10 @@ export default function DamageReportsPage() {
 
   // Main render
   const __view = (
-    <div className="container-fluid">
+    <div className="container-fluid py-0 px-0 px-md-3" style={{ height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
       <style>{headerStyle}</style>
-      <div className="card">
-        <div className="card-header" style={{ padding: '0.75rem' }}>
+      <div className="card shadow-sm border-0 d-flex flex-column flex-grow-1" style={{ borderRadius: '12px', overflow: 'hidden', height: '100%', position: 'relative', margin: 0 }}>
+        <div className="card-header border-bottom sticky-top bg-white" style={{ padding: '0.75rem', zIndex: 10 }}>
           <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap" style={{ gap: '0.5rem' }}>
             <h4 className="mb-0" style={{ fontSize: 'clamp(1rem, 4vw, 1.5rem)', whiteSpace: 'nowrap' }}>CÔNG VIỆC</h4>
             <div className="d-flex gap-1 align-items-center flex-wrap" style={{ justifyContent: 'flex-end' }}>
@@ -1665,8 +1665,7 @@ export default function DamageReportsPage() {
               </div>
             </div>
           </div>
-
-          {/* Filter Section */}
+          {/* Scroll hint for desktop too, but focus on the filters layout */}
           <div className={`card mb-2 filter-card ${filtersOpen ? 'filter-open' : 'filter-collapsed'}`} style={{ backgroundColor: '#f8f9fa', border: '1px solid #e9ecef' }}>
             <div className="card-body py-2 px-2 px-md-3">
               <div className="row g-2 align-items-center">
@@ -1689,7 +1688,6 @@ export default function DamageReportsPage() {
                     </select>
                   </div>
                 </div>
-                
                 {/* Priority Filter */}
                 <div className="col-12 col-sm-6 col-md-auto">
                   <div className="d-flex align-items-center gap-2 flex-nowrap container-fluid px-0">
@@ -1708,7 +1706,6 @@ export default function DamageReportsPage() {
                     </select>
                   </div>
                 </div>
-
                 {/* Department Filter */}
                 <div className="col-12 col-md-auto">
                   <div className="d-flex align-items-center gap-2 flex-nowrap container-fluid px-0">
@@ -1726,7 +1723,6 @@ export default function DamageReportsPage() {
                     </select>
                   </div>
                 </div>
-
                 {/* Search Bar */}
                 <div className="col-12 col-md">
                   <div className="input-group input-group-sm">
@@ -1736,7 +1732,7 @@ export default function DamageReportsPage() {
                     <input
                       type="text"
                       className="form-control border-start-0"
-                      placeholder="Tìm kiếm nội dung, thiết bị..."
+                      placeholder="Tìm kiếm..."
                       value={searchInputValue}
                       onChange={(e) => setSearchInputValue(e.target.value)}
                       onKeyDown={(e) => {
@@ -1752,33 +1748,18 @@ export default function DamageReportsPage() {
                     >
                       Lọc
                     </button>
-                    <button
-                      className="btn btn-outline-danger"
-                      type="button"
-                      onClick={() => {
-                        setSearchKeyword('');
-                        setSearchInputValue('');
-                        setSelectedStatus(0);
-                        setSelectedPriority(0);
-                        setSelectedDepartment(0);
-                        setSelectedDevice(0);
-                      }}
-                      title="Xóa bộ lọc"
-                    >
-                      <i className="fas fa-times"></i>
-                    </button>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-          <div className="d-flex justify-content-between align-items-center" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
-            <div className="d-flex align-items-center gap-2" style={{ flexWrap: 'nowrap', flexShrink: 0 }}>
-              <div className="d-flex align-items-center gap-1" style={{ flexWrap: 'nowrap' }}>
-                <span style={{ whiteSpace: 'nowrap', fontSize: '0.8rem' }}>Hiện:</span>
+          <div className="d-flex justify-content-between align-items-center bg-light px-2 py-1 border-top" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div className="d-flex align-items-center gap-3">
+              <div className="d-flex align-items-center gap-1">
+                <span className="small text-muted">Hiện:</span>
                 <select
                   className="form-control form-control-sm"
-                  style={{ width: '55px', padding: '0.2rem 0.35rem', fontSize: '0.8rem' }}
+                  style={{ width: '60px', height: '24px', padding: '0 4px', fontSize: '0.8rem' }}
                   value={itemsPerPage}
                   onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
                 >
@@ -1788,594 +1769,204 @@ export default function DamageReportsPage() {
                   <option value="100">100</option>
                 </select>
               </div>
-              <div className="btn-group btn-group-sm ms-1">
-                <button
-                  type="button"
-                  className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary shadow-sm' : 'btn-white border'}`}
-                  onClick={() => setViewMode('table')}
-                  title="Xem dạng bảng"
-                >
-                  <i className="fas fa-list"></i>
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-sm ${viewMode === 'card' ? 'btn-primary shadow-sm' : 'btn-white border'}`}
-                  onClick={() => setViewMode('card')}
-                  title="Xem dạng thẻ"
-                >
-                  <i className="fas fa-th-large"></i>
-                </button>
+              <div className="btn-group btn-group-sm">
+                <button type="button" className={`btn ${viewMode === 'table' ? 'btn-primary' : 'btn-white border'}`} onClick={() => setViewMode('table')}><i className="fas fa-list"></i></button>
+                <button type="button" className={`btn ${viewMode === 'card' ? 'btn-primary' : 'btn-white border'}`} onClick={() => setViewMode('card')}><i className="fas fa-th-large"></i></button>
               </div>
             </div>
-            <div style={{ flexShrink: 1, minWidth: 0 }}>
-              <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', color: '#6c757d' }}>
-                Hiển thị {startIndex + 1}-{Math.min(endIndex, reports.length)} của {reports.length}
-              </span>
+            <div className="small text-muted fw-bold">
+              {startIndex + 1}-{Math.min(endIndex, reports.length)}/{reports.length}
             </div>
           </div>
         </div>
-        <div className="card-body" style={cardBodyStyle}>
+        <div className="card-body p-0 flex-grow-1 overflow-auto" style={{ backgroundColor: '#f5f5f5' }}>
           {/* Table View */}
           {viewMode === 'table' && (
-            <div
-              style={{
-                maxHeight: 'calc(100vh - 260px)',
-                overflowY: 'auto',
-                WebkitOverflowScrolling: 'touch',
-                overscrollBehavior: 'contain',
-                paddingRight: '0.35rem',
-              }}
-            >
-              <div className="table-scroll-hint" style={{ textAlign: 'center', padding: '0.5rem', fontSize: '0.875rem', color: '#6c757d' }}>
-                <i className="fas fa-arrows-alt-h"></i> Cuộn ngang để xem thêm
+            <div className="table-responsive h-100 bg-white" style={{ position: 'relative' }}>
+              <div className="table-scroll-hint d-md-none text-center py-1 small text-muted border-bottom bg-light">
+                <i className="fas fa-arrows-alt-h me-1"></i> Vuốt sang để xem thêm
               </div>
-              <div
-                className="table-responsive"
-                id="damage-reports-table-responsive"
-                style={{
-                  overflowX: 'scroll',
-                  width: '100%',
-                  minHeight: '500px',
-                  maxWidth: '100%',
-                  WebkitOverflowScrolling: 'touch',
-                  position: 'relative',
-                  scrollBehavior: 'smooth',
-                  touchAction: 'pan-x',
-                }}
-              >
-                <table className="table table-bordered table-hover table-striped align-middle" style={{ marginBottom: 0, minWidth: '1200px' }}>
-                  <thead className="table-dark dashboard-table-header" style={{ backgroundColor: '#2c3e50', color: '#ffffff' }}>
-                    <tr style={{ fontWeight: '600', borderBottom: '2px solid #34495e', color: '#ffffff', fontSize: '0.8rem' }}>
-                      <th style={{ width: '60px' }}>
-                        <div className="d-flex align-items-center gap-1">
-                          <input
-                            type="checkbox"
-                            checked={currentReports.length > 0 && selectedIds.length === currentReports.length}
-                            onChange={handleSelectAll}
-                            style={{ transform: 'scale(1.25)', transformOrigin: 'left center' }}
+              <table className="table table-bordered table-hover table-striped align-middle" style={{ marginBottom: 0, minWidth: '1200px', borderCollapse: 'separate', borderSpacing: 0 }}>
+                <thead className="sticky-top shadow-sm" style={{ zIndex: 5 }}>
+                  <tr className="table-dark" style={{ backgroundColor: '#2c3e50' }}>
+                    <th style={{ width: '45px', position: 'sticky', left: 0, zIndex: 6, backgroundColor: '#2c3e50', borderRight: '1px solid #455a64' }}>
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        checked={currentReports.length > 0 && selectedIds.length === currentReports.length}
+                        onChange={handleSelectAll}
+                      />
+                    </th>
+                    <th style={{ minWidth: '200px' }}>Nội dung</th>
+                    <th style={{ minWidth: '150px' }}>Vị trí/Thiết bị</th>
+                    <th style={{ minWidth: '100px' }}>Ngày b/c</th>
+                    <th style={{ minWidth: '120px' }}>Người b/c</th>
+                    <th style={{ minWidth: '120px' }}>Người xử lý</th>
+                    <th style={{ minWidth: '120px' }}>Người cập nhật</th>
+                    <th style={{ minWidth: '110px' }}>Trạng thái</th>
+                    <th style={{ minWidth: '100px' }}>Ưu tiên</th>
+                    <th style={{ minWidth: '200px' }}>Ghi chú người xử lý</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentReports.length === 0 ? (
+                    <tr><td colSpan={10} className="text-center py-5 text-muted">Không có dữ liệu</td></tr>
+                  ) : (
+                    currentReports.map((report) => (
+                      <tr key={report.id}>
+                        <td style={{ position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#fff', borderRight: '1px solid #dee2e6' }}>
+                          <div className="d-flex align-items-center gap-2">
+                            <input
+                              type="checkbox"
+                              className="form-check-input"
+                              checked={selectedIds.includes(report.id)}
+                              onChange={() => handleCheckboxChange(report.id)}
+                            />
+                            <button className="btn btn-link p-0 text-primary" onClick={() => openQuickView(report.id)}><i className="fas fa-eye"></i></button>
+                          </div>
+                        </td>
+                        <td><div className="text-truncate" style={{ maxWidth: '200px' }}>{report.damageContent}</div></td>
+                        <td>{report.displayLocation}</td>
+                        <td>{report.reportDate ? formatDateDisplay(report.reportDate) : ''}</td>
+                        <td>{report.reporterName}</td>
+                        <td>{report.handlerName || '-'}</td>
+                        <td>{report.updatedByName || '-'}</td>
+                        <td>
+                          <select
+                            className="form-select form-select-sm fw-bold py-0"
+                            value={report.status}
+                            onChange={(e) => handleStatusChange(report.id, Number(e.target.value))}
+                            style={{ ...getStatusStyle(report.status), height: '24px', fontSize: '0.75rem', borderRadius: '12px' }}
+                          >
+                            <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
+                            <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
+                            <option value={DamageReportStatus.Completed}>Hoàn thành</option>
+                            <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
+                            <option value={DamageReportStatus.Rejected}>Từ chối</option>
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            className="form-select form-select-sm fw-bold py-0"
+                            value={report.priority}
+                            onChange={(e) => handlePriorityChange(report.id, Number(e.target.value))}
+                            style={{ ...getPriorityStyle(report.priority), height: '24px', fontSize: '0.75rem', borderRadius: '12px' }}
+                          >
+                            <option value={DamageReportPriority.Low}>Thấp</option>
+                            <option value={DamageReportPriority.Normal}>Bình thường</option>
+                            <option value={DamageReportPriority.High}>Cao</option>
+                            <option value={DamageReportPriority.Urgent}>Khẩn cấp</option>
+                          </select>
+                        </td>
+                        <td>
+                          <HandlerNotesEditor
+                            reportId={report.id}
+                            value={report.handlerNotes || ''}
+                            onChange={(v) => handleHandlerNotesChange(report.id, v)}
+                            canEdit={true}
                           />
-                        </div>
-                      </th>
-                      <th style={{ minWidth: '200px' }}>Nội dung</th>
-                      <th style={{ cursor: 'pointer', minWidth: '150px' }} onClick={() => handleSort('displayLocation')}>
-                        Vị trí/Thiết bị {getSortIcon('displayLocation')}
-                      </th>
-                      <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reportDate')}>
-                        Ngày b/c {getSortIcon('reportDate')}
-                      </th>
-                      <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reporterName')}>
-                        Người b/c {getSortIcon('reporterName')}
-                      </th>
-                      <th style={{ minWidth: '120px' }}>Người xử lý</th>
-                      <th style={{ minWidth: '120px' }}>Người cập nhật</th>
-                      <th style={{ cursor: 'pointer', minWidth: '100px' }} onClick={() => handleSort('status')}>
-                        Trạng thái {getSortIcon('status')}
-                      </th>
-                      <th style={{ cursor: 'pointer', minWidth: '100px' }} onClick={() => handleSort('priority')}>
-                        Ưu tiên {getSortIcon('priority')}
-                      </th>
-                      <th style={{ minWidth: '200px' }}>Ghi chú người xử lý</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {currentReports.length === 0 ? (
-                      <tr>
-                        <td colSpan={10} className="text-center py-4">
-                          <span className="text-muted">Không có dữ liệu</span>
                         </td>
                       </tr>
-                    ) : (
-                      currentReports.map((report) => (
-                        <tr
-                          key={report.id}
-                          style={{
-                            cursor: report.id && selectedIds.includes(report.id) ? 'pointer' : 'default',
-                            verticalAlign: 'middle',
-                            fontSize: '0.8rem'
-                          }}
-                        >
-                          <td>
-                            <div className="d-flex align-items-center gap-2">
-                              <input
-                                type="checkbox"
-                                checked={selectedIds.includes(report.id)}
-                                onChange={() => handleCheckboxChange(report.id)}
-                                style={{ transform: 'scale(1.25)', transformOrigin: 'left center' }}
-                              />
-                              <button
-                                type="button"
-                                className="btn btn-link text-primary p-0 border-0 shadow-none"
-                                title="Xem nhanh"
-                                onClick={(e) => { e.stopPropagation(); openQuickView(report.id); }}
-                                style={{ lineHeight: 1 }}
-                              >
-                                <i className="fas fa-eye"></i>
-                              </button>
-                            </div>
-                          </td>
-                          <td>
-                            <div style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {report.damageContent || 'N/A'}
-                            </div>
-                          </td>
-                          <td>
-                            {report.displayLocation || 'Không xác định'}
-                            {report.isOverdue && (
-                              <i className="fas fa-exclamation-triangle text-danger ms-1" title="Quá hạn"></i>
-                            )}
-                          </td>
-                          <td>{report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}</td>
-                          <td>{report.reporterName || 'N/A'}</td>
-                          <td>{report.handlerName || 'Chưa phân công'}</td>
-                          <td>{report.updatedByName || '-'}</td>
-                          <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
-                              <select
-                                className="form-control form-control-sm damage-report-status-select"
-                                value={report.status}
-                                onChange={(e) => handleStatusChange(report.id, Number(e.target.value) as DamageReportStatus)}
-                                disabled={!canUpdateStatusForReport(report)}
-                                style={{
-                                  width: 'auto',
-                                  minWidth: '85px',
-                                  maxWidth: '100px',
-                                  fontSize: '0.65rem',
-                                  fontWeight: '600',
-                                  padding: '0.1rem 0.4rem',
-                                  height: '1.4rem',
-                                  lineHeight: '1.2',
-                                  border: 'none',
-                                  borderRadius: '20px',
-                                  display: 'inline-block',
-                                  textAlign: 'center',
-                                  appearance: 'none',
-                                  WebkitAppearance: 'none',
-                                  ...getStatusStyle(report.status)
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.7rem' }}>Chờ xử lý</option>
-                                <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.7rem' }}>Đang xử lý</option>
-                                <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.7rem' }}>Hoàn thành</option>
-                                <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.7rem' }}>Đã hủy</option>
-                                <option value={DamageReportStatus.Rejected} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.7rem' }}>Từ chối</option>
-                              </select>
-                            </div>
-                          </td>
-                          <td>
-                            <select
-                              className="form-control form-control-sm damage-report-priority-select"
-                              value={report.priority}
-                              onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
-                              disabled={!userPermissions.canEdit || report.status === DamageReportStatus.Completed}
-                              style={{
-                                width: 'auto',
-                                minWidth: '75px',
-                                maxWidth: '90px',
-                                fontSize: '0.65rem',
-                                fontWeight: '600',
-                                padding: '0.1rem 0.4rem',
-                                height: '1.4rem',
-                                lineHeight: '1.2',
-                                border: 'none',
-                                borderRadius: '20px',
-                                display: 'inline-block',
-                                textAlign: 'center',
-                                appearance: 'none',
-                                WebkitAppearance: 'none',
-                                ...getPriorityStyle(report.priority)
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <option value={DamageReportPriority.Low} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.7rem' }}>Thấp</option>
-                              <option value={DamageReportPriority.Normal} style={{ backgroundColor: '#cfe2ff', color: '#0a58ca', fontSize: '0.7rem' }}>Bình thường</option>
-                              <option value={DamageReportPriority.High} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.7rem' }}>Cao</option>
-                              <option value={DamageReportPriority.Urgent} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.7rem' }}>Khẩn cấp</option>
-                            </select>
-                          </td>
-                          <td onClick={(e) => e.stopPropagation()}>
-                            <HandlerNotesEditor
-                              reportId={report.id}
-                              value={report.handlerNotes || ''}
-                              onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
-                              canEdit={(userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && report.status !== DamageReportStatus.Completed}
-                            />
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           )}
 
           {/* Card View */}
           {viewMode === 'card' && (
-            <div className="row g-3" style={{ minHeight: '600px' }}>
-              {currentReports.length === 0 ? (
-                <div className="col-12 text-center py-5">
-                  <span className="text-muted">Không có dữ liệu</span>
-                </div>
-              ) : (
-                currentReports.map((report) => (
+            <div className="p-3">
+              <div className="row g-3">
+                {currentReports.map((report) => (
                   <div key={report.id} className="col-12 col-md-6 col-lg-4">
-                    <div
-                      className="card h-100 damage-report-card"
-                      style={{
-                        border: '1px solid rgba(0,0,0,0.1)',
-                        borderTop: `4px solid ${getPriorityStyle(report.priority).borderColor || '#dee2e6'}`,
-                        borderLeft: `1px solid rgba(0,0,0,0.05)`,
-                        cursor: 'default',
-                        borderRadius: '12px',
-                        overflow: 'hidden',
-                        backgroundColor: '#ffffff',
-                        boxShadow: '0 8px 20px rgba(0,0,0,0.08)',
-                        transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
-                      }}
-                    >
-                      {/* Card Header */}
-                      <div
-                        className="card-header p-3"
-                        style={{
-                          backgroundColor: `${getStatusStyle(report.status).backgroundColor}22` || '#f8f9fa',
-                          borderBottom: '1px solid rgba(0,0,0,0.05)',
-                          borderLeft: `5px solid ${getStatusStyle(report.status).backgroundColor}`,
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'flex-start',
-                          gap: '0.75rem',
-                          cursor: 'pointer'
-                        }}
-                        onClick={() => handleCheckboxChange(report.id)}
-                      >
-                        <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                          <h6 className="mb-1 d-flex align-items-start gap-2" style={{
-                            fontSize: '1rem',
-                            fontWeight: '800',
-                            color: '#1a1d20',
-                            lineHeight: '1.4',
-                            wordBreak: 'break-word'
-                          }}>
-                            <i className="fas fa-map-marker-alt text-primary mt-1" style={{ fontSize: '0.85rem' }}></i>
-                            <span>{report.displayLocation || 'Không xác định'}</span>
-                            {report.isOverdue && (
-                              <i className="fas fa-exclamation-triangle text-danger ms-1" title="Quá hạn"></i>
-                            )}
-                          </h6>
-                          <div className="d-flex align-items-center gap-2 flex-wrap">
-                            <small className="text-muted" style={{ fontSize: '0.75rem' }}>
-                              <i className="fas fa-calendar-alt me-1"></i>
-                              {report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}
-                            </small>
-                            {report.daysSinceReport !== undefined && (
-                              <small className="badge bg-light text-dark" style={{ fontSize: '0.7rem' }}>
-                                {report.daysSinceReport} ngày
-                              </small>
-                            )}
+                    <div className="card h-100 shadow-sm border-0" style={{ borderRadius: '12px', borderLeft: `5px solid ${getStatusStyle(report.status).backgroundColor}` }}>
+                      <div className="card-body p-3">
+                        <div className="d-flex justify-content-between align-items-start mb-2">
+                          <h6 className="fw-bold mb-0 text-primary flex-grow-1">{report.displayLocation}</h6>
+                          <div className="d-flex gap-2 align-items-center">
+                            <input type="checkbox" checked={selectedIds.includes(report.id)} onChange={() => handleCheckboxChange(report.id)} />
+                            <button className="btn btn-sm btn-light p-1" onClick={() => openQuickView(report.id)}><i className="fas fa-eye text-primary"></i></button>
                           </div>
                         </div>
-                        <div className="d-flex align-items-center gap-3" style={{ flexShrink: 0, marginRight: '0.5rem' }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.includes(report.id)}
-                            onChange={() => handleCheckboxChange(report.id)}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              marginTop: '0.25rem',
-                              cursor: 'pointer',
-                              transform: 'scale(1.7)',
-                              transformOrigin: 'left center'
-                            }}
-                          />
-                          <button
-                            type="button"
-                            className="btn btn-link text-primary p-0 border-0 shadow-none"
-                            title="Xem nhanh"
-                            onClick={(e) => { e.stopPropagation(); openQuickView(report.id); }}
-                            style={{
-                              lineHeight: 1,
-                              marginTop: '0.25rem',
-                              fontSize: '1.3rem',
-                              minWidth: 'auto',
-                              width: 'auto',
-                              height: 'auto',
-                              textDecoration: 'none'
-                            }}
-                          >
-                            <i className="fas fa-eye"></i>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Card Body */}
-                      <div className="card-body p-3" style={{ backgroundColor: '#ffffff' }}>
-                        {/* Status and Priority Row */}
-                        <div className="row g-2 mb-3">
+                        <div className="small text-muted mb-2"><i className="fas fa-calendar-alt me-1"></i>{report.reportDate ? formatDateDisplay(report.reportDate) : ''}</div>
+                        <div className="row g-2 mb-2">
                           <div className="col-6">
-                            <label className="small text-muted d-block mb-1" style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6c757d' }}>
-                              Trạng thái
-                            </label>
                             <select
-                              className="form-control form-control-sm damage-report-status-select"
+                              className="form-select form-select-sm fw-bold py-0"
                               value={report.status}
-                              onChange={(e) => handleStatusChange(report.id, Number(e.target.value) as DamageReportStatus)}
-                              disabled={!canUpdateStatusForReport(report)}
-                              style={{
-                                width: '100%',
-                                fontSize: '0.75rem',
-                                fontWeight: '600',
-                                padding: '0.1rem 0.5rem',
-                                height: '1.8rem',
-                                lineHeight: '1.2',
-                                border: 'none',
-                                borderRadius: '20px',
-                                cursor: 'pointer',
-                                textAlign: 'center',
-                                appearance: 'none',
-                                WebkitAppearance: 'none',
-                                ...getStatusStyle(report.status)
-                              }}
-                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => handleStatusChange(report.id, Number(e.target.value))}
+                              style={{ ...getStatusStyle(report.status), height: '24px', fontSize: '0.7rem', borderRadius: '12px' }}
                             >
-                              <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.75rem' }}>Chờ xử lý</option>
-                              <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.75rem' }}>Đang xử lý</option>
-                              <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.75rem' }}>Hoàn thành</option>
-                              <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>Đã hủy</option>
-                              <option value={DamageReportStatus.Rejected} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.75rem' }}>Từ chối</option>
+                              <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
+                              <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
+                              <option value={DamageReportStatus.Completed}>Hoàn thành</option>
+                              <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
+                              <option value={DamageReportStatus.Rejected}>Từ chối</option>
                             </select>
                           </div>
                           <div className="col-6">
-                            <label className="small text-muted d-block mb-1" style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6c757d' }}>
-                              Ưu tiên
-                            </label>
                             <select
-                              className="form-control form-control-sm damage-report-priority-select"
+                              className="form-select form-select-sm fw-bold py-0"
                               value={report.priority}
-                              onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
-                              disabled={!userPermissions.canEdit || report.status === DamageReportStatus.Completed}
-                              style={{
-                                width: '100%',
-                                fontSize: '0.75rem',
-                                fontWeight: '600',
-                                padding: '0.1rem 0.5rem',
-                                height: '1.8rem',
-                                lineHeight: '1.2',
-                                border: 'none',
-                                borderRadius: '20px',
-                                cursor: 'pointer',
-                                textAlign: 'center',
-                                appearance: 'none',
-                                WebkitAppearance: 'none',
-                                ...getPriorityStyle(report.priority)
-                              }}
+                              onChange={(e) => handlePriorityChange(report.id, Number(e.target.value))}
+                              style={{ ...getPriorityStyle(report.priority), height: '24px', fontSize: '0.7rem', borderRadius: '12px' }}
                             >
-                              <option value={DamageReportPriority.Low} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.75rem' }}>Thấp</option>
-                              <option value={DamageReportPriority.Normal} style={{ backgroundColor: '#cfe2ff', color: '#0a58ca', fontSize: '0.75rem' }}>Bình thường</option>
-                              <option value={DamageReportPriority.High} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.75rem' }}>Cao</option>
-                              <option value={DamageReportPriority.Urgent} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.75rem' }}>Khẩn cấp</option>
+                              <option value={DamageReportPriority.Low}>Thấp</option>
+                              <option value={DamageReportPriority.Normal}>Bình thường</option>
+                              <option value={DamageReportPriority.High}>Cao</option>
+                              <option value={DamageReportPriority.Urgent}>Khẩn cấp</option>
                             </select>
                           </div>
                         </div>
-
-                        {/* People Info Row */}
-                        <div className="row g-2 mb-3">
-                          <div className="col-6">
-                            <div className="d-flex align-items-center gap-1 mb-1">
-                              <i className="fas fa-user text-muted" style={{ fontSize: '0.7rem' }}></i>
-                              <label className="small text-muted mb-0" style={{ fontSize: '0.7rem', fontWeight: '500' }}>
-                                Người báo cáo
-                              </label>
-                            </div>
-                            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#1a1d20', lineHeight: '1.3' }}>
-                              {report.reporterName || 'N/A'}
-                            </div>
-                          </div>
-                          <div className="col-6">
-                            <div className="d-flex align-items-center gap-1 mb-1">
-                              <i className="fas fa-user-cog text-muted" style={{ fontSize: '0.7rem' }}></i>
-                              <label className="small text-muted mb-0" style={{ fontSize: '0.7rem', fontWeight: '500' }}>
-                                Người xử lý
-                              </label>
-                            </div>
-                            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: report.handlerName ? '#1a1d20' : '#868e96', lineHeight: '1.3', fontStyle: report.handlerName ? 'normal' : 'italic' }}>
-                              {report.handlerName || 'Chưa phân công'}
-                            </div>
-                          </div>
+                        <div className="small mb-2"><strong>Nội dung:</strong> {report.damageContent}</div>
+                        <div className="d-flex justify-content-between small text-muted">
+                          <div><i className="fas fa-user me-1"></i>{report.reporterName}</div>
+                          <div><i className="fas fa-user-cog me-1"></i>{report.handlerName || '-'}</div>
                         </div>
-
-                        {/* Damage Content */}
-                        <div className="mb-3">
-                          <div className="d-flex align-items-center gap-1 mb-1">
-                            <i className="fas fa-file-alt text-muted" style={{ fontSize: '0.7rem' }}></i>
-                            <label className="small text-muted mb-0" style={{ fontSize: '0.7rem', fontWeight: '500' }}>
-                              Nội dung
-                            </label>
-                          </div>
-                          <div
-                            style={{
-                              fontSize: '0.85rem',
-                              color: '#212529',
-                              fontWeight: '500',
-                              lineHeight: '1.5',
-                              maxHeight: '80px',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              display: '-webkit-box',
-                              WebkitLineClamp: 3,
-                              WebkitBoxOrient: 'vertical',
-                              wordBreak: 'break-word'
-                            }}
-                          >
-                            {report.damageContent || 'N/A'}
-                          </div>
-                        </div>
-
-                        {/* Handler Notes */}
-                        <div className="mb-3" onClick={(e) => e.stopPropagation()}>
-                          <div className="d-flex align-items-center gap-1 mb-1">
-                            <i className="fas fa-sticky-note text-muted" style={{ fontSize: '0.7rem' }}></i>
-                            <label className="small text-muted mb-0" style={{ fontSize: '0.7rem', fontWeight: '500' }}>
-                              Ghi chú người xử lý
-                            </label>
-                          </div>
+                        <div className="mt-2 border-top pt-2">
                           <HandlerNotesEditor
                             reportId={report.id}
                             value={report.handlerNotes || ''}
-                            onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
+                            onChange={(v) => handleHandlerNotesChange(report.id, v)}
+                            canEdit={true}
                             isCard={true}
-                            canEdit={(userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && report.status !== DamageReportStatus.Completed}
                           />
                         </div>
-
-                        {/* Images */}
-                        {report.images && report.images.length > 0 && (
-                          <div>
-                            <div className="d-flex align-items-center gap-1 mb-2">
-                              <i className="fas fa-images text-muted" style={{ fontSize: '0.7rem' }}></i>
-                              <label className="small text-muted mb-0" style={{ fontSize: '0.7rem', fontWeight: '500' }}>
-                                Hình ảnh ({report.images.length})
-                              </label>
-                            </div>
-                            <div className="d-flex gap-1 flex-wrap">
-                              {report.images.slice(0, 4).map((img, idx) => (
-                                <img
-                                  key={idx}
-                                  src={img}
-                                  alt={`Hình ${idx + 1}`}
-                                  onClick={() => {
-                                    if (report.images && Array.isArray(report.images)) {
-                                      setSelectedImages(report.images);
-                                      setCurrentImageIndex(idx);
-                                      setShowImageModal(true);
-                                    }
-                                  }}
-                                  style={{
-                                    width: '55px',
-                                    height: '55px',
-                                    objectFit: 'cover',
-                                    borderRadius: '6px',
-                                    border: '1px solid #dee2e6',
-                                    cursor: 'pointer',
-                                    transition: 'transform 0.2s'
-                                  }}
-                                  onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                                  onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                                />
-                              ))}
-                              {report.images.length > 4 && (
-                                <div
-                                  className="d-flex align-items-center justify-content-center"
-                                  onClick={() => {
-                                    if (report.images && Array.isArray(report.images)) {
-                                      setSelectedImages(report.images);
-                                      setCurrentImageIndex(4);
-                                      setShowImageModal(true);
-                                    }
-                                  }}
-                                  style={{
-                                    width: '55px',
-                                    height: '55px',
-                                    backgroundColor: '#f8f9fa',
-                                    borderRadius: '6px',
-                                    border: '1px solid #dee2e6',
-                                    fontSize: '0.7rem',
-                                    color: '#6c757d',
-                                    fontWeight: '500',
-                                    cursor: 'pointer',
-                                    transition: 'transform 0.2s'
-                                  }}
-                                  onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                                  onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                                >
-                                  +{report.images.length - 4}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
-                ))
-              )}
+                ))}
+              </div>
             </div>
           )}
-
         </div>
+
         {/* Pagination Sticky Footer */}
         {totalPages > 1 && (
           <div 
-            className="card-footer bg-white border-top sticky-bottom py-3 shadow-lg" 
+            className="card-footer bg-white border-top sticky-bottom py-2 shadow-lg mt-auto" 
             style={{ 
               zIndex: 10, 
               borderBottomLeftRadius: '12px', 
               borderBottomRightRadius: '12px',
-              marginTop: '-1px'
+              paddingBottom: 'env(safe-area-inset-bottom, 10px)'
             }}
           >
             <nav>
-              <ul className="pagination justify-content-center mb-0">
+              <ul className="pagination pagination-sm justify-content-center mb-0">
                 <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
-                  <button
-                    className="page-link shadow-none border-0"
-                    onClick={() => handlePageChange(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    title="Trang trước"
-                    aria-label="Trang trước"
-                    style={{ borderRadius: '8px', margin: '0 2px' }}
-                  >
-                    <i className="fas fa-angle-left"></i>
-                  </button>
+                  <button className="page-link" onClick={() => handlePageChange(currentPage - 1)}><i className="fas fa-angle-left"></i></button>
                 </li>
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                  if (
-                    page === 1 ||
-                    page === totalPages ||
-                    (page >= currentPage - 2 && page <= currentPage + 2)
-                  ) {
+                  if (page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1)) {
                     return (
                       <li key={page} className={`page-item ${currentPage === page ? 'active' : ''}`}>
-                        <button
-                          className="page-link shadow-sm border-0"
-                          onClick={() => handlePageChange(page)}
-                          style={{ 
-                            borderRadius: '8px', 
-                            margin: '0 2px',
-                            fontWeight: currentPage === page ? '700' : '500',
-                            backgroundColor: currentPage === page ? undefined : '#f8f9fa'
-                          }}
-                        >
-                          {page}
-                        </button>
+                        <button className="page-link" onClick={() => handlePageChange(page)}>{page}</button>
                       </li>
                     );
-                  } else if (page === currentPage - 3 || page === currentPage + 3) {
-                    return (
-                      <li key={page} className="page-item disabled">
-                        <span className="page-link bg-transparent border-0">...</span>
-                      </li>
-                    );
+                  } else if (page === currentPage - 2 || page === currentPage + 2) {
+                    return <li key={page} className="page-item disabled"><span className="page-link">...</span></li>;
                   }
                   return null;
                 })}
