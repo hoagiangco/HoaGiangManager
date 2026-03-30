@@ -308,17 +308,15 @@ export default function DamageReportsPage() {
   const [selectedQuickReportId, setSelectedQuickReportId] = useState<number | null>(null);
 
   const cardBodyStyle = useMemo(() => {
-    if (viewMode === 'card') {
-      return {
-        maxHeight: 'calc(100vh - 240px)',
-        overflowY: 'auto' as const,
-        paddingRight: '0.35rem',
-        WebkitOverflowScrolling: 'touch' as const,
-        overscrollBehavior: 'contain' as const,
-      };
-    }
-    return undefined;
-  }, [viewMode]);
+    return {
+      flex: 1,
+      display: 'flex',
+      flexDirection: 'column' as const,
+      overflow: 'hidden',
+      padding: 0,
+      backgroundColor: '#f5f5f5',
+    };
+  }, []);
 
   const filteredModalDevices = useMemo(() => {
     let list = devices;
@@ -398,6 +396,41 @@ export default function DamageReportsPage() {
     }
     .dashboard-table-header th .fas {
       color: rgba(255, 255, 255, 0.7) !important;
+    }
+    
+    /* MOBILE-ONLY STICKY LAYOUT */
+    @media (max-width: 767.98px) {
+      .mobile-sticky-container {
+        height: calc(100dvh - 65px) !important;
+        display: flex !important;
+        flex-direction: column !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        overflow: hidden !important;
+      }
+      .mobile-sticky-card {
+        height: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
+        border-radius: 0 !important;
+        margin: 0 !important;
+        flex: 1 !important;
+        box-shadow: none !important;
+      }
+      .mobile-sticky-body {
+        flex: 1 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+        padding: 0 !important;
+      }
+      .mobile-sticky-footer {
+        position: sticky !important;
+        bottom: 0 !important;
+        z-index: 100 !important;
+        padding-bottom: env(safe-area-inset-bottom, 8px) !important;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.1) !important;
+      }
     }
     .dashboard-table-header th .text-info.fas {
       color: #0dcaf0 !important;
@@ -1562,12 +1595,11 @@ export default function DamageReportsPage() {
     </div>
   );
 
-  // Main render
   const __view = (
-    <div className="container-fluid">
+    <div className="container-fluid mobile-sticky-container px-md-3 py-md-3">
       <style>{headerStyle}</style>
-      <div className="card">
-        <div className="card-header" style={{ padding: '0.75rem' }}>
+      <div className="card mobile-sticky-card shadow-sm border-0" style={{ borderRadius: '12px' }}>
+        <div className="card-header border-bottom sticky-top bg-white" style={{ padding: '0.75rem', zIndex: 10 }}>
           <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap" style={{ gap: '0.5rem' }}>
             <h4 className="mb-0" style={{ fontSize: 'clamp(1rem, 4vw, 1.5rem)', whiteSpace: 'nowrap' }}>CÔNG VIỆC</h4>
             <div className="d-flex gap-1 align-items-center flex-wrap" style={{ justifyContent: 'flex-end' }}>
@@ -1814,37 +1846,31 @@ export default function DamageReportsPage() {
             </div>
           </div>
         </div>
-        <div className="card-body" style={cardBodyStyle}>
+        <div className="card-body mobile-sticky-body" style={{ padding: viewMode === 'table' ? 0 : '1rem' }}>
           {/* Table View */}
           {viewMode === 'table' && (
             <div
+              className="flex-grow-1 d-flex flex-column"
               style={{
-                maxHeight: 'calc(100vh - 260px)',
-                overflowY: 'auto',
-                WebkitOverflowScrolling: 'touch',
-                overscrollBehavior: 'contain',
-                paddingRight: '0.35rem',
+                overflow: 'hidden',
+                height: '100%',
+                backgroundColor: '#fff'
               }}
             >
-              <div className="table-scroll-hint" style={{ textAlign: 'center', padding: '0.5rem', fontSize: '0.875rem', color: '#6c757d' }}>
-                <i className="fas fa-arrows-alt-h"></i> Cuộn ngang để xem thêm
+              <div className="table-scroll-hint d-md-none text-center py-1 small text-muted border-bottom bg-light">
+                <i className="fas fa-arrows-alt-h me-1"></i> Vuốt sang để xem thêm
               </div>
               <div
-                className="table-responsive"
+                className="table-responsive flex-grow-1"
                 id="damage-reports-table-responsive"
                 style={{
-                  overflowX: 'scroll',
-                  width: '100%',
-                  minHeight: '500px',
-                  maxWidth: '100%',
+                  overflow: 'auto',
                   WebkitOverflowScrolling: 'touch',
-                  position: 'relative',
-                  scrollBehavior: 'smooth',
-                  touchAction: 'pan-x',
+                  position: 'relative'
                 }}
               >
-                <table className="table table-bordered table-hover table-striped align-middle" style={{ marginBottom: 0, minWidth: '1200px' }}>
-                  <thead className="table-dark dashboard-table-header" style={{ backgroundColor: '#2c3e50', color: '#ffffff' }}>
+                <table className="table table-bordered table-hover table-striped align-middle" style={{ marginBottom: 0, minWidth: '1200px', borderCollapse: 'separate', borderSpacing: 0 }}>
+                  <thead className="sticky-top dashboard-table-header" style={{ zIndex: 5, position: 'sticky', top: 0 }}>
                     <tr style={{ fontWeight: '600', borderBottom: '2px solid #34495e', color: '#ffffff', fontSize: '0.8rem' }}>
                       <th style={{ width: '60px' }}>
                         <div className="d-flex align-items-center gap-1">
@@ -2012,13 +2038,21 @@ export default function DamageReportsPage() {
 
           {/* Card View */}
           {viewMode === 'card' && (
-            <div className="row g-3" style={{ minHeight: '600px' }}>
-              {currentReports.length === 0 ? (
-                <div className="col-12 text-center py-5">
-                  <span className="text-muted">Không có dữ liệu</span>
-                </div>
-              ) : (
-                currentReports.map((report) => (
+            <div 
+              className="flex-grow-1 p-3" 
+              style={{ 
+                overflowY: 'auto', 
+                WebkitOverflowScrolling: 'touch',
+                backgroundColor: '#f8f9fa'
+              }}
+            >
+              <div className="row g-3">
+                {currentReports.length === 0 ? (
+                  <div className="col-12 text-center py-5">
+                    <span className="text-muted">Không có dữ liệu</span>
+                  </div>
+                ) : (
+                  currentReports.map((report) => (
                   <div key={report.id} className="col-12 col-md-6 col-lg-4">
                     <div
                       className="card h-100 damage-report-card"
@@ -2320,18 +2354,17 @@ export default function DamageReportsPage() {
                 ))
               )}
             </div>
-          )}
+          </div>
+        )}
 
         </div>
         {/* Pagination Sticky Footer */}
         {totalPages > 1 && (
           <div 
-            className="card-footer bg-white border-top sticky-bottom py-3 shadow-lg" 
+            className="card-footer bg-white border-top py-2 mobile-sticky-footer" 
             style={{ 
-              zIndex: 10, 
               borderBottomLeftRadius: '12px', 
-              borderBottomRightRadius: '12px',
-              marginTop: '-1px'
+              borderBottomRightRadius: '12px'
             }}
           >
             <nav>
@@ -3247,5 +3280,6 @@ export default function DamageReportsPage() {
       )}
     </div>
   );
+
   return __view;
 }
