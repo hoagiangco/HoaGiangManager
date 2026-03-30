@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Create damage report error:', error);
     return NextResponse.json(
-      { status: false, error: error.message || 'Đã xảy ra lỗi khi tạo báo cáo hư hỏng' },
+      { status: false, error: error.message || 'Đã xảy ra lỗi khi tạo báo cáo' },
       { status: 500 }
     );
   }

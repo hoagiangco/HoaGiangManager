@@ -1,0 +1,36 @@
+Plans: [
+  {
+    "ID": 104,
+    "DeviceID": 355,
+    "ReminderType": "maintenance",
+    "EventTypeID": 1,
+    "Title": "Bảo trì định kỳ máy lạnh",
+    "Description": "Vệ sinh, kiểm tra vận hành",
+    "IntervalValue": 6,
+    "IntervalUnit": "month",
+    "CronExpression": null,
+    "StartFrom": "2025-11-18T00:00:00.000Z",
+    "EndAt": null,
+    "NextDueDate": "2026-03-10T00:00:00.000Z",
+    "LastTriggeredAt": null,
+    "IsActive": true,
+    "Metadata": {
+      "maintenanceType": "outsource",
+      "rescheduleHistory": [
+        {
+          "reason": "Bảo trì tháng 3 theo lịch Daikin",
+          "toDate": "2026-03-10",
+          "fromDate": "2026-05-18",
+          "rescheduledAt": "2026-02-25T06:52:13.965Z",
+          "rescheduledBy": "admin@quanlyvt.com"
+        }
+      ],
+      "maintenanceBatchId": "batch-2025-11-18-1763430857529",
+      "maintenanceProvider": "Daikin Cần Thơ"
+    },
+    "CreatedBy": "lhkhiem@gmail.com",
+    "CreatedAt": "2025-11-18T01:54:17.529Z",
+    "UpdatedBy": "admin@quanlyvt.com",
+    "UpdatedAt": "2026-02-25T06:52:13.966Z"
+  }
+]

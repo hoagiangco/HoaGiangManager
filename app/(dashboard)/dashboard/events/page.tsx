@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
-import { EventStatus, EventType, EventVM, DamageReportVM } from '@/types';
+import { EventStatus, EventType, EventVM, DamageReportVM, DeviceVM, StaffVM } from '@/types';
 import { formatDateDisplay, formatDateInput } from '@/lib/utils/dateFormat';
 import DateInput from '@/components/DateInput';
 import AdminRoute from '@/components/AdminRoute';
@@ -85,6 +85,8 @@ function EventsPageContent() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [allEvents, setAllEvents] = useState<EventVM[]>([]);
   const [eventTypes, setEventTypes] = useState<EventType[]>([]);
+  const [devices, setDevices] = useState<DeviceVM[]>([]);
+  const [staffList, setStaffList] = useState<StaffVM[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEventType, setSelectedEventType] = useState(0);
   const [statusFilter, setStatusFilter] = useState<'all' | EventStatus>('all');
@@ -134,8 +136,32 @@ function EventsPageContent() {
     }
   };
 
+  const loadDevices = async () => {
+    try {
+      const response = await api.get('/devices?limit=1000');
+      if (response.data.status) {
+        setDevices(response.data.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading devices:', error);
+    }
+  };
+
+  const loadStaff = async () => {
+    try {
+      const response = await api.get('/staff?departmentId=0');
+      if (response.data.status) {
+        setStaffList(response.data.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading staff:', error);
+    }
+  };
+
   useEffect(() => {
     loadEventTypes();
+    loadDevices();
+    loadStaff();
   }, []);
 
   useEffect(() => {
@@ -990,17 +1016,21 @@ function EventsPageContent() {
                     </select>
                   </div>
                   <div className="col-12 col-md-6">
-                    <label className="form-label">Thiết bị (ID)</label>
-                    <input
-                      type="number"
+                    <label className="form-label">Thiết bị</label>
+                    <select
                       className="form-control"
                       value={formData.deviceId}
                       onChange={(e) =>
                         setFormData((prev) => ({ ...prev, deviceId: e.target.value }))
                       }
-                      placeholder="Nhập ID thiết bị"
-                      min={0}
-                    />
+                    >
+                      <option value="">-- Chọn thiết bị --</option>
+                      {devices.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name} {d.serial ? `(${d.serial})` : ''}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="col-12">
                     <label className="form-label">
@@ -1044,17 +1074,21 @@ function EventsPageContent() {
                     />
                   </div>
                   <div className="col-12 col-md-6">
-                    <label className="form-label">Người phụ trách (ID nhân viên)</label>
-                    <input
-                      type="number"
+                    <label className="form-label">Người phụ trách</label>
+                    <select
                       className="form-control"
                       value={formData.staffId}
                       onChange={(e) =>
                         setFormData((prev) => ({ ...prev, staffId: e.target.value }))
                       }
-                      placeholder="Nhập ID nhân viên"
-                      min={0}
-                    />
+                    >
+                      <option value="">-- Chọn nhân viên --</option>
+                      {staffList.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="col-12 col-md-6">
                     <label className="form-label">Báo cáo liên quan (ID)</label>

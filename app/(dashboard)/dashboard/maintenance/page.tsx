@@ -1830,11 +1830,19 @@ function MaintenancePageContent() {
   return (
     <>
       <div className="container-fluid">
-        <div className="d-flex justify-content-between align-items-center mb-4">
+        <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
           <h2 className="mb-0">
             <i className="fas fa-wrench me-2"></i>
             Quản Lý Bảo Trì
           </h2>
+          <button
+            className="btn btn-white btn-sm border"
+            onClick={loadData}
+            title="Tải lại dữ liệu"
+            id="reload-maintenance-btn"
+          >
+            <i className="fas fa-sync-alt"></i>
+          </button>
         </div>
 
         {/* Tabs */}
@@ -2378,8 +2386,8 @@ function MaintenancePageContent() {
         ) : activeTab === 'plans' || activeTab === 'cancelled' ? (
           <div>
             <div className="card">
-              <div className="card-header d-flex justify-content-between align-items-center">
-                <h5 className="mb-0">
+              <div className="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <h5 className="mb-0 text-truncate">
                   <i className={`fas ${activeTab === 'plans' ? 'fa-list-alt' : 'fa-ban'} me-2`}></i>
                   {activeTab === 'plans' ? 'Danh Sách Batch Đang Hoạt Động' : 'Danh Sách Batch Đã Hủy'}
                 </h5>
@@ -2449,9 +2457,9 @@ function MaintenancePageContent() {
                               aria-controls={collapseId}
                               style={{ cursor: 'pointer' }}
                             >
-                              <div className="d-flex justify-content-between align-items-center w-100 me-3">
+                              <div className="d-flex flex-wrap justify-content-between align-items-start w-100 me-3 gap-3">
                                 {/* Bên trái: Tiêu đề, Batch ID, Lịch trình - chia 2 hàng */}
-                                <div className="d-flex flex-column gap-2">
+                                <div className="d-flex flex-column gap-2 flex-grow-1" style={{ minWidth: 'min(100%, 250px)' }}>
                                   {/* Hàng trên: Tiêu đề và Batch ID */}
                                   <div className="d-flex align-items-center gap-2">
                                     <i className="fas fa-layer-group text-primary"></i>
@@ -2466,7 +2474,7 @@ function MaintenancePageContent() {
                                         <span>BT trước: <strong>{formatDateDisplay(group.lastMaintenanceDate) || '-'}</strong></span>
                                       </div>
                                       
-                                      <div className="d-flex align-items-center">
+                                      <div className="d-flex align-items-center flex-wrap">
                                         <i className="fas fa-clock text-primary me-1"></i>
                                         <span>BT sắp đến: <strong>{formatDateDisplay(group.nextMaintenanceDate) || '-'}</strong></span>
                                         {group.nextMaintenanceDate && (() => {
@@ -2480,7 +2488,7 @@ function MaintenancePageContent() {
                                           
                                           if (daysUntilDue <= 0 && group.matchedReport) {
                                             return (
-                                              <span className="ms-2 px-2 py-0 border border-info border-opacity-50 text-info rounded bg-info bg-opacity-10 d-inline-flex align-items-center" style={{ fontSize: '0.75rem' }}>
+                                              <span className="ms-md-2 mt-1 mt-md-0 px-2 py-0 border border-info border-opacity-50 text-info rounded bg-info bg-opacity-10 d-inline-flex align-items-center" style={{ fontSize: '0.75rem' }}>
                                                 <i className="fas fa-tools me-1"></i>đang thực hiện: {formatDateDisplay(group.matchedReport.reportDate)}
                                               </span>
                                             );
@@ -2495,9 +2503,9 @@ function MaintenancePageContent() {
                                 </div>
 
                                 {/* Bên phải: Thông tin thiết bị, badges và action buttons - chia 2 hàng, căn lề phải */}
-                                <div className="d-flex flex-column align-items-end gap-2 flex-shrink-0">
+                                <div className="d-flex flex-column align-items-start align-items-md-end gap-2 flex-shrink-0">
                                   {/* Hàng trên: Thông tin thiết bị và badges */}
-                                  <div className="d-flex align-items-center gap-2">
+                                  <div className="d-flex flex-wrap align-items-center gap-2 justify-content-start justify-content-md-end">
                                     <span className="text-muted small">
                                       <i className="fas fa-boxes me-1"></i>
                                       {group.totalDevices} thiết bị
@@ -2518,7 +2526,7 @@ function MaintenancePageContent() {
                                       return null;
                                     })()}
                                     {group.maintenanceType === 'outsource' && group.maintenanceProvider && (
-                                      <span className="text-info small">
+                                      <span className="text-info small text-truncate" style={{ maxWidth: '150px' }}>
                                         <i className="fas fa-building me-1"></i>
                                         {group.maintenanceProvider}
                                       </span>
@@ -2529,9 +2537,9 @@ function MaintenancePageContent() {
                                   </div>
 
                                   {/* Hàng dưới: Action buttons */}
-                                  <div className="btn-group btn-group-sm" onClick={(e) => e.stopPropagation()}>
+                                  <div className="d-flex flex-wrap gap-1 justify-content-start justify-content-md-end mt-1" onClick={(e) => e.stopPropagation()}>
                                     <button
-                                      className="btn btn-outline-info"
+                                      className="btn btn-sm btn-outline-info"
                                       onClick={() => {
                                         setSelectedGroup({
                                           batchId: group.batchId,
@@ -2559,7 +2567,7 @@ function MaintenancePageContent() {
 
                                           return hasDuePlans ? (
                                             <button
-                                              className="btn btn-outline-success"
+                                              className="btn btn-sm btn-outline-success"
                                               onClick={() => {
                                                 setSelectedGroup(group);
                                                 setBatchCompleteDate(formatDateInput(new Date()));
@@ -2575,14 +2583,14 @@ function MaintenancePageContent() {
                                           ) : null;
                                         })()}
                                         <button
-                                          className="btn btn-outline-info"
+                                          className="btn btn-sm btn-outline-info"
                                           onClick={() => handleOpenEditBatch(group.batchId, group.title)}
                                           title="Sửa thông tin kế hoạch"
                                         >
                                           <i className="fas fa-edit"></i>
                                         </button>
                                         <button
-                                          className="btn btn-outline-warning"
+                                          className="btn btn-sm btn-outline-warning"
                                           onClick={() => {
                                             setSelectedGroup(group);
                                             // Set default date to earliest nextDueDate or today
@@ -2599,7 +2607,7 @@ function MaintenancePageContent() {
                                           <i className="fas fa-calendar-alt"></i>
                                         </button>
                                         <button
-                                          className="btn btn-outline-danger"
+                                          className="btn btn-sm btn-outline-danger"
                                           onClick={() => {
                                             setSelectedGroup(group);
                                             setShowBatchCancelModal(true);
@@ -2611,7 +2619,7 @@ function MaintenancePageContent() {
                                       </>
                                     )}
                                     <button
-                                      className="btn btn-outline-danger"
+                                      className="btn btn-sm btn-outline-danger"
                                       onClick={() => handleBatchDelete(group)}
                                       title="Xóa kế hoạch tất cả"
                                     >

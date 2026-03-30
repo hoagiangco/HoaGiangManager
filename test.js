@@ -1,0 +1,1 @@
+﻿const { Client } = require('pg'); const client = new Client({ connectionString: 'postgresql://neondb_owner:npg_GqcJydb1LuK5@ep-frosty-moon-a1empp9j-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require' }); client.connect().then(() => client.query('SELECT COUNT(*) FROM "Event"')).then(res => { console.log(res.rows); client.end(); }).catch(console.error);

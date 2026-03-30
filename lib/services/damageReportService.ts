@@ -170,45 +170,205 @@ export class DamageReportService {
 
     const result = await pool.query(query, params);
 
-    return result.rows.map((row: any) => {
-      const reportDate = row.reportDate ? new Date(row.reportDate) : new Date();
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const reportDateOnly = new Date(reportDate);
-      reportDateOnly.setHours(0, 0, 0, 0);
-      const daysSinceReport = Math.floor((today.getTime() - reportDateOnly.getTime()) / (1000 * 60 * 60 * 24));
+    return result.rows.map((row: any) => this.mapRowToVM(row));
+  }
 
-      let daysInProgress = 0;
-      if (row.handlingDate) {
-        const handlingDate = new Date(row.handlingDate);
-        handlingDate.setHours(0, 0, 0, 0);
-        daysInProgress = Math.floor((today.getTime() - handlingDate.getTime()) / (1000 * 60 * 60 * 24));
-      }
+  async getPaginated(filters: {
+    page: number;
+    limit: number;
+    status?: DamageReportStatus;
+    priority?: DamageReportPriority;
+    deviceId?: number;
+    reporterId?: number;
+    handlerId?: number;
+    departmentId?: number;
+    search?: string;
+    sortField?: string;
+    sortOrder?: 'asc' | 'desc';
+  }): Promise<{ reports: DamageReportVM[]; total: number }> {
+    const { 
+      page = 1, 
+      limit = 10, 
+      status, 
+      priority, 
+      deviceId, 
+      reporterId, 
+      handlerId, 
+      departmentId, 
+      search, 
+      sortField = 'reportDate', 
+      sortOrder = 'desc' 
+    } = filters;
+    
+    const offset = (page - 1) * limit;
+    const params: any[] = [];
+    let whereClause = 'WHERE 1=1';
 
-      let isOverdue = false;
-      if (row.estimatedCompletionDate && row.status !== DamageReportStatus.Completed && row.status !== DamageReportStatus.Cancelled && row.status !== DamageReportStatus.Rejected) {
-        const estimatedDate = new Date(row.estimatedCompletionDate);
-        estimatedDate.setHours(0, 0, 0, 0);
-        isOverdue = today > estimatedDate;
-      }
+    if (status) {
+      params.push(status.toString());
+      whereClause += ` AND dr."Status" = $${params.length}`;
+    }
 
-      const status = parseInt(row.status) as DamageReportStatus;
-      const priority = parseInt(row.priority) as DamageReportPriority;
+    if (priority) {
+      params.push(priority.toString());
+      whereClause += ` AND dr."Priority" = $${params.length}`;
+    }
 
-      return {
-        ...row,
-        status,
-        priority,
-        deviceStatus: row.deviceStatus ? parseInt(row.deviceStatus) as DeviceStatus : undefined,
-        images: row.images ? (Array.isArray(row.images) ? row.images : JSON.parse(row.images)) : [],
-        statusName: this.getStatusName(status),
-        priorityName: this.getPriorityName(priority),
-        daysSinceReport,
-        daysInProgress,
-        isOverdue,
-        displayLocation: row.deviceName || row.maintenanceBatchTitle || row.damageLocation || 'Không xác định',
-      } as DamageReportVM;
-    });
+    if (deviceId) {
+      params.push(deviceId);
+      whereClause += ` AND dr."DeviceID" = $${params.length}`;
+    }
+
+    if (reporterId) {
+      params.push(reporterId);
+      whereClause += ` AND dr."ReporterID" = $${params.length}`;
+    }
+
+    if (handlerId) {
+      params.push(handlerId);
+      whereClause += ` AND dr."HandlerID" = $${params.length}`;
+    }
+
+    if (departmentId) {
+      params.push(departmentId);
+      whereClause += ` AND dr."ReportingDepartmentID" = $${params.length}`;
+    }
+
+    if (search && search.trim()) {
+      params.push(`%${search.trim().toLowerCase()}%`);
+      const i = params.length;
+      whereClause += ` AND (
+        dr."DamageContent" ILIKE $${i} OR
+        dr."DamageLocation" ILIKE $${i} OR
+        d."Name" ILIKE $${i} OR
+        reporter."Name" ILIKE $${i} OR
+        handler."Name" ILIKE $${i}
+      )`;
+    }
+
+    // Sort field mapping
+    const sortFieldMap: Record<string, string> = {
+      'reportDate': 'dr."ReportDate"',
+      'status': 'dr."Status"',
+      'priority': 'dr."Priority"',
+      'deviceName': 'd."Name"',
+      'id': 'dr."ID"',
+      'completedDate': 'dr."CompletedDate"',
+      'estimatedCompletionDate': 'dr."EstimatedCompletionDate"'
+    };
+    
+    const sortBy = sortFieldMap[sortField] || 'dr."ReportDate"';
+    const order = sortOrder === 'desc' ? 'DESC' : 'ASC';
+
+    try {
+      // Get total count
+      const countQuery = `
+        SELECT COUNT(*) 
+        FROM "DamageReport" dr
+        LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
+        LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
+        LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
+        ${whereClause}
+      `;
+      const countResult = await pool.query(countQuery, params);
+      const total = parseInt(countResult.rows[0].count);
+
+      // Get paginated data
+      const dataQuery = `
+        SELECT 
+          dr."ID" as id,
+          dr."DeviceID" as "deviceId",
+          dr."DamageLocation" as "damageLocation",
+          dr."ReporterID" as "reporterId",
+          dr."ReportingDepartmentID" as "reportingDepartmentId",
+          dr."HandlerID" as "handlerId",
+          dr."AssignedDate" as "assignedDate",
+          dr."ReportDate" as "reportDate",
+          dr."HandlingDate" as "handlingDate",
+          dr."CompletedDate" as "completedDate",
+          dr."EstimatedCompletionDate" as "estimatedCompletionDate",
+          dr."DamageContent" as "damageContent",
+          dr."Images" as images,
+          CAST(dr."Status"::text AS INTEGER) as status,
+          CAST(dr."Priority"::text AS INTEGER) as priority,
+          dr."Notes" as notes,
+          dr."HandlerNotes" as "handlerNotes",
+          dr."RejectionReason" as "rejectionReason",
+          dr."MaintenanceBatchId" as "maintenanceBatchId",
+          dr."CreatedBy" as "createdBy",
+          dr."UpdatedBy" as "updatedBy",
+          dr."CreatedAt" as "createdAt",
+          dr."UpdatedAt" as "updatedAt",
+          d."Name" as "deviceName",
+          d."Serial" as "deviceSerial",
+          CAST(d."Status"::text AS INTEGER) as "deviceStatus",
+          reporter."Name" as "reporterName",
+          reporter_dept."Name" as "reporterDepartmentName",
+          handler."Name" as "handlerName",
+          handler_dept."Name" as "handlerDepartmentName",
+          updated_user."FullName" as "updatedByName"
+        FROM "DamageReport" dr
+        LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
+        LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
+        LEFT JOIN "Department" reporter_dept ON dr."ReportingDepartmentID" = reporter_dept."ID"
+        LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
+        LEFT JOIN "Department" handler_dept ON handler."DepartmentID" = handler_dept."ID"
+        LEFT JOIN "AspNetUsers" updated_user ON dr."UpdatedBy" = updated_user."Id"
+        ${whereClause}
+        ORDER BY ${sortBy} ${order}, dr."ID" DESC
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+      `;
+      
+      const dataParams = [...params, limit, offset];
+      const result = await pool.query(dataQuery, dataParams);
+
+      const reports = result.rows.map((row: any) => this.mapRowToVM(row));
+
+      return { reports, total };
+    } catch (error) {
+      console.error('DamageReportService.getPaginated error:', error);
+      throw error;
+    }
+  }
+
+  private mapRowToVM(row: any): DamageReportVM {
+    const reportDate = row.reportDate ? new Date(row.reportDate) : new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const reportDateOnly = new Date(reportDate);
+    reportDateOnly.setHours(0, 0, 0, 0);
+    const daysSinceReport = Math.floor((today.getTime() - reportDateOnly.getTime()) / (1000 * 60 * 60 * 24));
+
+    let daysInProgress = 0;
+    if (row.handlingDate) {
+      const handlingDate = new Date(row.handlingDate);
+      handlingDate.setHours(0, 0, 0, 0);
+      daysInProgress = Math.floor((today.getTime() - handlingDate.getTime()) / (1000 * 60 * 60 * 24));
+    }
+
+    let isOverdue = false;
+    if (row.estimatedCompletionDate && row.status !== DamageReportStatus.Completed && row.status !== DamageReportStatus.Cancelled && row.status !== DamageReportStatus.Rejected) {
+      const estimatedDate = new Date(row.estimatedCompletionDate);
+      estimatedDate.setHours(0, 0, 0, 0);
+      isOverdue = today > estimatedDate;
+    }
+
+    const status = parseInt(row.status) as DamageReportStatus;
+    const priority = parseInt(row.priority) as DamageReportPriority;
+
+    return {
+      ...row,
+      status,
+      priority,
+      deviceStatus: row.deviceStatus ? parseInt(row.deviceStatus) as DeviceStatus : undefined,
+      images: row.images ? (Array.isArray(row.images) ? row.images : JSON.parse(row.images)) : [],
+      statusName: this.getStatusName(status),
+      priorityName: this.getPriorityName(priority),
+      daysSinceReport,
+      daysInProgress,
+      isOverdue,
+      displayLocation: row.deviceName || row.maintenanceBatchTitle || row.damageLocation || 'Không xác định',
+    } as DamageReportVM;
   }
 
   async getById(id: number): Promise<DamageReportVM | null> {

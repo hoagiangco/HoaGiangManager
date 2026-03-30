@@ -1,0 +1,63 @@
+﻿diff --git a/app/(dashboard)/dashboard/maintenance/page.tsx b/app/(dashboard)/dashboard/maintenance/page.tsx
+index 39619d4..4a99451 100644
+--- a/app/(dashboard)/dashboard/maintenance/page.tsx
++++ b/app/(dashboard)/dashboard/maintenance/page.tsx
+@@ -498,6 +498,9 @@ function MaintenancePageContent() {
+       canModifyDevices: boolean; // Can add/remove devices if all plans haven't reached due date
+       lastMaintenanceDate: Date | null; // Ng├áy bß║úo tr├¼ lß║ºn tr╞░ß╗¢c (tß╗½ lastCompletedEvent)
+       nextMaintenanceDate: Date | null; // Ng├áy bß║úo tr├¼ sß║»p ─æß║┐n (tß╗½ nextDueDate)
++      isCancelledBatch?: boolean; // Indicates if all plans in batch are inactive
++      inProgressCount?: number; // Number of currently active events for the batch
++      plannedCount?: number; // Number of currently planned events for the batch
+     }> = {};
+ 
+     const today = new Date();
+@@ -611,6 +614,21 @@ function MaintenancePageContent() {
+           return dueDate > today;
+         });
+       }
++
++      // Compute batch current status based on active events
++      let inProgressCount = 0;
++      let plannedCount = 0;
++      
++      activePlans.forEach((plan) => {
++        const currentEvent = planEvents[plan.id];
++        if (currentEvent) {
++          if (currentEvent.status === 'in_progress') inProgressCount++;
++          else if (currentEvent.status === 'planned') plannedCount++;
++        }
++      });
++      
++      (group as any).inProgressCount = inProgressCount;
++      (group as any).plannedCount = plannedCount;
+     });
+ 
+     // Lß╗ìc groups dß╗▒a tr├¬n activeTab
+@@ -2322,6 +2340,17 @@ function MaintenancePageContent() {
+                                     {activeTab === 'plans' ? null : group.inactiveCount > 0 && (
+                                       <span className="badge bg-secondary small">{group.inactiveCount} ─æ├ú hß╗ºy</span>
+                                     )}
++                                    {/* Batch Status Indicator based on current events */}
++                                    {(() => {
++                                      const inProgress = (group as any).inProgressCount || 0;
++                                      const planned = (group as any).plannedCount || 0;
++                                      if (inProgress > 0) {
++                                        return <span className="badge bg-primary small fw-normal"><i className="fas fa-tools me-1"></i>{inProgress} ─æang bß║úo tr├¼</span>;
++                                      } else if (planned > 0) {
++                                        return <span className="badge bg-warning text-dark small fw-normal"><i className="fas fa-hourglass-half me-1"></i>{planned} chß╗¥ xß╗¡ l├╜</span>;
++                                      }
++                                      return null;
++                                    })()}
+                                     {group.maintenanceType === 'outsource' && group.maintenanceProvider && (
+                                       <span className="text-info small">
+                                         <i className="fas fa-building me-1"></i>
+@@ -2329,7 +2358,7 @@ function MaintenancePageContent() {
+                                       </span>
+                                     )}
+                                     {group.maintenanceType === 'internal' && (
+-                                      <span className="badge bg-primary small">Nß╗Öi bß╗Ö</span>
++                                      <span className="badge bg-secondary small">Nß╗Öi bß╗Ö</span>
+                                     )}
+                                   </div>
+ 

@@ -60,6 +60,116 @@ export class DeviceService {
     }
   }
 
+  async getPaginated(filters: {
+    page: number;
+    limit: number;
+    categoryId?: number;
+    departmentId?: number;
+    status?: number;
+    search?: string;
+    sortField?: string;
+    sortOrder?: 'asc' | 'desc';
+  }): Promise<{ devices: DeviceVM[]; total: number }> {
+    const { 
+      page = 1, 
+      limit = 10, 
+      categoryId = 0, 
+      departmentId = 0, 
+      status = 0, 
+      search = '', 
+      sortField = 'Name', 
+      sortOrder = 'asc' 
+    } = filters;
+    
+    const offset = (page - 1) * limit;
+    const params: any[] = [];
+    let whereClause = 'WHERE 1=1';
+
+    if (categoryId > 0) {
+      params.push(categoryId);
+      whereClause += ` AND d."DeviceCategoryID" = $${params.length}`;
+    }
+
+    if (departmentId > 0) {
+      params.push(departmentId);
+      whereClause += ` AND d."DepartmentID" = $${params.length}`;
+    }
+
+    if (status > 0) {
+      params.push(status.toString());
+      whereClause += ` AND d."Status"::text = $${params.length}`;
+    }
+
+    if (search && search.trim()) {
+      params.push(`%${search.trim().toLowerCase()}%`);
+      whereClause += ` AND (LOWER(d."Name") LIKE $${params.length} OR LOWER(d."Serial") LIKE $${params.length} OR LOWER(d."Description") LIKE $${params.length})`;
+    }
+
+    // Mapping sort fields to DB columns
+    const sortFieldMap: Record<string, string> = {
+      'name': 'd."Name"',
+      'serial': 'd."Serial"',
+      'warrantyDate': 'd."WarrantyDate"',
+      'useDate': 'd."UseDate"',
+      'category': 'dc."Name"',
+      'department': 'dep."Name"',
+      'status': 'd."Status"'
+    };
+    
+    const sortBy = sortFieldMap[sortField] || 'd."Name"';
+    const order = sortOrder === 'desc' ? 'DESC' : 'ASC';
+
+    try {
+      // Get total count
+      const countQuery = `
+        SELECT COUNT(*) 
+        FROM "Device" d
+        LEFT JOIN "DeviceCategory" dc ON d."DeviceCategoryID" = dc."ID"
+        LEFT JOIN "Department" dep ON d."DepartmentID" = dep."ID"
+        ${whereClause}
+      `;
+      const countResult = await pool.query(countQuery, params);
+      const total = parseInt(countResult.rows[0].count);
+
+      // Get paginated data
+      const dataQuery = `
+        SELECT 
+          d."ID" as id,
+          d."Name" as name,
+          d."Serial" as serial,
+          d."Description" as description,
+          d."Img" as img,
+          d."WarrantyDate" as "warrantyDate",
+          d."UseDate" as "useDate",
+          d."EndDate" as "endDate",
+          d."DepartmentID" as "departmentId",
+          dep."Name" as "departmentName",
+          d."DeviceCategoryID" as "deviceCategoryId",
+          dc."Name" as "deviceCategoryName",
+          CAST(d."Status"::text AS INTEGER) as status
+        FROM "Device" d
+        INNER JOIN "DeviceCategory" dc ON d."DeviceCategoryID" = dc."ID"
+        INNER JOIN "Department" dep ON d."DepartmentID" = dep."ID"
+        ${whereClause}
+        ORDER BY ${sortBy} ${order}
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+      `;
+      
+      const dataParams = [...params, limit, offset];
+      const result = await pool.query(dataQuery, dataParams);
+
+      const devices = result.rows.map((row: any) => ({
+        ...row,
+        statusName: this.getStatusName(row.status ? parseInt(row.status) : DeviceStatus.DangSuDung)
+      }));
+
+      return { devices, total };
+    } catch (error) {
+      console.error('DeviceService.getPaginated error:', error);
+      throw error;
+    }
+  }
+
   async getDevicesByIds(deviceIds: number[]): Promise<DeviceVM[]> {
     try {
       if (!deviceIds || deviceIds.length === 0) {

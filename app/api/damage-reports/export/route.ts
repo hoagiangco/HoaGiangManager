@@ -168,7 +168,7 @@ export async function GET(request: NextRequest) {
     const deptNameForFile = selectedDeptId > 0 
       ? finalDeptName.replace(/[^a-zA-Z0-9]/g, '_')
       : 'TatCa';
-    const fileName = `BaoCaoHuHong_${deptNameForFile}_${formatDateFilename(from)}_${formatDateFilename(to)}.xlsx`;
+    const fileName = `BaoCao_${deptNameForFile}_${formatDateFilename(from)}_${formatDateFilename(to)}.xlsx`;
 
     // Prepare data for Excel generation
     const headers = Object.keys(excelData[0] || []);
@@ -176,7 +176,7 @@ export async function GET(request: NextRequest) {
 
     // Generate Excel file using utility function
     const excelBuffer = await generateExcelFile({
-      title: 'BÁO CÁO HƯ HỎNG',
+      title: 'BÁO CÁO',
       department: finalDeptName,
       dateRange: `Từ ngày: ${formatDateRange(from, to)}`,
       headers,

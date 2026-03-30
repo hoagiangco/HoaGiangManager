@@ -36,34 +36,34 @@ const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false
     }
   }, [isEditing]);
 
-  const handleBlur = async () => {
+  const handleSave = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     if (editValue !== value && !isSaving) {
-      // Show confirmation dialog to avoid accidental saves
-      const confirmed = window.confirm('Bạn có muốn lưu ghi chú này không?');
-      if (confirmed) {
-        setIsSaving(true);
-        try {
-          await onChange(editValue);
-        } catch (error) {
-          // Error handled by parent
-        } finally {
-          setIsSaving(false);
-          setIsEditing(false);
-        }
-      } else {
-        // Revert to original value
-        setEditValue(value);
+      setIsSaving(true);
+      try {
+        await onChange(editValue);
         setIsEditing(false);
+      } catch (error) {
+        // Error handled by parent
+      } finally {
+        setIsSaving(false);
       }
     } else {
       setIsEditing(false);
     }
   };
 
+  const handleCancel = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditValue(value);
+    setIsEditing(false);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
-      setEditValue(value);
-      setIsEditing(false);
+      handleCancel();
+    } else if (e.key === 'Enter' && e.ctrlKey) {
+      handleSave();
     }
   };
 
@@ -80,28 +80,68 @@ const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false
 
   if (isEditing) {
     return (
-      <textarea
+      <div 
+        onClick={(e) => e.stopPropagation()} 
+        className="d-flex flex-column gap-2"
+        style={{ width: '100%', minWidth: isCard ? '100%' : '220px' }}
+      >
+        <textarea
         ref={inputRef}
         className="form-control form-control-sm"
         value={editValue}
         onChange={(e) => setEditValue(e.target.value)}
-        onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         onClick={(e) => e.stopPropagation()}
         disabled={isSaving}
         style={{
           fontSize: isCard ? '0.8rem' : '0.75rem',
           padding: isCard ? '0.5rem' : '0.25rem 0.5rem',
-          minHeight: isCard ? '3rem' : '2rem',
+          minHeight: isCard ? '3rem' : '2.25rem',
           maxHeight: isCard ? '6rem' : '4rem',
           resize: 'vertical',
           width: '100%',
           minWidth: isCard ? '100%' : '200px',
           lineHeight: '1.5',
-          pointerEvents: 'auto'
+          pointerEvents: 'auto',
+          marginBottom: '2px'
         }}
-        rows={isCard ? 3 : 2}
-      />
+        />
+        <div className="d-flex justify-content-end gap-2">
+          <button 
+            type="button"
+            className="btn btn-primary btn-sm px-3" 
+            onClick={handleSave}
+            disabled={isSaving || editValue === value}
+            style={{ 
+              fontSize: '0.75rem', 
+              height: '1.8rem', 
+              display: 'flex', 
+              alignItems: 'center',
+              fontWeight: '500'
+            }}
+            title="Lưu (Ctrl+Enter)"
+          >
+            <i className="fas fa-save me-1"></i> Lưu
+          </button>
+          <button 
+            type="button"
+            className="btn btn-light btn-sm px-3 border" 
+            onClick={handleCancel}
+            disabled={isSaving}
+            style={{ 
+              fontSize: '0.75rem', 
+              height: '1.8rem', 
+              display: 'flex', 
+              alignItems: 'center',
+              fontWeight: '500',
+              backgroundColor: '#fff'
+            }}
+            title="Hủy (Esc)"
+          >
+            <i className="fas fa-times me-1"></i> Hủy
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -113,22 +153,23 @@ const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false
         cursor: canEdit ? 'text' : 'default',
         padding: isCard ? '0.5rem' : '0.25rem 0.5rem',
         minHeight: isCard ? '3rem' : '2rem',
-        fontSize: isCard ? '0.8rem' : '0.75rem',
-        color: value ? '#495057' : '#6c757d',
-        fontStyle: value ? 'normal' : 'italic',
+        fontSize: isCard ? '0.85rem' : '0.8rem',
+        color: value ? '#212529' : '#adb5bd',
+        fontStyle: 'normal',
         border: '1px solid transparent',
         borderRadius: '4px',
         transition: 'background-color 0.2s, border-color 0.2s',
-        maxWidth: isCard ? '100%' : '200px',
+        maxWidth: isCard ? '100%' : '250px',
+        minWidth: isCard ? '100%' : '180px',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-word',
         lineHeight: '1.5',
-        backgroundColor: isCard ? '#ffffff' : 'transparent',
+        backgroundColor: 'transparent',
         pointerEvents: canEdit ? 'auto' : 'none',
-        userSelect: 'none',
-        opacity: canEdit ? 1 : 0.7
+        userSelect: 'text',
+        opacity: 1
       }}
       onMouseEnter={(e) => {
         if (canEdit) {
@@ -341,6 +382,41 @@ export default function DamageReportsPage() {
     setShowQuickView(true);
   };
 
+  const headerStyle = `
+    .dashboard-table-header th {
+      background-color: #2c3e50 !important;
+      color: #ffffff !important;
+      border-color: #34495e !important;
+      transition: background-color 0.2s;
+    }
+    .dashboard-table-header th:hover {
+      background-color: #23313f !important;
+      color: #ffffff !important;
+    }
+    .dashboard-table-header th .text-info {
+      color: #0dcaf0 !important;
+    }
+    .dashboard-table-header th .fas {
+      color: rgba(255, 255, 255, 0.7) !important;
+    }
+    .dashboard-table-header th .text-info.fas {
+      color: #0dcaf0 !important;
+      opacity: 1 !important;
+    }
+    .table-scroll-hint {
+      display: block;
+    }
+    @media (min-width: 1240px) {
+      .table-scroll-hint {
+        display: none !important;
+      }
+    }
+    .table-bordered td, .table-bordered th {
+      padding: 0.3rem 0.4rem !important;
+      vertical-align: middle !important;
+    }
+  `;
+
   const closeQuickView = () => {
     setShowQuickView(false);
     setSelectedQuickReportId(null);
@@ -364,13 +440,12 @@ export default function DamageReportsPage() {
       }
 
       if (typeof window !== 'undefined') {
-        const onResize = () => {
-          const isMobile = window.innerWidth < 768;
-          setViewMode(isMobile ? 'card' : 'table');
-        };
-        onResize();
-        window.addEventListener('resize', onResize);
-        return () => window.removeEventListener('resize', onResize);
+        const isMobile = window.innerWidth < 768;
+        setViewMode(isMobile ? 'card' : 'table');
+
+        // Note: Removing the auto-switch on resize to prevent the virtual keyboard 
+        // from resetting the view mode when editing notes on mobile.
+        // The user can still manualy switch using the header buttons.
       }
       return () => { };
     };
@@ -945,16 +1020,19 @@ export default function DamageReportsPage() {
 
   const getSortIcon = (field: string) => {
     if (sortField !== field) {
-      return <i className="fas fa-sort text-muted" style={{ fontSize: '0.8rem' }}></i>;
+      return <i className="fas fa-sort" style={{ fontSize: '0.8rem', opacity: 0.5, color: '#ffffff' }}></i>;
     }
     return sortDirection === 'asc'
-      ? <i className="fas fa-sort-up text-primary"></i>
-      : <i className="fas fa-sort-down text-primary"></i>;
+      ? <i className="fas fa-sort-up text-info"></i>
+      : <i className="fas fa-sort-down text-info"></i>;
   };
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
     setSelectedIds([]);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handleItemsPerPageChange = (items: number) => {
@@ -993,14 +1071,14 @@ export default function DamageReportsPage() {
 
   const getStatusStyle = (status: DamageReportStatus) => {
     const statusMap = {
-      [DamageReportStatus.Pending]: { color: '#6c757d', backgroundColor: '#f8f9fa', borderColor: '#dee2e6' },
-      [DamageReportStatus.Assigned]: { color: '#0a58ca', backgroundColor: '#cff4fc', borderColor: '#0dcaf0' },
-      [DamageReportStatus.InProgress]: { color: '#664d03', backgroundColor: '#fff3cd', borderColor: '#ffc107' },
-      [DamageReportStatus.Completed]: { color: '#0f5132', backgroundColor: '#d1e7dd', borderColor: '#198754' },
-      [DamageReportStatus.Cancelled]: { color: '#212529', backgroundColor: '#e9ecef', borderColor: '#212529' },
-      [DamageReportStatus.Rejected]: { color: '#842029', backgroundColor: '#f8d7da', borderColor: '#dc3545' },
+      [DamageReportStatus.Pending]: { color: '#ffffff', backgroundColor: '#6c757d', borderColor: '#6c757d' },
+      [DamageReportStatus.Assigned]: { color: '#ffffff', backgroundColor: '#0dcaf0', borderColor: '#0dcaf0' },
+      [DamageReportStatus.InProgress]: { color: '#ffffff', backgroundColor: '#0d6efd', borderColor: '#0d6efd' },
+      [DamageReportStatus.Completed]: { color: '#ffffff', backgroundColor: '#198754', borderColor: '#198754' },
+      [DamageReportStatus.Cancelled]: { color: '#ffffff', backgroundColor: '#212529', borderColor: '#212529' },
+      [DamageReportStatus.Rejected]: { color: '#ffffff', backgroundColor: '#dc3545', borderColor: '#dc3545' },
     };
-    return statusMap[status] || { color: '#6c757d', backgroundColor: '#f8f9fa', borderColor: '#dee2e6' };
+    return statusMap[status] || { color: '#ffffff', backgroundColor: '#6c757d', borderColor: '#6c757d' };
   };
 
   const getPriorityBadge = (priority: DamageReportPriority) => {
@@ -1016,12 +1094,12 @@ export default function DamageReportsPage() {
 
   const getPriorityStyle = (priority: DamageReportPriority) => {
     const priorityMap = {
-      [DamageReportPriority.Low]: { color: '#6c757d', backgroundColor: '#f8f9fa', borderColor: '#dee2e6' },
-      [DamageReportPriority.Normal]: { color: '#0a58ca', backgroundColor: '#cfe2ff', borderColor: '#0d6efd' },
-      [DamageReportPriority.High]: { color: '#664d03', backgroundColor: '#fff3cd', borderColor: '#ffc107' },
-      [DamageReportPriority.Urgent]: { color: '#842029', backgroundColor: '#f8d7da', borderColor: '#dc3545' },
+      [DamageReportPriority.Low]: { color: '#ffffff', backgroundColor: '#6c757d', borderColor: '#6c757d' },
+      [DamageReportPriority.Normal]: { color: '#ffffff', backgroundColor: '#0d6efd', borderColor: '#0d6efd' },
+      [DamageReportPriority.High]: { color: '#212529', backgroundColor: '#ffc107', borderColor: '#ffc107' },
+      [DamageReportPriority.Urgent]: { color: '#ffffff', backgroundColor: '#dc3545', borderColor: '#dc3545' },
     };
-    return priorityMap[priority] || { color: '#6c757d', backgroundColor: '#f8f9fa', borderColor: '#dee2e6' };
+    return priorityMap[priority] || { color: '#ffffff', backgroundColor: '#6c757d', borderColor: '#6c757d' };
   };
 
   const canUpdateStatusForReport = (report?: DamageReportVM | null): boolean => {
@@ -1414,7 +1492,7 @@ export default function DamageReportsPage() {
 
       // Get filename from Content-Disposition header or generate one
       const contentDisposition = response.headers['content-disposition'];
-      let fileName = `BaoCaoHuHong_${formatDateFilename(fromDate)}_${formatDateFilename(toDate)}.xlsx`;
+      let fileName = `BaoCao_${formatDateFilename(fromDate)}_${formatDateFilename(toDate)}.xlsx`;
 
       if (contentDisposition) {
         const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
@@ -1484,22 +1562,24 @@ export default function DamageReportsPage() {
   // Main render
   const __view = (
     <div className="container-fluid">
+      <style>{headerStyle}</style>
       <div className="card">
         <div className="card-header" style={{ padding: '0.75rem' }}>
           <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap" style={{ gap: '0.5rem' }}>
-            <h4 className="mb-0" style={{ fontSize: 'clamp(1rem, 4vw, 1.5rem)', whiteSpace: 'nowrap' }}>LIST CÔNG VIỆC</h4>
-            <div className="d-flex gap-1 align-items-center" style={{ flexWrap: 'wrap', rowGap: '0.25rem', justifyContent: 'flex-end' }}>
+            <h4 className="mb-0" style={{ fontSize: 'clamp(1rem, 4vw, 1.5rem)', whiteSpace: 'nowrap' }}>CÔNG VIỆC</h4>
+            <div className="d-flex gap-1 align-items-center flex-wrap" style={{ justifyContent: 'flex-end' }}>
               <button
                 type="button"
-                className="btn btn-outline-secondary btn-sm d-md-none"
+                className="btn btn-outline-secondary btn-sm d-md-none d-flex align-items-center justify-content-center"
                 onClick={() => setFiltersOpen((s) => !s)}
                 aria-pressed={!filtersOpen}
                 title={filtersOpen ? 'Ẩn bộ lọc' : 'Hiện bộ lọc'}
+                style={{ width: '24px', height: '24px', padding: 0 }}
               >
-                <i className={`fas ${filtersOpen ? 'fa-chevron-up' : 'fa-filter'}`}></i>
+                <i className={`fas ${filtersOpen ? 'fa-chevron-up' : 'fa-filter'}`} style={{ fontSize: '0.7rem' }}></i>
               </button>
               <button
-                className={`btn btn-sm ${myWorkFilter ? 'btn-info' : 'btn-outline-info'}`}
+                className={`btn btn-sm d-flex align-items-center justify-content-center ${myWorkFilter ? 'btn-info' : 'btn-outline-info'}`}
                 onClick={() => {
                   if (currentUserStaffId === null) {
                     toast.warning('Tài khoản của bạn chưa liên kết với nhân viên, không thể lọc My Work.');
@@ -1507,18 +1587,16 @@ export default function DamageReportsPage() {
                   }
                   skipPageResetOnMyWorkToggle.current = true;
                   setMyWorkFilter(!myWorkFilter);
-                  // Disable My Report when My Work is active
-                  if (!myWorkFilter) {
-                    setMyReportFilter(false);
-                  }
+                  if (!myWorkFilter) setMyReportFilter(false);
                 }}
                 title="Lọc công việc của tôi"
+                style={{ width: myWorkFilter ? 'auto' : '24px', minWidth: '24px', height: '24px', padding: myWorkFilter ? '0 4px' : '0' }}
               >
-                <i className="fas fa-user-tie"></i>
-                <span className="d-none d-md-inline ms-1">{myWorkFilter ? 'All' : 'My Work'}</span>
+                <i className="fas fa-user-tie" style={{ fontSize: '0.7rem' }}></i>
+                <span className="d-none d-md-inline ms-1" style={{ fontSize: '0.65rem' }}>{myWorkFilter ? 'All' : ''}</span>
               </button>
               <button
-                className={`btn btn-sm ${myReportFilter ? 'btn-success' : 'btn-outline-success'}`}
+                className={`btn btn-sm d-flex align-items-center justify-content-center ${myReportFilter ? 'btn-success' : 'btn-outline-success'}`}
                 onClick={() => {
                   if (currentUserStaffId === null) {
                     toast.warning('Tài khoản của bạn chưa liên kết với nhân viên, không thể lọc My Report.');
@@ -1526,51 +1604,62 @@ export default function DamageReportsPage() {
                   }
                   skipPageResetOnMyReportToggle.current = true;
                   setMyReportFilter(!myReportFilter);
-                  // Disable My Work when My Report is active
-                  if (!myReportFilter) {
-                    setMyWorkFilter(false);
-                  }
+                  if (!myReportFilter) setMyWorkFilter(false);
                 }}
                 title="Lọc báo cáo của tôi"
+                style={{ width: myReportFilter ? 'auto' : '24px', minWidth: '24px', height: '24px', padding: myReportFilter ? '0 4px' : '0' }}
               >
-                <i className="fas fa-file-alt"></i>
-                <span className="d-none d-md-inline ms-1">{myReportFilter ? 'All' : 'My Report'}</span>
+                <i className="fas fa-file-alt" style={{ fontSize: '0.7rem' }}></i>
+                <span className="d-none d-md-inline ms-1" style={{ fontSize: '0.65rem' }}>{myReportFilter ? 'All' : ''}</span>
               </button>
-              {isAdmin(currentUser?.roles) && (
+              <div className="ms-md-1 d-flex gap-1 align-items-center">
+                {isAdmin(currentUser?.roles) && (
+                  <button
+                    className="btn btn-success btn-sm d-flex align-items-center justify-content-center"
+                    onClick={handleOpenExportModal}
+                    title="Xuất Excel"
+                    style={{ width: '24px', height: '24px', padding: 0 }}
+                  >
+                    <i className="fas fa-file-excel" style={{ fontSize: '0.75rem' }}></i>
+                  </button>
+                )}
                 <button
-                  className="btn btn-success btn-sm d-none d-md-inline-flex"
-                  onClick={handleOpenExportModal}
-                  title="Xuất Excel"
+                  className="btn btn-primary btn-sm d-flex align-items-center justify-content-center"
+                  onClick={handleNew}
+                  title="Thêm mới"
+                  style={{ width: '24px', height: '24px', padding: 0 }}
                 >
-                  <i className="fas fa-file-excel"></i>
-                  <span className="ms-1">Xuất Excel</span>
+                  <i className="fas fa-plus" style={{ fontSize: '0.75rem' }}></i>
                 </button>
-              )}
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={handleNew}
-                title="Thêm mới"
-              >
-                <i className="fas fa-plus"></i>
-              </button>
-              {userPermissions.canEdit && (
+                {userPermissions.canEdit && (
+                  <button
+                    className="btn btn-success btn-sm d-flex align-items-center justify-content-center"
+                    onClick={handleEdit}
+                    title="Sửa"
+                    style={{ width: '24px', height: '24px', padding: 0 }}
+                  >
+                    <i className="fas fa-edit" style={{ fontSize: '0.75rem' }}></i>
+                  </button>
+                )}
+                {userPermissions.canDelete && (
+                  <button
+                    className="btn btn-danger btn-sm d-flex align-items-center justify-content-center"
+                    onClick={handleDelete}
+                    title="Xóa"
+                    style={{ width: '24px', height: '24px', padding: 0 }}
+                  >
+                    <i className="fas fa-trash" style={{ fontSize: '0.75rem' }}></i>
+                  </button>
+                )}
                 <button
-                  className="btn btn-success btn-sm"
-                  onClick={handleEdit}
-                  title="Sửa"
+                  className="btn btn-white btn-sm border d-flex align-items-center justify-content-center"
+                  onClick={() => loadData()}
+                  title="Tải lại dữ liệu"
+                  style={{ width: '24px', height: '24px', padding: 0, backgroundColor: '#fff' }}
                 >
-                  <i className="fas fa-edit"></i>
+                  <i className="fas fa-sync-alt" style={{ fontSize: '0.75rem', color: '#1a1d20' }}></i>
                 </button>
-              )}
-              {userPermissions.canDelete && (
-                <button
-                  className="btn btn-danger btn-sm"
-                  onClick={handleDelete}
-                  title="Xóa"
-                >
-                  <i className="fas fa-trash"></i>
-                </button>
-              )}
+              </div>
             </div>
           </div>
 
@@ -1683,22 +1772,20 @@ export default function DamageReportsPage() {
                   <option value="100">100</option>
                 </select>
               </div>
-              <div className="btn-group" role="group">
+              <div className="btn-group btn-group-sm ms-1">
                 <button
                   type="button"
-                  className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-outline-primary'}`}
+                  className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary shadow-sm' : 'btn-white border'}`}
                   onClick={() => setViewMode('table')}
                   title="Xem dạng bảng"
-                  style={{ padding: '0.25rem 0.4rem' }}
                 >
-                  <i className="fas fa-table"></i>
+                  <i className="fas fa-list"></i>
                 </button>
                 <button
                   type="button"
-                  className={`btn btn-sm ${viewMode === 'card' ? 'btn-primary' : 'btn-outline-primary'}`}
+                  className={`btn btn-sm ${viewMode === 'card' ? 'btn-primary shadow-sm' : 'btn-white border'}`}
                   onClick={() => setViewMode('card')}
-                  title="Xem dạng card"
-                  style={{ padding: '0.25rem 0.4rem' }}
+                  title="Xem dạng thẻ"
                 >
                   <i className="fas fa-th-large"></i>
                 </button>
@@ -1706,7 +1793,7 @@ export default function DamageReportsPage() {
             </div>
             <div style={{ flexShrink: 1, minWidth: 0 }}>
               <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', color: '#6c757d' }}>
-                Hiển thị {startIndex + 1}-{Math.min(endIndex, reports.length)} của {reports.length} báo cáo
+                Hiển thị {startIndex + 1}-{Math.min(endIndex, reports.length)} của {reports.length}
               </span>
             </div>
           </div>
@@ -1732,7 +1819,7 @@ export default function DamageReportsPage() {
                 style={{
                   overflowX: 'scroll',
                   width: '100%',
-                  minHeight: '400px',
+                  minHeight: '500px',
                   maxWidth: '100%',
                   WebkitOverflowScrolling: 'touch',
                   position: 'relative',
@@ -1740,9 +1827,9 @@ export default function DamageReportsPage() {
                   touchAction: 'pan-x',
                 }}
               >
-                <table className="table table-bordered table-hover align-middle" style={{ marginBottom: 0, minWidth: '1200px' }}>
-                  <thead>
-                    <tr>
+                <table className="table table-bordered table-hover table-striped align-middle" style={{ marginBottom: 0, minWidth: '1200px' }}>
+                  <thead className="table-dark dashboard-table-header" style={{ backgroundColor: '#2c3e50', color: '#ffffff' }}>
+                    <tr style={{ fontWeight: '600', borderBottom: '2px solid #34495e', color: '#ffffff', fontSize: '0.8rem' }}>
                       <th style={{ width: '60px' }}>
                         <div className="d-flex align-items-center gap-1">
                           <input
@@ -1792,6 +1879,7 @@ export default function DamageReportsPage() {
                           style={{
                             cursor: report.id && selectedIds.includes(report.id) ? 'pointer' : 'default',
                             verticalAlign: 'middle',
+                            fontSize: '0.8rem'
                           }}
                         >
                           <td>
@@ -1817,14 +1905,14 @@ export default function DamageReportsPage() {
                           {/* <td>
                         <span className="badge bg-light text-dark border">{report.id}</span>
                       </td> */}
-                          <td>{report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}</td>
+                           <td>{report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}</td>
                           <td>
                             {report.displayLocation || 'Không xác định'}
                             {report.isOverdue && (
                               <i className="fas fa-exclamation-triangle text-danger ms-1" title="Quá hạn"></i>
                             )}
                           </td>
-                          <td style={{ padding: '0.5rem 0.25rem' }}>
+                          <td>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
                               <select
                                 className="form-control form-control-sm damage-report-status-select"
@@ -1833,16 +1921,19 @@ export default function DamageReportsPage() {
                                 disabled={!canUpdateStatusForReport(report)}
                                 style={{
                                   width: 'auto',
-                                  minWidth: '80px',
+                                  minWidth: '85px',
                                   maxWidth: '100px',
-                                  fontSize: '0.7rem',
-                                  fontWeight: '500',
-                                  padding: '0.125rem 0.375rem',
-                                  height: '1.75rem',
-                                  lineHeight: '1.25',
-                                  borderWidth: '1.5px',
-                                  borderRadius: '4px',
+                                  fontSize: '0.65rem',
+                                  fontWeight: '600',
+                                  padding: '0.1rem 0.4rem',
+                                  height: '1.4rem',
+                                  lineHeight: '1.2',
+                                  border: 'none',
+                                  borderRadius: '20px',
                                   display: 'inline-block',
+                                  textAlign: 'center',
+                                  appearance: 'none',
+                                  WebkitAppearance: 'none',
                                   ...getStatusStyle(report.status)
                                 }}
                                 onClick={(e) => e.stopPropagation()}
@@ -1855,7 +1946,7 @@ export default function DamageReportsPage() {
                               </select>
                             </div>
                           </td>
-                          <td style={{ padding: '0.5rem 0.25rem' }}>
+                          <td>
                             <select
                               className="form-control form-control-sm damage-report-priority-select"
                               value={report.priority}
@@ -1863,16 +1954,19 @@ export default function DamageReportsPage() {
                               disabled={!userPermissions.canEdit || report.status === DamageReportStatus.Completed}
                               style={{
                                 width: 'auto',
-                                minWidth: '80px',
-                                maxWidth: '100px',
-                                fontSize: '0.7rem',
-                                fontWeight: '500',
-                                padding: '0.125rem 0.375rem',
-                                height: '1.75rem',
-                                lineHeight: '1.25',
-                                borderWidth: '1.5px',
-                                borderRadius: '4px',
+                                minWidth: '75px',
+                                maxWidth: '90px',
+                                fontSize: '0.65rem',
+                                fontWeight: '600',
+                                padding: '0.1rem 0.4rem',
+                                height: '1.4rem',
+                                lineHeight: '1.2',
+                                border: 'none',
+                                borderRadius: '20px',
                                 display: 'inline-block',
+                                textAlign: 'center',
+                                appearance: 'none',
+                                WebkitAppearance: 'none',
                                 ...getPriorityStyle(report.priority)
                               }}
                               onClick={(e) => e.stopPropagation()}
@@ -1910,7 +2004,7 @@ export default function DamageReportsPage() {
 
           {/* Card View */}
           {viewMode === 'card' && (
-            <div className="row g-3">
+            <div className="row g-3" style={{ minHeight: '600px' }}>
               {currentReports.length === 0 ? (
                 <div className="col-12 text-center py-5">
                   <span className="text-muted">Không có dữ liệu</span>
@@ -1936,8 +2030,9 @@ export default function DamageReportsPage() {
                       <div
                         className="card-header p-3"
                         style={{
-                          backgroundColor: `${getPriorityStyle(report.priority).backgroundColor}22` || '#f8f9fa',
+                          backgroundColor: `${getStatusStyle(report.status).backgroundColor}22` || '#f8f9fa',
                           borderBottom: '1px solid rgba(0,0,0,0.05)',
+                          borderLeft: `5px solid ${getStatusStyle(report.status).backgroundColor}`,
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'flex-start',
@@ -2021,13 +2116,16 @@ export default function DamageReportsPage() {
                               style={{
                                 width: '100%',
                                 fontSize: '0.75rem',
-                                fontWeight: '500',
-                                padding: '0.25rem 0.5rem',
-                                height: '2rem',
-                                lineHeight: '1.25',
-                                borderWidth: '1.5px',
-                                borderRadius: '6px',
+                                fontWeight: '600',
+                                padding: '0.1rem 0.5rem',
+                                height: '1.8rem',
+                                lineHeight: '1.2',
+                                border: 'none',
+                                borderRadius: '20px',
                                 cursor: 'pointer',
+                                textAlign: 'center',
+                                appearance: 'none',
+                                WebkitAppearance: 'none',
                                 ...getStatusStyle(report.status)
                               }}
                               onClick={(e) => e.stopPropagation()}
@@ -2051,13 +2149,16 @@ export default function DamageReportsPage() {
                               style={{
                                 width: '100%',
                                 fontSize: '0.75rem',
-                                fontWeight: '500',
-                                padding: '0.25rem 0.5rem',
-                                height: '2rem',
-                                lineHeight: '1.25',
-                                borderWidth: '1.5px',
-                                borderRadius: '6px',
+                                fontWeight: '600',
+                                padding: '0.1rem 0.5rem',
+                                height: '1.8rem',
+                                lineHeight: '1.2',
+                                border: 'none',
+                                borderRadius: '20px',
                                 cursor: 'pointer',
+                                textAlign: 'center',
+                                appearance: 'none',
+                                WebkitAppearance: 'none',
                                 ...getPriorityStyle(report.priority)
                               }}
                             >
@@ -2213,17 +2314,28 @@ export default function DamageReportsPage() {
             </div>
           )}
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <nav className="mt-3">
-              <ul className="pagination justify-content-center">
+        </div>
+        {/* Pagination Sticky Footer */}
+        {totalPages > 1 && (
+          <div 
+            className="card-footer bg-white border-top sticky-bottom py-3 shadow-lg" 
+            style={{ 
+              zIndex: 10, 
+              borderBottomLeftRadius: '12px', 
+              borderBottomRightRadius: '12px',
+              marginTop: '-1px'
+            }}
+          >
+            <nav>
+              <ul className="pagination justify-content-center mb-0">
                 <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
                   <button
-                    className="page-link"
+                    className="page-link shadow-none border-0"
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage === 1}
                     title="Trang trước"
                     aria-label="Trang trước"
+                    style={{ borderRadius: '8px', margin: '0 2px' }}
                   >
                     <i className="fas fa-angle-left"></i>
                   </button>
@@ -2237,8 +2349,14 @@ export default function DamageReportsPage() {
                     return (
                       <li key={page} className={`page-item ${currentPage === page ? 'active' : ''}`}>
                         <button
-                          className="page-link"
+                          className="page-link shadow-sm border-0"
                           onClick={() => handlePageChange(page)}
+                          style={{ 
+                            borderRadius: '8px', 
+                            margin: '0 2px',
+                            fontWeight: currentPage === page ? '700' : '500',
+                            backgroundColor: currentPage === page ? undefined : '#f8f9fa'
+                          }}
                         >
                           {page}
                         </button>
@@ -2247,7 +2365,7 @@ export default function DamageReportsPage() {
                   } else if (page === currentPage - 3 || page === currentPage + 3) {
                     return (
                       <li key={page} className="page-item disabled">
-                        <span className="page-link">...</span>
+                        <span className="page-link bg-transparent border-0">...</span>
                       </li>
                     );
                   }
@@ -2255,19 +2373,20 @@ export default function DamageReportsPage() {
                 })}
                 <li className={`page-item ${currentPage === totalPages ? 'disabled' : ''}`}>
                   <button
-                    className="page-link"
+                    className="page-link shadow-none border-0"
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
                     title="Trang sau"
                     aria-label="Trang sau"
+                    style={{ borderRadius: '8px', margin: '0 2px' }}
                   >
                     <i className="fas fa-angle-right"></i>
                   </button>
                 </li>
               </ul>
             </nav>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Modal: Add/Edit Damage Report */}

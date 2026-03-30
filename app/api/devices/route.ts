@@ -15,13 +15,30 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const categoryId = parseInt(searchParams.get('cateId') || '0');
+    const departmentId = parseInt(searchParams.get('departmentId') || '0');
+    const status = parseInt(searchParams.get('status') || '0');
+    const search = searchParams.get('search') || '';
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const sortField = searchParams.get('sortField') || 'name';
+    const sortOrder = (searchParams.get('sortOrder') || 'asc') as 'asc' | 'desc';
 
     const deviceService = new DeviceService();
-    const devices = await deviceService.getDeviceByCategory(categoryId);
+    const result = await deviceService.getPaginated({
+      page,
+      limit,
+      categoryId,
+      departmentId,
+      status,
+      search,
+      sortField,
+      sortOrder
+    });
 
     return NextResponse.json({
       status: true,
-      data: devices
+      data: result.devices,
+      total: result.total
     });
   } catch (error: any) {
     console.error('Get devices error:', error);

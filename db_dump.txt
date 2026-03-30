@@ -1,0 +1,50 @@
+Report 47: {
+  "ID": 47,
+  "DeviceID": null,
+  "DamageLocation": null,
+  "ReporterID": 3,
+  "ReportingDepartmentID": 12,
+  "HandlerID": 6,
+  "AssignedDate": null,
+  "ReportDate": "2026-03-09T17:00:00.000Z",
+  "HandlingDate": "2026-03-16T17:00:00.000Z",
+  "CompletedDate": null,
+  "EstimatedCompletionDate": null,
+  "DamageContent": "Bảo trì máy lạnh định kỳ",
+  "Images": null,
+  "Status": "3",
+  "Priority": "2",
+  "Notes": null,
+  "HandlerNotes": null,
+  "RejectionReason": null,
+  "CreatedBy": "159c2606-abc5-4006-9633-6926396c181b",
+  "UpdatedBy": "159c2606-abc5-4006-9633-6926396c181b",
+  "CreatedAt": "2026-03-16T17:59:45.311Z",
+  "UpdatedAt": "2026-03-17T03:09:04.194Z",
+  "MaintenanceBatchId": "batch-2025-11-18-1763430857529"
+}
+Events: [
+  {
+    "ID": 2083,
+    "Title": "Bảo trì định kỳ máy lạnh",
+    "DeviceID": 355,
+    "EventTypeID": 1,
+    "Description": "Vệ sinh, kiểm tra vận hành",
+    "StartDate": "2025-11-18T17:00:00.000Z",
+    "EndDate": "2025-11-18T17:00:00.000Z",
+    "StaffID": 6,
+    "Notes": "Đã bảo trì xong",
+    "Status": "completed",
+    "EventDate": "2025-11-19T00:00:00.000Z",
+    "RelatedReportID": null,
+    "Metadata": {
+      "maintenanceType": "outsource",
+      "maintenanceBatchId": "batch-2025-11-18-1763430857529",
+      "maintenanceProvider": "Daikin Cần Thơ"
+    },
+    "CreatedBy": "159c2606-abc5-4006-9633-6926396c181b",
+    "CreatedAt": "2025-11-19T09:07:32.921Z",
+    "UpdatedBy": "159c2606-abc5-4006-9633-6926396c181b",
+    "UpdatedAt": "2025-11-19T09:07:32.921Z"
+  }
+]

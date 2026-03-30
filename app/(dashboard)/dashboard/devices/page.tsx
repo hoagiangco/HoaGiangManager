@@ -35,10 +35,11 @@ function DevicesPageContent() {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalItems, setTotalItems] = useState(0);
   
   // Sort state
   const [sortField, setSortField] = useState<string>('name');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   
   // Editor state
   const [showHtmlSource, setShowHtmlSource] = useState(false);
@@ -203,106 +204,54 @@ function DevicesPageContent() {
     loadData();
   }, []);
 
+  // Fetch data when filters or pagination change
   useEffect(() => {
     loadData();
-    setCurrentPage(1); // Reset to first page when filters change
-  }, [selectedCategory]);
+    // We don't reset currentPage here because we want to be able to navigate pages
+  }, [selectedCategory, selectedDepartment, selectedStatus, currentPage, itemsPerPage, sortField, sortOrder]);
 
-  // Apply filters locally - no API call
-  // Separate effect for department and status (immediate)
+  // Handle search with debounce
   useEffect(() => {
-    let filteredDevices = [...allDevices];
-    
-    // Filter by department
-    if (selectedDepartment > 0) {
-      filteredDevices = filteredDevices.filter((d: DeviceVM) => d.departmentId === selectedDepartment);
-    }
-    
-    // Filter by status
-    if (selectedStatus > 0) {
-      filteredDevices = filteredDevices.filter((d: DeviceVM) => d.status === selectedStatus);
-    }
-    
-    // Apply search filter if exists
-    if (searchKeyword.trim()) {
-      const keyword = searchKeyword.toLowerCase().trim();
-      filteredDevices = filteredDevices.filter((d: DeviceVM) => 
-        d.name?.toLowerCase().includes(keyword) ||
-        d.serial?.toLowerCase().includes(keyword) ||
-        d.description?.toLowerCase().includes(keyword) ||
-        d.deviceCategoryName?.toLowerCase().includes(keyword) ||
-        d.departmentName?.toLowerCase().includes(keyword)
-      );
-    }
-    
-    setDevices(filteredDevices);
-    setCurrentPage(1);
-  }, [allDevices, selectedDepartment, selectedStatus]);
-
-  // Debounce search to avoid filtering on every keystroke
-  useEffect(() => {
-    if (!searchKeyword.trim()) {
-      // If search is cleared, apply filters immediately
-      let filteredDevices = [...allDevices];
-      
-      if (selectedDepartment > 0) {
-        filteredDevices = filteredDevices.filter((d: DeviceVM) => d.departmentId === selectedDepartment);
-      }
-      
-      if (selectedStatus > 0) {
-        filteredDevices = filteredDevices.filter((d: DeviceVM) => d.status === selectedStatus);
-      }
-      
-      setDevices(filteredDevices);
-      setCurrentPage(1);
-      return;
-    }
-
     const timer = setTimeout(() => {
-      let filteredDevices = [...allDevices];
-      
-      // Apply other filters first
-      if (selectedDepartment > 0) {
-        filteredDevices = filteredDevices.filter((d: DeviceVM) => d.departmentId === selectedDepartment);
+      if (currentPage !== 1) {
+        setCurrentPage(1);
+      } else {
+        loadData();
       }
-      
-      if (selectedStatus > 0) {
-        filteredDevices = filteredDevices.filter((d: DeviceVM) => d.status === selectedStatus);
-      }
-      
-      // Then apply search
-      const keyword = searchKeyword.toLowerCase().trim();
-      filteredDevices = filteredDevices.filter((d: DeviceVM) => 
-        d.name?.toLowerCase().includes(keyword) ||
-        d.serial?.toLowerCase().includes(keyword) ||
-        d.description?.toLowerCase().includes(keyword) ||
-        d.deviceCategoryName?.toLowerCase().includes(keyword) ||
-        d.departmentName?.toLowerCase().includes(keyword)
-      );
-      
-      setDevices(filteredDevices);
-      setCurrentPage(1);
-    }, 300); // Wait 300ms after user stops typing
-
+    }, 500);
     return () => clearTimeout(timer);
-  }, [searchKeyword, allDevices, selectedDepartment, selectedStatus]);
+  }, [searchKeyword]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/devices?cateId=${selectedCategory}`);
+      const params = new URLSearchParams({
+        cateId: selectedCategory.toString(),
+        departmentId: selectedDepartment.toString(),
+        status: selectedStatus.toString(),
+        search: searchKeyword,
+        page: currentPage.toString(),
+        limit: itemsPerPage.toString(),
+        sortField: sortField,
+        sortOrder: sortOrder
+      });
+      
+      const response = await api.get(`/devices?${params.toString()}`);
       if (response.data.status) {
-        // Store all devices from API
-        setAllDevices(response.data.data || []);
+        setDevices(response.data.data || []);
+        setAllDevices(response.data.data || []); // For compatibility with existing code
+        setTotalItems(response.data.total || 0);
       } else {
         toast.error(response.data.error || 'Lỗi khi tải dữ liệu');
-        setAllDevices([]);
+        setDevices([]);
+        setTotalItems(0);
       }
     } catch (error: any) {
       console.error('Load devices error:', error);
       const errorMessage = error.response?.data?.error || error.message || 'Lỗi khi tải dữ liệu';
       toast.error(errorMessage);
-      setAllDevices([]);
+      setDevices([]);
+      setTotalItems(0);
     } finally {
       setLoading(false);
     }
@@ -659,85 +608,57 @@ function DevicesPageContent() {
   };
 
   const getStatusBadge = (status: DeviceStatus) => {
-    const statusMap = {
-      [DeviceStatus.DangSuDung]: { label: 'Đang sử dụng', class: 'badge bg-success' },
-      [DeviceStatus.DangSuaChua]: { label: 'Đang sửa chữa', class: 'badge bg-warning' },
-      [DeviceStatus.HuHong]: { label: 'Hư hỏng không dùng được', class: 'badge bg-danger' },
-      [DeviceStatus.DaThanhLy]: { label: 'Đã thanh lý', class: 'badge bg-secondary' },
+    const statusMap: Record<DeviceStatus, { label: string; color: string; bgColor: string }> = {
+      [DeviceStatus.DangSuDung]: { label: 'Đang sử dụng', color: '#ffffff', bgColor: '#198754' },
+      [DeviceStatus.DangSuaChua]: { label: 'Đang sửa chữa', color: '#212529', bgColor: '#ffc107' },
+      [DeviceStatus.HuHong]: { label: 'Hư hỏng', color: '#ffffff', bgColor: '#dc3545' },
+      [DeviceStatus.DaThanhLy]: { label: 'Đã thanh lý', color: '#ffffff', bgColor: '#6c757d' },
     };
 
-    const statusInfo = statusMap[status] || { label: 'Không xác định', class: 'badge bg-light text-dark' };
-    return <span className={`badge ${statusInfo.class}`} style={{ whiteSpace: 'nowrap' }}>{statusInfo.label}</span>;
+    const statusInfo = statusMap[status] || { label: 'N/A', color: '#ffffff', bgColor: '#6c757d' };
+    return (
+      <span 
+        style={{ 
+          display: 'inline-block',
+          padding: '2px 10px',
+          fontSize: '0.65rem',
+          fontWeight: '600',
+          borderRadius: '20px',
+          color: statusInfo.color,
+          backgroundColor: statusInfo.bgColor,
+          whiteSpace: 'nowrap',
+          textAlign: 'center',
+          minWidth: '70px'
+        }}
+      >
+        {statusInfo.label}
+      </span>
+    );
   };
 
-  // Sort and pagination calculations
-  const sortedDevices = [...devices].sort((a, b) => {
-    let aValue: any;
-    let bValue: any;
-
-    switch (sortField) {
-      case 'name':
-        aValue = a.name || '';
-        bValue = b.name || '';
-        break;
-      case 'serial':
-        aValue = a.serial || '';
-        bValue = b.serial || '';
-        break;
-      case 'warrantyDate':
-        aValue = a.warrantyDate ? new Date(a.warrantyDate).getTime() : 0;
-        bValue = b.warrantyDate ? new Date(b.warrantyDate).getTime() : 0;
-        break;
-      case 'useDate':
-        aValue = a.useDate ? new Date(a.useDate).getTime() : 0;
-        bValue = b.useDate ? new Date(b.useDate).getTime() : 0;
-        break;
-      case 'category':
-        aValue = a.deviceCategoryName || '';
-        bValue = b.deviceCategoryName || '';
-        break;
-      case 'department':
-        aValue = a.departmentName || '';
-        bValue = b.departmentName || '';
-        break;
-      case 'status':
-        aValue = a.status || 0;
-        bValue = b.status || 0;
-        break;
-      default:
-        aValue = a.name || '';
-        bValue = b.name || '';
-    }
-
-    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  const totalPages = Math.ceil(sortedDevices.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentDevices = sortedDevices.slice(startIndex, endIndex);
+  // Server-side pagination and sorting: devices are already sorted and sliced by the API
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const currentDevices = devices;
 
   const handleSort = (field: string) => {
     if (sortField === field) {
       // Toggle direction if same field
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
       // New field, default to ascending
       setSortField(field);
-      setSortDirection('asc');
+      setSortOrder('asc');
     }
     setCurrentPage(1); // Reset to first page when sorting
   };
 
   const getSortIcon = (field: string) => {
     if (sortField !== field) {
-      return <i className="fas fa-sort text-muted" style={{ fontSize: '0.8rem' }}></i>;
+      return <i className="fas fa-sort" style={{ fontSize: '0.8rem', opacity: 0.5, color: '#ffffff' }}></i>;
     }
-    return sortDirection === 'asc' 
-      ? <i className="fas fa-sort-up text-primary"></i>
-      : <i className="fas fa-sort-down text-primary"></i>;
+    return sortOrder === 'asc' 
+      ? <i className="fas fa-sort-up text-info"></i>
+      : <i className="fas fa-sort-down text-info"></i>;
   };
 
   const getSortFieldLabel = (field: string) => {
@@ -756,6 +677,9 @@ function DevicesPageContent() {
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
     setSelectedIds([]); // Clear selection when changing page
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handleItemsPerPageChange = (items: number) => {
@@ -781,7 +705,7 @@ function DevicesPageContent() {
   // Reset sort when filters change
   useEffect(() => {
     setSortField('name');
-    setSortDirection('asc');
+    setSortOrder('asc');
   }, [selectedCategory]);
 
   // Handle table scroll for visual indicators
@@ -824,8 +748,44 @@ function DevicesPageContent() {
     return <div className="text-center">Đang tải...</div>;
   }
 
+  const headerStyle = `
+    .dashboard-table-header th {
+      background-color: #2c3e50 !important;
+      color: #ffffff !important;
+      border-color: #34495e !important;
+      transition: background-color 0.2s;
+    }
+    .dashboard-table-header th:hover {
+      background-color: #23313f !important;
+      color: #ffffff !important;
+    }
+    .dashboard-table-header th .text-info {
+      color: #0dcaf0 !important;
+    }
+    .dashboard-table-header th .fas {
+      color: rgba(255, 255, 255, 0.7) !important;
+    }
+    .dashboard-table-header th .text-info.fas {
+      color: #0dcaf0 !important;
+      opacity: 1 !important;
+    }
+    .table-scroll-hint {
+      display: block;
+    }
+    @media (min-width: 1240px) {
+      .table-scroll-hint {
+        display: none !important;
+      }
+    }
+    .table td, .table th {
+      padding: 0.3rem 0.4rem !important;
+      vertical-align: middle !important;
+    }
+  `;
+
   return (
     <div className="container-fluid" style={{ marginLeft: 0, marginRight: 0, paddingLeft: 0, paddingRight: 0 }}>
+      <style>{headerStyle}</style>
       <div className="card">
         <div className="card-header">
           <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
@@ -875,12 +835,12 @@ function DevicesPageContent() {
                 <i className="fas fa-trash"></i>
               </button>
               <button 
-                className="btn btn-dark btn-sm" 
+                className="btn btn-white btn-sm border ms-1" 
                 onClick={loadData}
-                title="Tải lại"
-                aria-label="Tải lại"
+                title="Tải lại dữ liệu"
+                id="reload-devices-btn"
               >
-                <i className="fas fa-circle-notch"></i>
+                <i className="fas fa-sync-alt"></i>
               </button>
             </div>
           </div>
@@ -992,13 +952,13 @@ function DevicesPageContent() {
             </div>
             <div style={{ flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               <span style={{ fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
-                Hiển thị {sortedDevices.length > 0 ? startIndex + 1 : 0}-{Math.min(endIndex, sortedDevices.length)} của {sortedDevices.length} thiết bị
+                Hiển thị {totalItems > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}-{Math.min(currentPage * itemsPerPage, totalItems)} của {totalItems} thiết bị
                 {(selectedCategory > 0 || selectedDepartment > 0 || selectedStatus > 0 || searchKeyword.trim()) && (
                   <span className="text-muted"> (đã lọc)</span>
                 )}
                 {sortField && (
                   <span className="text-muted ms-2 d-none d-lg-inline">
-                    <i className="fas fa-sort"></i> Sắp xếp: {getSortFieldLabel(sortField)} ({sortDirection === 'asc' ? 'Tăng dần' : 'Giảm dần'})
+                    <i className="fas fa-sort"></i> Sắp xếp: {getSortFieldLabel(sortField)} ({sortOrder === 'asc' ? 'Tăng dần' : 'Giảm dần'})
                   </span>
                 )}
               </span>
@@ -1007,8 +967,9 @@ function DevicesPageContent() {
         </div>
         <div className="card-body p-0 p-md-3" style={{ padding: 0 }}>
           {/* Scroll hint for mobile */}
-          <div className="table-scroll-hint d-block d-sm-none text-center text-muted" style={{ fontSize: '0.75rem', padding: '0.25rem 0', marginBottom: '0.5rem' }}>
-            ← Cuộn để xem thêm →
+
+          <div className="table-scroll-hint mb-1 text-center" style={{ fontSize: '0.8rem', color: '#6c757d' }}>
+            <i className="fas fa-arrows-alt-h me-1"></i> Cuộn ngang để xem thêm
           </div>
           <div 
             className="table-responsive" 
@@ -1022,7 +983,7 @@ function DevicesPageContent() {
               display: 'block',
               scrollBehavior: 'smooth',
               touchAction: 'pan-x',
-              minHeight: '0',
+              minHeight: '600px',
               maxWidth: '100%'
             }}
           >
@@ -1036,8 +997,8 @@ function DevicesPageContent() {
                 minWidth: 'max-content'
               }}
             >
-              <thead>
-                <tr>
+              <thead className="table-dark dashboard-table-header" style={{ backgroundColor: '#2c3e50' }}>
+                <tr style={{ fontWeight: '600', color: '#ffffff', fontSize: '0.8rem' }}>
                   <th style={{ width: '50px' }}>
                     <input
                       type="checkbox"
@@ -1119,7 +1080,7 @@ function DevicesPageContent() {
                   </tr>
                 ) : (
                   currentDevices.map((device) => (
-                    <tr key={device.id}>
+                    <tr key={device.id} style={{ fontSize: '0.8rem', verticalAlign: 'middle' }}>
                       <td>
                         <input
                           type="checkbox"
@@ -1149,17 +1110,28 @@ function DevicesPageContent() {
             </table>
           </div>
           
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <nav aria-label="Page navigation" className="mt-3">
-              <ul className="pagination justify-content-center">
+        </div>
+        {/* Pagination Sticky Footer */}
+        {totalPages > 1 && (
+          <div 
+            className="card-footer bg-white border-top sticky-bottom py-3 shadow-lg" 
+            style={{ 
+              zIndex: 10, 
+              borderBottomLeftRadius: '12px', 
+              borderBottomRightRadius: '12px',
+              marginTop: '-1px'
+            }}
+          >
+            <nav aria-label="Page navigation">
+              <ul className="pagination justify-content-center mb-0">
                 <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
                   <button
-                    className="page-link"
+                    className="page-link shadow-none border-0"
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage === 1}
                     title="Trang trước"
                     aria-label="Trang trước"
+                    style={{ borderRadius: '8px', margin: '0 2px' }}
                   >
                     <i className="fas fa-angle-left"></i>
                   </button>
@@ -1170,44 +1142,31 @@ function DevicesPageContent() {
                   const pages: number[] = [];
                   
                   if (totalPages <= 7) {
-                    // Show all pages if 7 or fewer
                     for (let i = 1; i <= totalPages; i++) {
                       pages.push(i);
                     }
                   } else {
-                    // Always show first page
                     pages.push(1);
-                    
-                    // Calculate pages to show around current
                     let startPage = Math.max(2, currentPage - 1);
                     let endPage = Math.min(totalPages - 1, currentPage + 1);
-                    
-                    // Adjust if near the beginning
                     if (currentPage <= 3) {
                       startPage = 2;
                       endPage = 4;
                     }
-                    
-                    // Adjust if near the end
                     if (currentPage >= totalPages - 2) {
                       startPage = totalPages - 4;
                       endPage = totalPages - 1;
                     }
-                    
-                    // Add middle pages (avoid duplicates)
                     for (let i = startPage; i <= endPage; i++) {
                       if (i > 1 && i < totalPages && !pages.includes(i)) {
                         pages.push(i);
                       }
                     }
-                    
-                    // Always show last page
                     if (!pages.includes(totalPages)) {
                       pages.push(totalPages);
                     }
                   }
                   
-                  // Sort and remove duplicates
                   const uniquePages = Array.from(new Set(pages)).sort((a, b) => a - b);
                   
                   return uniquePages.map((page, index) => {
@@ -1218,13 +1177,19 @@ function DevicesPageContent() {
                       <React.Fragment key={page}>
                         {showEllipsisBefore && (
                           <li className="page-item disabled">
-                            <span className="page-link">...</span>
+                            <span className="page-link bg-transparent border-0">...</span>
                           </li>
                         )}
                         <li className={`page-item ${currentPage === page ? 'active' : ''}`}>
                           <button
-                            className="page-link"
+                            className="page-link shadow-sm border-0"
                             onClick={() => handlePageChange(page)}
+                            style={{ 
+                              borderRadius: '8px', 
+                              margin: '0 2px',
+                              fontWeight: currentPage === page ? '700' : '500',
+                              backgroundColor: currentPage === page ? undefined : '#f8f9fa'
+                            }}
                           >
                             {page}
                           </button>
@@ -1236,19 +1201,20 @@ function DevicesPageContent() {
                 
                 <li className={`page-item ${currentPage === totalPages ? 'disabled' : ''}`}>
                   <button
-                    className="page-link"
+                    className="page-link shadow-none border-0"
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
                     title="Trang sau"
                     aria-label="Trang sau"
+                    style={{ borderRadius: '8px', margin: '0 2px' }}
                   >
                     <i className="fas fa-angle-right"></i>
                   </button>
                 </li>
               </ul>
             </nav>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Modal */}
