@@ -31,6 +31,26 @@ export async function PUT(
     }
 
     const damageReportService = new DamageReportService();
+    const report = await damageReportService.getById(id);
+
+    if (!report) {
+      return NextResponse.json(
+        { status: false, error: 'Báo cáo không tồn tại' },
+        { status: 404 }
+      );
+    }
+
+    if (!isAdmin) {
+      const staffService = new (await import('@/lib/services/staffService')).StaffService();
+      const staff = await staffService.getByUserId(user.userId);
+      if (!staff || report.handlerId !== staff.id) {
+        return NextResponse.json(
+          { status: false, error: 'Forbidden: Bạn chỉ được phép cập nhật ghi chú khi là người xử lý báo cáo này' },
+          { status: 403 }
+        );
+      }
+    }
+
     await damageReportService.updateHandlerNotes(id, handlerNotes || '', user.userId);
 
     return NextResponse.json({

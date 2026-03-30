@@ -433,6 +433,9 @@ export default function DamageReportsPage() {
             setCurrentUser(user);
             const permissions = getDamageReportPermissions(user?.roles || []);
             setUserPermissions(permissions);
+            if (!isAdmin(user?.roles)) {
+              setMyWorkFilter(true);
+            }
           }
         }
       } catch (e) {

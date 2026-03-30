@@ -114,7 +114,15 @@ export class DamageReportService {
     const params: any[] = [];
     let paramIndex = 1;
 
-    // View permission: Users can view all records. Filtering for "My Work" is handled at the UI level.
+    // View permission: If user is not admin, show reports where they are handler OR reporter
+    if (filters && !filters.isAdmin && filters.currentUserId) {
+      query += ` AND (
+        dr."HandlerID" IN (SELECT "ID" FROM "Staff" WHERE "UserId" = $${paramIndex}) OR
+        dr."ReporterID" IN (SELECT "ID" FROM "Staff" WHERE "UserId" = $${paramIndex})
+      )`;
+      params.push(filters.currentUserId);
+      paramIndex++;
+    }
 
     if (filters) {
       if (filters.status) {
@@ -185,6 +193,8 @@ export class DamageReportService {
     search?: string;
     sortField?: string;
     sortOrder?: 'asc' | 'desc';
+    isAdmin?: boolean;
+    currentUserId?: string;
   }): Promise<{ reports: DamageReportVM[]; total: number }> {
     const { 
       page = 1, 
@@ -197,12 +207,23 @@ export class DamageReportService {
       departmentId, 
       search, 
       sortField = 'reportDate', 
-      sortOrder = 'desc' 
+      sortOrder = 'desc',
+      isAdmin = false,
+      currentUserId
     } = filters;
     
     const offset = (page - 1) * limit;
     const params: any[] = [];
     let whereClause = 'WHERE 1=1';
+
+    // View permission: If user is not admin, show reports where they are handler OR reporter
+    if (!isAdmin && currentUserId) {
+      params.push(currentUserId);
+      whereClause += ` AND (
+        dr."HandlerID" IN (SELECT "ID" FROM "Staff" WHERE "UserId" = $${params.length}) OR
+        dr."ReporterID" IN (SELECT "ID" FROM "Staff" WHERE "UserId" = $${params.length})
+      )`;
+    }
 
     if (status) {
       params.push(status.toString());

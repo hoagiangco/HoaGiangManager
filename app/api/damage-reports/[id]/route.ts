@@ -20,6 +20,20 @@ export async function GET(
     const damageReportService = new DamageReportService();
     const report = await damageReportService.getById(id);
 
+    if (report) {
+      const isAdmin = user.roles && user.roles.includes('Admin');
+      if (!isAdmin) {
+        const staffService = new (await import('@/lib/services/staffService')).StaffService();
+        const staff = await staffService.getByUserId(user.userId);
+        if (!staff || (report.handlerId !== staff.id && report.reporterId !== staff.id)) {
+          return NextResponse.json(
+            { status: false, error: 'Forbidden: Bạn không có quyền xem báo cáo này' },
+            { status: 403 }
+          );
+        }
+      }
+    }
+
     return NextResponse.json({
       status: report !== null,
       data: report
