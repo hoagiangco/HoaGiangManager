@@ -2442,342 +2442,262 @@ export default function DamageReportsPage() {
 
       {/* Modal: Add/Edit Damage Report */}
       {showModal && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-lg modal-dialog-scrollable">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">{isEdit ? 'Sửa báo cáo' : 'Thêm báo cáo'}</h5>
-                <button type="button" className="btn-close" onClick={() => setShowModal(false)}></button>
+        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 1050 }}>
+          <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" style={{ maxWidth: '850px' }}>
+            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '16px' }}>
+              <div className="modal-header border-0 bg-light py-3 px-4" style={{ borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
+                <div className="d-flex align-items-center gap-3">
+                  <div className="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style={{ width: '36px', height: '36px' }}>
+                    <i className={`fas ${isEdit ? 'fa-edit' : 'fa-plus-circle'} fa-sm`}></i>
+                  </div>
+                  <h5 className="modal-title fw-bold mb-0" style={{ color: '#2c3e50', fontSize: '1.15rem' }}>
+                    {isEdit ? 'Cập nhật báo cáo' : 'Lập báo cáo mới'}
+                  </h5>
+                </div>
+                <button type="button" className="btn-close shadow-none" onClick={() => setShowModal(false)}></button>
               </div>
-              <div className="modal-body">
-                <div className="row g-3">
-                  <div className="col-12">
-                    <label className="form-label mb-1">Loại công việc <span className="text-danger">*</span></label>
-                    <div className="form-check">
-                      <input className="form-check-input" type="radio" name="deviceSelection" id="modalDeviceSelDevice" checked={formData.deviceSelection === 'device'} onChange={() => setFormData({ ...formData, deviceSelection: 'device', damageLocation: '', maintenanceBatchId: undefined })} />
-                      <label className="form-check-label" htmlFor="modalDeviceSelDevice">Chọn thiết bị</label>
-                    </div>
-                    <div className="form-check">
-                      <input className="form-check-input" type="radio" name="deviceSelection" id="modalDeviceSelOther" checked={formData.deviceSelection === 'other'} onChange={() => setFormData({ ...formData, deviceSelection: 'other', deviceId: undefined, maintenanceBatchId: undefined })} />
-                      <label className="form-check-label" htmlFor="modalDeviceSelOther">Khác (báo cáo tổng thể)</label>
-                    </div>
-                    <div className="form-check">
-                      <input
-                        className="form-check-input"
-                        type="radio"
-                        name="deviceSelection"
-                        id="modalDeviceSelMaintenance"
-                        checked={formData.deviceSelection === 'maintenance'}
-                        onChange={async () => {
-                          // Load batches when selecting maintenance
-                          await loadMaintenanceBatches();
-                          setFormData({ ...formData, deviceSelection: 'maintenance', deviceId: undefined, damageLocation: '' });
-                        }}
-                      />
-                      <label className="form-check-label" htmlFor="modalDeviceSelMaintenance">Bảo trì định kỳ</label>
+              
+              <div className="modal-body p-3 pt-1">
+                <form className="needs-validation">
+                  {/* Job Type Selector - Segmented Style */}
+                  <div className="mb-3">
+                    <label className="form-label fw-bold small text-uppercase text-muted mb-2" style={{ letterSpacing: '0.05rem', fontSize: '0.7rem' }}>
+                      <i className="fas fa-tasks me-1"></i>Loại công việc <span className="text-danger">*</span>
+                    </label>
+                    <div className="row g-2">
+                      {[
+                        { id: 'device', label: 'Theo thiết bị', icon: 'fa-microchip', color: '#0d6efd' },
+                        { id: 'other', label: 'Báo cáo chung', icon: 'fa-globe', color: '#6610f2' },
+                        { id: 'maintenance', label: 'Bảo trì định kỳ', icon: 'fa-calendar-check', color: '#20c997' }
+                      ].map((type) => (
+                        <div key={type.id} className="col-4">
+                          <div 
+                            className={`p-1 py-2 text-center rounded-3 border h-100 d-flex flex-column align-items-center justify-content-center transition-all ${formData.deviceSelection === type.id ? 'border-primary bg-primary bg-opacity-10 shadow-sm' : 'bg-white border-light-subtle'}`}
+                            style={{ cursor: 'pointer', transition: 'all 0.2s', border: formData.deviceSelection === type.id ? '2px solid !important' : '1px solid' }}
+                            onClick={() => {
+                              if (type.id === 'maintenance') {
+                                loadMaintenanceBatches();
+                                setFormData({ ...formData, deviceSelection: 'maintenance', deviceId: undefined, damageLocation: '' });
+                              } else if (type.id === 'device') {
+                                setFormData({ ...formData, deviceSelection: 'device', damageLocation: '', maintenanceBatchId: undefined });
+                              } else {
+                                setFormData({ ...formData, deviceSelection: 'other', deviceId: undefined, maintenanceBatchId: undefined });
+                              }
+                            }}
+                          >
+                            <i className={`fas ${type.icon} mb-1 fa-md`} style={{ color: formData.deviceSelection === type.id ? type.color : '#adb5bd' }}></i>
+                            <span className="small fw-bold" style={{ color: formData.deviceSelection === type.id ? '#212529' : '#6c757d', fontSize: '0.7rem' }}>{type.label}</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
-                  {formData.deviceSelection === 'device' ? (
-                    <div className="col-12">
-                      <div className="row g-3">
-                        <div className="col-12 col-md-6">
-                          <label className="form-label mb-1">Danh mục thiết bị</label>
+                  {/* Section 1: Device/Location Info */}
+                  <div className="bg-light bg-opacity-50 p-2 py-3 rounded-4 mb-3 border-start border-primary border-4">
+                    <h6 className="fw-bold mb-2 small text-primary" style={{ fontSize: '0.75rem' }}><i className="fas fa-info-circle me-1"></i>THÔNG TIN CƠ BẢN</h6>
+                    <div className="row g-2">
+                      {formData.deviceSelection === 'device' ? (
+                        <>
+                          <div className="col-md-6">
+                            <label className="form-label small fw-bold mb-1" style={{ fontSize: '0.75rem' }}>Danh mục thiết bị</label>
+                            <select
+                              className="form-select form-select-sm shadow-none"
+                              value={modalDeviceCategoryId}
+                              onChange={(e) => setModalDeviceCategoryId(Number(e.target.value) || 0)}
+                            >
+                              <option value={0}>Tất cả danh mục</option>
+                              {deviceCategories.map((cate) => (
+                                <option key={cate.id} value={cate.id}>{cate.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="col-md-6">
+                            <label className="form-label small fw-bold mb-1" style={{ fontSize: '0.75rem' }}>Thiết bị <span className="text-danger">*</span></label>
+                            <div ref={deviceDropdownRef} className="position-relative">
+                              <button
+                                type="button"
+                                className="form-select form-select-sm text-start d-flex justify-content-between align-items-center shadow-none"
+                                onClick={() => setIsDeviceDropdownOpen((prev) => !prev)}
+                              >
+                                <span className="text-truncate">
+                                  {formData.deviceId 
+                                    ? devices.find(d => d.id === formData.deviceId)?.name || '-- Tìm thiết bị --'
+                                    : '-- Tìm thiết bị --'}
+                                </span>
+                              </button>
+                              {isDeviceDropdownOpen && (
+                                <div className="border border-0 shadow mt-1 overflow-hidden" style={{ position: 'absolute', zIndex: 1080, backgroundColor: '#fff', width: '100%', borderRadius: '12px' }}>
+                                  <div className="p-2 bg-light"><input autoFocus type="text" className="form-control form-control-sm border-0 shadow-none" placeholder="Nhập tên, mã..." value={modalDeviceSearch} onChange={(e) => setModalDeviceSearch(e.target.value)} /></div>
+                                  <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                                    <button type="button" className="dropdown-item py-2" onClick={() => { setFormData({ ...formData, deviceId: undefined }); setIsDeviceDropdownOpen(false); }}>-- Bỏ chọn --</button>
+                                    {filteredModalDevices.map((d) => (
+                                      <button type="button" key={d.id} className={`dropdown-item py-2 ${formData.deviceId === d.id ? 'active' : ''}`} onClick={() => { setFormData({ ...formData, deviceId: d.id }); setIsDeviceDropdownOpen(false); }}>
+                                        <div className="fw-bold small">{d.name}</div>
+                                        <div className="small text-muted" style={{ fontSize: '0.65rem' }}>{d.serial || 'Không có serial'}</div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      ) : formData.deviceSelection === 'maintenance' ? (
+                        <div className="col-12">
+                          <label className="form-label small fw-bold mb-1" style={{ fontSize: '0.75rem' }}>Đợt bảo trì <span className="text-danger">*</span></label>
                           <select
-                            className="form-control"
-                            value={modalDeviceCategoryId}
-                            onChange={(e) => setModalDeviceCategoryId(Number(e.target.value) || 0)}
+                            className="form-select form-select-sm shadow-none"
+                            value={formData.maintenanceBatchId || ''}
+                            onChange={(e) => setFormData({ ...formData, maintenanceBatchId: e.target.value || undefined })}
+                            disabled={loadingBatches}
                           >
-                            <option value={0}>Tất cả danh mục</option>
-                            {deviceCategories.map((cate) => (
-                              <option key={cate.id} value={cate.id}>{cate.name}</option>
+                            <option value="">-- Chọn đợt bảo trì --</option>
+                            {maintenanceBatches.filter(b => !b.isCancelled).map((batch) => (
+                              <option key={batch.batchId} value={batch.batchId}>{batch.title}</option>
                             ))}
                           </select>
                         </div>
-                        <div className="col-12 col-md-6">
-                          <label className="form-label mb-1">Thiết bị <span className="text-danger">*</span></label>
-                          <div
-                            ref={deviceDropdownRef}
-                            className="position-relative"
-                          >
-                            <button
-                              type="button"
-                              className="form-control text-start d-flex justify-content-between align-items-center"
-                              onClick={() => setIsDeviceDropdownOpen((prev) => !prev)}
-                              style={{ cursor: 'pointer' }}
-                            >
-                              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {(() => {
-                                  if (formData.deviceId) {
-                                    const selected = devices.find((d) => d.id === formData.deviceId);
-                                    if (selected) {
-                                      return `${selected.name}${selected.serial ? ` (${selected.serial})` : ''}`;
-                                    }
-                                  }
-                                  return '-- Chọn thiết bị --';
-                                })()}
-                              </span>
-                              <i className={`fas fa-chevron-${isDeviceDropdownOpen ? 'up' : 'down'} ms-2 text-muted`} />
-                            </button>
-                            {isDeviceDropdownOpen && (
-                              <div
-                                className="border rounded shadow-sm mt-1"
-                                style={{
-                                  position: 'absolute',
-                                  zIndex: 1080,
-                                  backgroundColor: '#fff',
-                                  width: '100%',
-                                  maxHeight: '280px',
-                                  overflow: 'hidden',
-                                }}
-                              >
-                                <div className="p-2 border-bottom bg-light">
-                                  <input
-                                    autoFocus
-                                    type="text"
-                                    className="form-control form-control-sm"
-                                    placeholder="Nhập tên, mã hoặc serial..."
-                                    value={modalDeviceSearch}
-                                    onChange={(e) => setModalDeviceSearch(e.target.value)}
-                                    onClick={(e) => e.stopPropagation()}
-                                  />
-                                </div>
-                                <div
-                                  style={{
-                                    maxHeight: '220px',
-                                    overflowY: 'auto',
-                                  }}
-                                >
-                                  <button
-                                    type="button"
-                                    className={`dropdown-item text-start ${!formData.deviceId ? 'active' : ''}`}
-                                    onClick={() => {
-                                      setFormData({ ...formData, deviceId: undefined });
-                                      setIsDeviceDropdownOpen(false);
-                                    }}
-                                  >
-                                    -- Chưa chọn thiết bị --
-                                  </button>
-                                  {filteredModalDevices.length === 0 && (
-                                    <div className="px-3 py-2 text-muted small">
-                                      Không tìm thấy thiết bị phù hợp. Hãy đổi danh mục hoặc từ khóa tìm kiếm.
-                                    </div>
-                                  )}
-                                  {filteredModalDevices.map((d) => {
-                                    const isSelected = formData.deviceId === d.id;
-                                    return (
-                                      <button
-                                        type="button"
-                                        key={d.id}
-                                        className={`dropdown-item text-start ${isSelected ? 'active' : ''}`}
-                                        onClick={() => {
-                                          setFormData({ ...formData, deviceId: d.id });
-                                          setIsDeviceDropdownOpen(false);
-                                        }}
-                                      >
-                                        <div className="fw-semibold">{d.name}</div>
-                                        {(d.serial || d.deviceCategoryName) && (
-                                          <div className="small text-muted">
-                                            {[d.serial, d.deviceCategoryName].filter(Boolean).join(' • ')}
-                                          </div>
-                                        )}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
+                      ) : (
+                        <div className="col-12">
+                          <label className="form-label small fw-bold mb-1" style={{ fontSize: '0.75rem' }}>Vị trí/Mô tả chung <span className="text-danger">*</span></label>
+                          <input type="text" className="form-control form-control-sm shadow-none" value={formData.damageLocation || ''} onChange={(e) => setFormData({ ...formData, damageLocation: e.target.value })} placeholder="Ví dụ: Tường hành lang, Hệ thống điện phòng C..." />
+                        </div>
+                      )}
+
+                      <div className="col-md-6">
+                        <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.75rem' }}>Người báo cáo <span className="text-danger">*</span></label>
+                        <select className="form-select form-select-sm shadow-none" value={formData.reporterId} onChange={(e) => setFormData({ ...formData, reporterId: Number(e.target.value) })} disabled={currentUserStaffId !== null}>
+                          <option value={0}>-- Chọn người báo cáo --</option>
+                          {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                        <div className="small text-muted mt-0 px-1" style={{ fontSize: '0.65rem' }}>
+                          <i className="fas fa-building me-1"></i>Bộ phận: {(() => { const r = staff.find(s => s.id === formData.reporterId); const dept = departments.find(d => d.id === (r?.departmentId || 0)); return dept?.name || '-'; })()}
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.75rem' }}>Người xử lý</label>
+                        <select className="form-select form-select-sm shadow-none" value={formData.handlerId || 0} onChange={(e) => setFormData({ ...formData, handlerId: Number(e.target.value) || undefined })}>
+                          <option value={0}>-- Phân công xử lý --</option>
+                          {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                        <div className="small text-muted mt-0 px-1" style={{ fontSize: '0.65rem' }}>
+                          <i className="fas fa-tools me-1"></i>Bộ phận: {(() => { const r = staff.find(s => s.id === formData.handlerId); const dept = departments.find(d => d.id === (r?.departmentId || 0)); return dept?.name || '-'; })()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 2: Status & Time */}
+                  <div className="row g-2 mb-3">
+                    <div className="col-md-3">
+                      <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.65rem' }}>Ngày báo cáo</label>
+                      <DateInput value={formData.reportDate} onChange={(v) => setFormData({ ...formData, reportDate: v })} required />
+                    </div>
+                    <div className="col-md-3">
+                      <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.65rem' }}>Hoàn thành</label>
+                      <DateInput value={formData.completedDate} onChange={(v) => setFormData({ ...formData, completedDate: v })} />
+                    </div>
+                    <div className="col-md-3">
+                      <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.65rem' }}>Mức ưu tiên</label>
+                      <select className="form-select form-select-sm shadow-none" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number(e.target.value) as DamageReportPriority })}>
+                        <option value={DamageReportPriority.Low}>Thấp</option>
+                        <option value={DamageReportPriority.Normal}>Bình thường</option>
+                        <option value={DamageReportPriority.High}>Cao</option>
+                        <option value={DamageReportPriority.Urgent}>Khẩn cấp</option>
+                      </select>
+                    </div>
+                    <div className="col-md-3">
+                      <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.65rem' }}>Trạng thái</label>
+                      <select className="form-select form-select-sm shadow-none fw-bold" value={formData.status} onChange={(e) => setFormData({ ...formData, status: Number(e.target.value) as DamageReportStatus })}>
+                        <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
+                        <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
+                        <option value={DamageReportStatus.Completed}>Hoàn thành</option>
+                        <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
+                        <option value={DamageReportStatus.Rejected}>Từ chối</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Section 3: Content */}
+                  <div className="mb-3">
+                    <label className="form-label fw-bold mb-1" style={{ fontSize: '0.85rem' }}><i className="fas fa-edit me-1 text-primary"></i>Nội dung sự vụ <span className="text-danger">*</span></label>
+                    <textarea 
+                      className="form-control shadow-none" 
+                      rows={3} 
+                      style={{ borderRadius: '10px', resize: 'none', padding: '10px', fontSize: '0.85rem' }}
+                      value={formData.damageContent || ''} 
+                      onChange={(e) => setFormData({ ...formData, damageContent: e.target.value })}
+                      placeholder="Mô tả chi tiết tình trạng hư hỏng..."
+                    ></textarea>
+                  </div>
+
+                  {/* Section 4: Handler Notes */}
+                  <div className="mb-3">
+                    <label className="form-label fw-bold text-success mb-1" style={{ fontSize: '0.85rem' }}><i className="fas fa-comment-medical me-1"></i>Ghi chú của người xử lý</label>
+                    <textarea 
+                      className="form-control shadow-none bg-light bg-opacity-25" 
+                      rows={2} 
+                      style={{ borderRadius: '10px', resize: 'none', borderStyle: 'dashed', fontSize: '0.85rem' }}
+                      value={formData.handlerNotes || ''} 
+                      onChange={(e) => setFormData({ ...formData, handlerNotes: e.target.value })}
+                      placeholder="Nhập kết quả xử lý..."
+                    ></textarea>
+                  </div>
+
+                  {/* Section 5: Photos */}
+                  <div className="row g-2">
+                    <div className="col-md-6">
+                      <div className="card border-0 shadow-sm overflow-hidden h-100" style={{ borderRadius: '10px', backgroundColor: '#f8fbff' }}>
+                        <div className="p-2">
+                          <div className="d-flex justify-content-between align-items-center mb-1">
+                             <div className="fw-bold small text-primary" style={{ fontSize: '0.7rem' }}><i className="fas fa-camera-retro me-1"></i>ẢNH TRƯỚC</div>
+                             <button type="button" className="btn btn-primary btn-sm rounded-pill py-0 px-2" style={{ fontSize: '0.6rem' }} onClick={() => { setFileManagerMode('image'); setFileManagerTarget('images'); setShowFileManager(true); }}>
+                               Thêm
+                             </button>
+                          </div>
+                          <div className="d-flex flex-wrap gap-1" style={{ minHeight: '50px' }}>
+                            {formData.images?.map((img, idx) => (
+                              <div key={idx} className="position-relative" style={{ width: '60px', height: '45px' }}>
+                                <img src={img} className="rounded shadow-sm" alt="Before" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                <button type="button" className="btn-close position-absolute top-0 end-0 bg-white shadow-sm p-1 rounded-circle" style={{ width: '6px', height: '6px', margin: '-3px' }} onClick={() => setFormData({ ...formData, images: (formData.images || []).filter((_, i) => i !== idx) })} />
                               </div>
-                            )}
+                            ))}
+                            {(!formData.images || formData.images.length === 0) && <div className="d-flex align-items-center text-muted small italic opacity-50 p-2" style={{ fontSize: '0.65rem' }}>Chưa chọn ảnh...</div>}
                           </div>
                         </div>
                       </div>
                     </div>
-                  ) : formData.deviceSelection === 'maintenance' ? (
-                    <div className="col-12">
-                      <label className="form-label mb-1">Đợt bảo trì <span className="text-danger">*</span></label>
-                      <select
-                        className="form-control"
-                        value={formData.maintenanceBatchId || ''}
-                        onChange={(e) => setFormData({ ...formData, maintenanceBatchId: e.target.value || undefined })}
-                        disabled={loadingBatches}
-                      >
-                        <option value="">-- Chọn đợt bảo trì --</option>
-                        {maintenanceBatches.filter(b => !b.isCancelled).map((batch) => {
-                          const today = new Date();
-                          today.setHours(0, 0, 0, 0);
-                          const dueDate = batch.nextDueDate ? new Date(batch.nextDueDate) : null;
-                          if (dueDate) dueDate.setHours(0, 0, 0, 0);
-
-                          const isCurrentlySelected = formData.maintenanceBatchId === batch.batchId;
-                          const isDue = !dueDate || dueDate <= today || isCurrentlySelected;
-                          const diffTime = dueDate ? (dueDate.getTime() - today.getTime()) : 0;
-                          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-                          let dueText = '';
-                          if (dueDate) {
-                            if (diffDays === 0) dueText = ' (Đến hạn hôm nay)';
-                            else if (diffDays < 0) dueText = ` (Quá hạn ${Math.abs(diffDays)} ngày)`;
-                            else dueText = ` (Còn ${diffDays} ngày)`;
-                          }
-
-                          return (
-                            <option
-                              key={batch.batchId}
-                              value={batch.batchId}
-                              disabled={!isDue && !isCurrentlySelected}
-                              className={(!isDue && !isCurrentlySelected) ? 'text-muted' : ''}
-                            >
-                              {batch.title}{dueText}
-                            </option>
-                          );
-                        })}
-                      </select>
-                      {loadingBatches && <small className="text-sm text-info ms-2"><i className="fas fa-spinner fa-spin me-1"></i>Đang tải...</small>}
-                      <div className="form-text small text-muted mt-1">
-                        Lưu ý: Chỉ các đợt đã đến hạn mới có thể được chọn để lập báo cáo.
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="col-12">
-                      <label className="form-label">Vị trí/Mô tả công việc <span className="text-danger">*</span></label>
-                      <input type="text" className="form-control" value={formData.damageLocation} onChange={(e) => setFormData({ ...formData, damageLocation: e.target.value })} placeholder="Ví dụ: Hệ thống điện, Tường nhà..." />
-                    </div>
-                  )}
-
-                  <div className="col-12 col-md-6">
-                    <label className="form-label">Người báo cáo <span className="text-danger">*</span></label>
-                    <select
-                      className="form-control"
-                      value={formData.reporterId}
-                      onChange={(e) => setFormData({ ...formData, reporterId: Number(e.target.value) })}
-                      disabled={currentUserStaffId !== null}
-                    >
-                      <option value={0}>-- Chọn người báo cáo --</option>
-                      {staff.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                    <small className="text-muted">Phòng ban: {(() => { const r = staff.find(s => s.id === formData.reporterId); const dept = departments.find(d => d.id === (r?.departmentId || 0)); return dept?.name || '-'; })()}</small>
-                  </div>
-
-                  <div className="col-12 col-md-6">
-                    <label className="form-label">Người xử lý</label>
-                    <select className="form-control" value={formData.handlerId || 0} onChange={(e) => setFormData({ ...formData, handlerId: Number(e.target.value) || undefined })}>
-                      <option value={0}>-- Chưa phân công --</option>
-                      {staff.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="col-12 col-md-6">
-                    <label className="form-label">Ngày báo cáo <span className="text-danger">*</span></label>
-                    <DateInput
-                      value={formData.reportDate}
-                      onChange={(value) => setFormData({ ...formData, reportDate: value })}
-                      required
-                    />
-                  </div>
-
-                  <div className="col-12 col-md-6">
-                    <label className="form-label">Ngày hoàn thành</label>
-                    <DateInput
-                      value={formData.completedDate}
-                      onChange={(value) => setFormData({ ...formData, completedDate: value })}
-                    />
-                  </div>
-
-                  <div className="col-12 col-md-6">
-                    <label className="form-label">Ưu tiên</label>
-                    <select className="form-control" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number(e.target.value) as DamageReportPriority })}>
-                      <option value={DamageReportPriority.Low}>Thấp</option>
-                      <option value={DamageReportPriority.Normal}>Bình thường</option>
-                      <option value={DamageReportPriority.High}>Cao</option>
-                      <option value={DamageReportPriority.Urgent}>Khẩn cấp</option>
-                    </select>
-                  </div>
-
-                  <div className="col-12 col-md-6">
-                    <label className="form-label">Trạng thái</label>
-                    <select className="form-control" value={formData.status} onChange={(e) => setFormData({ ...formData, status: Number(e.target.value) as DamageReportStatus })}>
-                      <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
-                      <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
-                      <option value={DamageReportStatus.Completed}>Hoàn thành</option>
-                      <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
-                      <option value={DamageReportStatus.Rejected}>Từ chối</option>
-                    </select>
-                  </div>
-
-
-                  <div className="col-12">
-                    <label className="form-label">Nội dung <span className="text-danger">*</span></label>
-                    <textarea className="form-control" rows={3} value={formData.damageContent} onChange={(e) => setFormData({ ...formData, damageContent: e.target.value })}></textarea>
-                  </div>
-
-                  <div className="col-12">
-                    <label className="form-label">Ghi chú người xử lý</label>
-                    <textarea className="form-control" rows={2} value={formData.handlerNotes} onChange={(e) => setFormData({ ...formData, handlerNotes: e.target.value })}></textarea>
-                  </div>
-
-                  <div className="col-12">
-                    <div className="row g-2">
-                      <div className="col-12 col-md-6">
-                        <div className="p-3 border rounded h-100" style={{ backgroundColor: '#f8fbff', borderColor: '#e1e8f0' }}>
-                          <label className="form-label d-flex align-items-center justify-content-between mb-2">
-                            <span className="fw-bold" style={{ color: '#0d6efd' }}><i className="fas fa-camera me-1"></i> Hình ảnh lúc báo cáo</span>
-                            <button type="button" className="btn btn-xs btn-primary py-0" style={{ fontSize: '0.7rem' }} onClick={() => {
-                              setFileManagerMode('image');
-                              setFileManagerTarget('images');
-                              setShowFileManager(true);
-                            }}>Chọn hình</button>
-                          </label>
-                          {formData.images && formData.images.length > 0 ? (
-                            <div className="d-flex flex-wrap gap-2">
-                              {formData.images.map((img, idx) => (
-                                <div key={`${img}-${idx}`} className="position-relative" style={{ width: 70, height: 55 }}>
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={img} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4, border: '1px solid #dee2e6' }} />
-                                  <button type="button" className="btn-close" aria-label="Remove" onClick={() => setFormData({ ...formData, images: formData.images.filter((_, i) => i !== idx) })} style={{ position: 'absolute', top: -5, right: -5, width: '0.5rem', height: '0.5rem' }} />
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-muted small italic">Chưa có hình ảnh báo cáo</div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="col-12 col-md-6">
-                        <div className="p-3 border rounded h-100" style={{ backgroundColor: '#f6fff9', borderColor: '#e1f0e4' }}>
-                          <label className="form-label d-flex align-items-center justify-content-between mb-2">
-                            <span className="fw-bold" style={{ color: '#198754' }}><i className="fas fa-check-circle me-1"></i> Hình ảnh sau khi xử lý</span>
-                            <button type="button" className="btn btn-xs btn-success py-0" style={{ fontSize: '0.7rem' }} onClick={() => {
-                              setFileManagerMode('image');
-                              setFileManagerTarget('afterImages');
-                              setShowFileManager(true);
-                            }}>Chọn hình</button>
-                          </label>
-                          {formData.afterImages && formData.afterImages.length > 0 ? (
-                            <div className="d-flex flex-wrap gap-2">
-                              {formData.afterImages.map((img, idx) => (
-                                <div key={`${img}-${idx}`} className="position-relative" style={{ width: 70, height: 55 }}>
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={img} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4, border: '1px solid #dee2e6' }} />
-                                  <button type="button" className="btn-close" aria-label="Remove" onClick={() => setFormData({ ...formData, afterImages: formData.afterImages.filter((_, i) => i !== idx) })} style={{ position: 'absolute', top: -5, right: -5, width: '0.5rem', height: '0.5rem' }} />
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-muted small italic">Chưa có hình ảnh sau xử lý</div>
-                          )}
+                    <div className="col-md-6">
+                      <div className="card border-0 shadow-sm overflow-hidden h-100" style={{ borderRadius: '10px', backgroundColor: '#f6fff9' }}>
+                        <div className="p-2">
+                          <div className="d-flex justify-content-between align-items-center mb-1">
+                             <div className="fw-bold small text-success" style={{ fontSize: '0.7rem' }}><i className="fas fa-check-circle me-1"></i>ẢNH SAU</div>
+                             <button type="button" className="btn btn-success btn-sm rounded-pill py-0 px-2" style={{ fontSize: '0.6rem' }} onClick={() => { setFileManagerMode('image'); setFileManagerTarget('afterImages'); setShowFileManager(true); }}>
+                               Thêm
+                             </button>
+                          </div>
+                          <div className="d-flex flex-wrap gap-1" style={{ minHeight: '50px' }}>
+                            {formData.afterImages?.map((img, idx) => (
+                              <div key={idx} className="position-relative" style={{ width: '60px', height: '45px' }}>
+                                <img src={img} className="rounded shadow-sm" alt="After" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                <button type="button" className="btn-close position-absolute top-0 end-0 bg-white shadow-sm p-1 rounded-circle" style={{ width: '6px', height: '6px', margin: '-3px' }} onClick={() => setFormData({ ...formData, afterImages: (formData.afterImages || []).filter((_, i) => i !== idx) })} />
+                              </div>
+                            ))}
+                            {(!formData.afterImages || formData.afterImages.length === 0) && <div className="d-flex align-items-center text-muted small italic opacity-50 p-2" style={{ fontSize: '0.65rem' }}>Chưa chọn ảnh...</div>}
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                </form>
               </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Đóng</button>
-                <button type="button" className="btn btn-primary" onClick={handleSave}>Lưu</button>
+              
+              <div className="modal-footer border-0 p-3 pt-0">
+                <button type="button" className="btn btn-light rounded-pill px-4 btn-sm" style={{ fontWeight: '600' }} onClick={() => setShowModal(false)}>Hủy bỏ</button>
+                <button type="button" className="btn btn-primary rounded-pill px-5 btn-sm shadow-sm" style={{ fontWeight: '700' }} onClick={handleSave}>
+                  Lưu báo cáo
+                </button>
               </div>
             </div>
           </div>
