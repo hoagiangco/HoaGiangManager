@@ -613,6 +613,7 @@ function DevicesPageContent() {
       [DeviceStatus.DangSuaChua]: { label: 'Đang sửa chữa', color: '#212529', bgColor: '#ffc107' },
       [DeviceStatus.HuHong]: { label: 'Hư hỏng', color: '#ffffff', bgColor: '#dc3545' },
       [DeviceStatus.DaThanhLy]: { label: 'Đã thanh lý', color: '#ffffff', bgColor: '#6c757d' },
+      [DeviceStatus.CoHuHong]: { label: 'Có hư hỏng', color: '#ffffff', bgColor: '#fd7e14' },
     };
 
     const statusInfo = statusMap[status] || { label: 'N/A', color: '#ffffff', bgColor: '#6c757d' };
@@ -744,9 +745,7 @@ function DevicesPageContent() {
     };
   }, [currentDevices]); // Re-run when table content changes
 
-  if (loading) {
-    return <div className="text-center">Đang tải...</div>;
-  }
+
 
   const headerStyle = `
     .dashboard-table-header th {
@@ -1072,7 +1071,14 @@ function DevicesPageContent() {
                 </tr>
               </thead>
               <tbody>
-                {currentDevices.length === 0 ? (
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-4">
+                      <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                      <span className="text-muted">Đang tải dữ liệu...</span>
+                    </td>
+                  </tr>
+                ) : currentDevices.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="text-center py-4">
                       <span className="text-muted">Không có dữ liệu</span>

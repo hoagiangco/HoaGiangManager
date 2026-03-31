@@ -350,7 +350,7 @@ function MaintenancePageContent() {
     setLoadingDevices(true);
     try {
       // Load all devices first
-      const response = await api.get('/devices?cateId=0');
+      const response = await api.get('/devices?limit=9999');
       if (response.data.status) {
         const allDevs = response.data.data || [];
         const selected = allDevs.filter((device: DeviceVM) =>
@@ -368,7 +368,7 @@ function MaintenancePageContent() {
   const loadAllDevicesForModal = async () => {
     setLoadingDevices(true);
     try {
-      const response = await api.get('/devices?cateId=0');
+      const response = await api.get('/devices?limit=9999');
       if (response.data.status) {
         const devices = response.data.data || [];
         setAllDevices(devices);

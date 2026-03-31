@@ -62,7 +62,7 @@ export default function DashboardPage() {
     const fetchStats = async () => {
       try {
         const [devicesRes, departmentsRes, staffRes, eventsRes, damageReportsRes, notificationsRes, pendingReportsRes] = await Promise.all([
-          api.get('/devices?cateId=0'),
+          api.get('/devices?limit=9999'),
           api.get('/departments'),
           api.get('/staff?departmentId=0'),
           api.get('/events?eventTypeId=0'),

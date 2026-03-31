@@ -551,6 +551,10 @@ export class DamageReportService {
       }
     }
 
+    if (report.deviceId) {
+      await this.syncDeviceStatus(report.deviceId);
+    }
+
     return id;
   }
 
@@ -562,12 +566,13 @@ export class DamageReportService {
 
     // Get current values to track changes
     const currentResult = await pool.query(
-      `SELECT "Status", "Priority" FROM "DamageReport" WHERE "ID" = $1`,
+      `SELECT "Status", "Priority", "DeviceID" FROM "DamageReport" WHERE "ID" = $1`,
       [report.id]
     );
     
     const currentStatus = currentResult.rows[0]?.Status;
     const currentPriority = currentResult.rows[0]?.Priority;
+    const oldDeviceId = currentResult.rows[0]?.DeviceID;
 
     await pool.query(
       `UPDATE "DamageReport" SET
@@ -638,19 +643,15 @@ export class DamageReportService {
 
     // Auto-update device status when status changes
     if (report.deviceId) {
-      if (report.status === DamageReportStatus.InProgress) {
-        // Set device to "Đang sửa chữa"
-        await pool.query(
-          `UPDATE "Device" SET "Status" = '2' WHERE "ID" = $1`,
-          [report.deviceId]
-        );
-      } else if (report.status === DamageReportStatus.Completed) {
-        // Set device to "Đang sử dụng" (assume fixed successfully)
-        await pool.query(
-          `UPDATE "Device" SET "Status" = '1' WHERE "ID" = $1`,
-          [report.deviceId]
-        );
+      if (report.status === DamageReportStatus.Cancelled || report.status === DamageReportStatus.Rejected) {
+        await pool.query(`UPDATE "Device" SET "Status" = '1' WHERE "ID" = $1`, [report.deviceId]);
       }
+      await this.syncDeviceStatus(report.deviceId);
+    }
+    
+    // If the device was changed, sync the old device as well
+    if (oldDeviceId && oldDeviceId !== report.deviceId) {
+      await this.syncDeviceStatus(oldDeviceId);
     }
 
     // Sync maintenance events if status or batch changed
@@ -670,10 +671,10 @@ export class DamageReportService {
     return report.id;
   }
 
-  async updateStatus(id: number, status: DamageReportStatus, updatedBy: string): Promise<number> {
+  async updateStatus(id: number, status: DamageReportStatus, updatedBy: string, finalDeviceStatus?: number | null): Promise<number> {
     // Get current status
     const currentResult = await pool.query(
-      `SELECT "Status" FROM "DamageReport" WHERE "ID" = $1`,
+      `SELECT "Status", "DeviceID" FROM "DamageReport" WHERE "ID" = $1`,
       [id]
     );
     
@@ -682,6 +683,7 @@ export class DamageReportService {
     }
 
     const currentStatus = currentResult.rows[0].Status;
+    const deviceId = currentResult.rows[0].DeviceID;
 
     // Update status
     await pool.query(
@@ -697,6 +699,16 @@ export class DamageReportService {
          VALUES ($1, 'Status', $2, $3, $4)`,
         [id, currentStatus, status.toString(), updatedBy]
       );
+    }
+
+    if (deviceId) {
+      if (status === DamageReportStatus.Completed && finalDeviceStatus) {
+        await pool.query(`UPDATE "Device" SET "Status" = $1 WHERE "ID" = $2`, [finalDeviceStatus.toString(), deviceId]);
+      } else if (status === DamageReportStatus.Cancelled || status === DamageReportStatus.Rejected) {
+        await pool.query(`UPDATE "Device" SET "Status" = '1' WHERE "ID" = $1`, [deviceId]);
+      }
+
+      await this.syncDeviceStatus(deviceId);
     }
 
     return id;
@@ -997,6 +1009,44 @@ export class DamageReportService {
 
       await Promise.all(planUpdatePromises);
       console.log(`Successfully bumped ${plans.length} plans for batch ${batchId}`);
+    }
+  }
+
+  private async syncDeviceStatus(deviceId: number): Promise<void> {
+    if (!deviceId) return;
+
+    try {
+      // Find all reports for this device
+      const reportsQuery = await pool.query(
+        `SELECT "Status" FROM "DamageReport" WHERE "DeviceID" = $1`,
+        [deviceId]
+      );
+
+      const statuses = reportsQuery.rows.map(row => parseInt(row.Status) as DamageReportStatus);
+      
+      let newDeviceStatus: number | null = null;
+      
+      if (statuses.includes(DamageReportStatus.InProgress)) {
+        newDeviceStatus = DeviceStatus.DangSuaChua; // 2
+      } else if (
+        statuses.includes(DamageReportStatus.Pending) || 
+        statuses.includes(DamageReportStatus.Assigned)
+      ) {
+        newDeviceStatus = DeviceStatus.CoHuHong; // 5
+      }
+
+      if (newDeviceStatus !== null) {
+        // Update the device status only if there are active reports driving it to 2 or 5
+        await pool.query(
+          `UPDATE "Device" SET "Status" = $1 WHERE "ID" = $2`,
+          [newDeviceStatus.toString(), deviceId]
+        );
+        console.log(`Successfully synced status for device ${deviceId} to ${newDeviceStatus}`);
+      } else {
+        console.log(`No active reports to override status for device ${deviceId}. Keeping current manual status.`);
+      }
+    } catch (error) {
+      console.error(`Failed to sync device status for device ${deviceId}:`, error);
     }
   }
 }

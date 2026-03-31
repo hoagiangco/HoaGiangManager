@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
-import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, StaffVM, Department, DeviceCategory, EventType } from '@/types';
+import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, StaffVM, Department, DeviceCategory, EventType, DeviceStatus } from '@/types';
 import { formatDateDisplay, formatDateInput, formatDateRange, formatDateFilename } from '@/lib/utils/dateFormat';
 import FileManager from '@/components/FileManager';
 import DateInput from '@/components/DateInput';
@@ -198,6 +198,7 @@ type CompletionModalState = {
   deviceId?: number;
   afterImages: string[];
   submitting: boolean;
+  finalDeviceStatus?: number;
 };
 
 export default function DamageReportsPage() {
@@ -273,6 +274,7 @@ export default function DamageReportsPage() {
     deviceId: undefined,
     afterImages: [],
     submitting: false,
+    finalDeviceStatus: DeviceStatus.DangSuDung,
   });
 
   // Modal device filter state
@@ -526,7 +528,7 @@ export default function DamageReportsPage() {
 
   const loadDevices = async () => {
     try {
-      const response = await api.get('/devices?cateId=0');
+      const response = await api.get('/devices?limit=9999');
       if (response.data.status) {
         setDevices(response.data.data || []);
       }
@@ -690,11 +692,16 @@ export default function DamageReportsPage() {
     selectedStatus,
     selectedPriority,
     selectedDevice,
-    selectedDepartment,
-    searchKeyword,
-    myWorkFilter,
-    myReportFilter,
+    selectedDepartment
   ]);
+
+  // Handle search with debounce
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchKeyword(searchInputValue);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchInputValue]);
 
   // Sort and pagination
   useEffect(() => {
@@ -778,7 +785,7 @@ export default function DamageReportsPage() {
     });
 
     setReports(filtered);
-  }, [allReports, sortField, sortDirection, myWorkFilter, myReportFilter, currentUserStaffId]);
+  }, [allReports, sortField, sortDirection, myWorkFilter, myReportFilter, currentUserStaffId, searchKeyword]);
 
   const handleNew = async () => {
     // Get current user's staff info
@@ -1165,6 +1172,7 @@ export default function DamageReportsPage() {
       deviceId: undefined,
       afterImages: [],
       submitting: false,
+      finalDeviceStatus: DeviceStatus.DangSuDung,
     });
     setCompletionModalError(null);
   };
@@ -1206,6 +1214,7 @@ export default function DamageReportsPage() {
       deviceId: report.deviceId,
       afterImages: report.afterImages || [],
       submitting: false,
+      finalDeviceStatus: DeviceStatus.DangSuDung,
     });
     setCompletionModalError(null);
   };
@@ -1363,6 +1372,7 @@ export default function DamageReportsPage() {
         eventDescription: completionModal.eventDescription?.trim() || null,
         eventDeviceId: deviceId,
         afterImages: completionModal.afterImages.length > 0 ? completionModal.afterImages : null,
+        finalDeviceStatus: completionModal.finalDeviceStatus,
       };
 
       const trimmedHandlerNotes = completionModal.handlerNotes?.trim() ?? '';
@@ -1592,18 +1602,6 @@ export default function DamageReportsPage() {
     }
   };
 
-  // Loading guard
-  if (loading) return (
-    <div className="container-fluid">
-      <div className="card">
-        <div className="card-body text-center py-5">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 
   const __view = (
     <div className="container-fluid mobile-sticky-container px-md-3 py-md-3">
@@ -1787,13 +1785,7 @@ export default function DamageReportsPage() {
                         }
                       }}
                     />
-                    <button
-                      className="btn btn-outline-secondary"
-                      type="button"
-                      onClick={() => setSearchKeyword(searchInputValue)}
-                    >
-                      Lọc
-                    </button>
+
                     <button
                       className="btn btn-outline-danger"
                       type="button"
@@ -1914,7 +1906,14 @@ export default function DamageReportsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {currentReports.length === 0 ? (
+                    {loading ? (
+                      <tr>
+                        <td colSpan={10} className="text-center py-4">
+                          <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                          <span className="text-muted">Đang tải dữ liệu...</span>
+                        </td>
+                      </tr>
+                    ) : currentReports.length === 0 ? (
                       <tr>
                         <td colSpan={10} className="text-center py-4">
                           <span className="text-muted">Không có dữ liệu</span>
@@ -2057,7 +2056,12 @@ export default function DamageReportsPage() {
               }}
             >
               <div className="row g-3">
-                {currentReports.length === 0 ? (
+                {loading ? (
+                  <div className="col-12 text-center py-5">
+                    <div className="spinner-border text-primary me-2" role="status"></div>
+                    <span className="text-muted d-block mt-2">Đang tải dữ liệu...</span>
+                  </div>
+                ) : currentReports.length === 0 ? (
                   <div className="col-12 text-center py-5">
                     <span className="text-muted">Không có dữ liệu</span>
                   </div>
@@ -2858,6 +2862,21 @@ export default function DamageReportsPage() {
                   <small className="text-muted">
                     Có thể chọn thiết bị khác nếu cần điều chỉnh trước khi hoàn thành.
                   </small>
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label text-secondary" style={{ fontSize: '0.85rem' }}>
+                    <i className="fas fa-desktop me-1"></i> Trạng thái vật tư hiện tại <span className="text-danger">*</span>
+                  </label>
+                  <select
+                    className="form-select"
+                    value={completionModal.finalDeviceStatus || DeviceStatus.DangSuDung}
+                    onChange={(e) => updateCompletionModal({ finalDeviceStatus: Number(e.target.value) })}
+                    disabled={completionModal.submitting}
+                  >
+                    <option value={DeviceStatus.DangSuDung}>Đang sử dụng</option>
+                    <option value={DeviceStatus.HuHong}>Hư hỏng không dùng được</option>
+                  </select>
                 </div>
 
                 <div className="mb-3">

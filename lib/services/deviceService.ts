@@ -557,6 +557,8 @@ export class DeviceService {
         return 'Hư hỏng không dùng được';
       case DeviceStatus.DaThanhLy:
         return 'Đã thanh lý';
+      case DeviceStatus.CoHuHong:
+        return 'Có hư hỏng';
       default:
         return 'Không xác định';
     }

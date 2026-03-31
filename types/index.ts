@@ -29,7 +29,8 @@ export enum DeviceStatus {
   DangSuDung = 1,
   DangSuaChua = 2,
   HuHong = 3,
-  DaThanhLy = 4
+  DaThanhLy = 4,
+  CoHuHong = 5
 }
 
 export interface Device {
