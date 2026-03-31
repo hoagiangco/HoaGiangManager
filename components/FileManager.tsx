@@ -501,43 +501,50 @@ export default function FileManager({
     >
       <div className={`modal-dialog ${isFullscreen ? 'modal-fullscreen' : 'modal-xl'} modal-dialog-scrollable`} style={{ zIndex: 1061 }}>
         <div className="modal-content">
-          <div className="modal-header d-flex justify-content-between align-items-center">
-            <h5 className="modal-title mb-0">
-              <i className="fas fa-folder-open"></i> Quản lý File
+          <div className="modal-header d-flex align-items-center justify-content-between py-2 px-3">
+            <h5 className="modal-title mb-0 d-flex align-items-center">
+              <i className="fas fa-folder-open me-2 text-primary"></i> 
+              <span className="fs-6 fs-sm-5 fw-bold text-nowrap d-none d-xs-inline">File</span>
+              <span className="fs-6 fs-sm-5 fw-bold text-nowrap d-xs-none">File</span>
               {selectedFiles.size > 0 && (
-                <span className="badge bg-primary ms-2">{selectedFiles.size}</span>
+                <span className="badge rounded-pill bg-primary ms-2 shadow-sm" style={{ fontSize: '0.65rem' }}>{selectedFiles.size}</span>
               )}
             </h5>
-            <div className="d-flex gap-2 align-items-center">
+            <div className="d-flex gap-1 gap-sm-2 align-items-center">
               <button
                 type="button"
-                className="btn btn-outline-secondary btn-sm"
+                className="btn btn-outline-secondary btn-sm rounded-pill d-flex align-items-center px-2 py-1"
                 onClick={() => loadFiles()}
                 disabled={loading || uploading}
-                title="Refresh file list"
+                style={{ fontSize: '0.8rem' }}
+                title="Tải lại"
               >
-                <i className="fas fa-sync-alt"></i> Refresh
+                <i className="fas fa-sync-alt"></i> 
+                <span className="d-none d-sm-inline ms-1">Tải lại</span>
               </button>
               <button
                 type="button"
-                className="btn btn-primary btn-sm"
+                className="btn btn-primary btn-sm rounded-pill d-flex align-items-center px-2 py-1 shadow-sm"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                title="Upload file"
+                style={{ fontSize: '0.8rem' }}
+                title="Tải lên"
               >
-                <i className="fas fa-plus"></i> Upload
+                <i className="fas fa-plus"></i> 
+                <span className="d-none d-sm-inline ms-1">Tải lên</span>
               </button>
               <button
                 type="button"
-                className="btn btn-sm btn-outline-secondary"
+                className="btn btn-sm btn-outline-secondary rounded-pill d-flex align-items-center p-1"
                 onClick={() => setIsFullscreen(!isFullscreen)}
+                style={{ width: '28px', height: '28px', justifyContent: 'center' }}
                 title={isFullscreen ? 'Thu nhỏ' : 'Phóng to'}
               >
-                <i className={`fas ${isFullscreen ? 'fa-compress' : 'fa-expand'}`}></i>
+                <i className={`fas ${isFullscreen ? 'fa-compress' : 'fa-expand'}`} style={{ fontSize: '0.75rem' }}></i>
               </button>
               <button
                 type="button"
-                className="btn-close"
+                className="btn-close ms-1"
                 onClick={onClose}
                 aria-label="Close"
               ></button>
@@ -550,27 +557,29 @@ export default function FileManager({
                 {selectionEnabled && files.length > 0 && (
                   <button
                     type="button"
-                    className="btn btn-outline-secondary btn-sm"
+                    className={`btn btn-sm rounded-3 ${selectedFiles.size === files.length ? 'btn-primary shadow-sm' : 'btn-outline-secondary'}`}
                     onClick={handleSelectAll}
                     disabled={isDeleting}
+                    title={selectedFiles.size === files.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
                   >
-                    <i className="fas fa-check-square"></i> {selectedFiles.size === files.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                    <i className={`fas ${selectedFiles.size === files.length ? 'fa-check-double' : 'fa-check-square'}`}></i>
+                    <span className="d-none d-sm-inline ms-1">{selectedFiles.size === files.length ? 'Bỏ chọn' : 'Tất cả'}</span>
                   </button>
                 )}
                 {canManage && selectedFiles.size > 0 && (
                   <button
                     type="button"
-                    className="btn btn-outline-danger btn-sm"
+                    className="btn btn-outline-danger btn-sm rounded-3"
                     onClick={handleDeleteSelected}
                     disabled={isDeleting}
+                    title="Xóa đã chọn"
                   >
                     {isDeleting ? (
-                      <>
-                        <i className="fas fa-spinner fa-spin"></i> Đang xóa...
-                      </>
+                      <i className="fas fa-spinner fa-spin"></i>
                     ) : (
                       <>
-                        <i className="fas fa-trash"></i> Xóa đã chọn
+                        <i className="fas fa-trash"></i>
+                        <span className="d-none d-sm-inline ms-1">Xóa {selectedFiles.size}</span>
                       </>
                     )}
                   </button>
@@ -987,7 +996,8 @@ export default function FileManager({
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
       }
-      .file-card:hover .file-actions {
+      .file-card:hover .file-actions,
+      .file-card.selected .file-actions {
         opacity: 1 !important;
       }
       .file-card.selected {
