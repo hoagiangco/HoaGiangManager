@@ -1604,7 +1604,7 @@ export default function DamageReportsPage() {
 
 
   const __view = (
-    <div className="container-fluid mobile-sticky-container px-md-3 py-md-3">
+    <div className="container-fluid mobile-sticky-container px-md-1 pb-md-3 pt-md-0">
       <style>{headerStyle}</style>
       <div className="card mobile-sticky-card shadow-sm border-0" style={{ borderRadius: '12px' }}>
         <div className="card-header border-bottom sticky-top bg-white" style={{ padding: '0.75rem', zIndex: 10 }}>
