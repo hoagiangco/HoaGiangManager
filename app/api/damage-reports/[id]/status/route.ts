@@ -29,6 +29,7 @@ export async function PUT(
       eventDescription,
       eventDeviceId,
       handlerNotes,
+      afterImages,
     } = body || {};
 
     // Admin and User can update status
@@ -141,6 +142,10 @@ export async function PUT(
       trimmedHandlerNotes !== previousHandlerNotes
     ) {
       await damageReportService.updateHandlerNotes(id, trimmedHandlerNotes, user.userId);
+    }
+    
+    if (afterImages !== undefined && Array.isArray(afterImages)) {
+      await damageReportService.updateAfterImages(id, afterImages, user.userId);
     }
 
     // Consolidated Sync logic for maintenance batch or regular report completion

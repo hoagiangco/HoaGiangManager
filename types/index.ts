@@ -151,6 +151,7 @@ export interface DamageReport {
   estimatedCompletionDate?: Date;       // Ngày dự kiến hoàn thành
   damageContent: string;                // Mô tả chi tiết hư hỏng
   images?: string[];                    // Mảng đường dẫn hình ảnh
+  afterImages?: string[];                // Mảng đường dẫn hình ảnh sau khi xử lý
   status: DamageReportStatus;          // Trạng thái
   priority: DamageReportPriority;       // Mức độ ưu tiên
   notes?: string;                       // Ghi chú chung
@@ -178,6 +179,7 @@ export interface DamageReportVM extends DamageReport {
   isOverdue?: boolean;
   displayLocation?: string;              // Hiển thị: DeviceName hoặc damageLocation
   updatedByName?: string;                // Tên người cập nhật cuối
+  afterImages?: string[];                // Mảng đường dẫn hình ảnh sau khi xử lý
 }
 
 export interface DamageReportHistory {

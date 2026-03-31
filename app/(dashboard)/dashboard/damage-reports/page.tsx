@@ -196,6 +196,7 @@ type CompletionModalState = {
   eventDescription: string;
   handlerNotes: string;
   deviceId?: number;
+  afterImages: string[];
   submitting: boolean;
 };
 
@@ -244,6 +245,7 @@ export default function DamageReportsPage() {
   // File Manager state
   const [showFileManager, setShowFileManager] = useState(false);
   const [fileManagerMode, setFileManagerMode] = useState<'image' | 'all'>('image');
+  const [fileManagerTarget, setFileManagerTarget] = useState<'images' | 'afterImages'>('images');
 
   // Export Excel modal state
   const [showExportModal, setShowExportModal] = useState(false);
@@ -269,6 +271,7 @@ export default function DamageReportsPage() {
     eventDescription: '',
     handlerNotes: '',
     deviceId: undefined,
+    afterImages: [],
     submitting: false,
   });
 
@@ -294,6 +297,7 @@ export default function DamageReportsPage() {
     estimatedCompletionDate: '',
     damageContent: '',
     images: [] as string[],
+    afterImages: [] as string[],
     status: DamageReportStatus.Pending,
     priority: DamageReportPriority.Normal,
     notes: '',
@@ -795,6 +799,7 @@ export default function DamageReportsPage() {
       estimatedCompletionDate: '',
       damageContent: '',
       images: [],
+      afterImages: [],
       status: DamageReportStatus.Pending,
       priority: DamageReportPriority.Normal,
       notes: '',
@@ -870,6 +875,7 @@ export default function DamageReportsPage() {
         estimatedCompletionDate: formatDate(selectedReport.estimatedCompletionDate),
         damageContent: selectedReport.damageContent || '',
         images: Array.isArray(selectedReport.images) ? selectedReport.images : (selectedReport.images ? (typeof selectedReport.images === 'string' ? JSON.parse(selectedReport.images) : []) : []),
+        afterImages: Array.isArray(selectedReport.afterImages) ? selectedReport.afterImages : (selectedReport.afterImages ? (typeof selectedReport.afterImages === 'string' ? JSON.parse(selectedReport.afterImages) : []) : []),
         status: Number(selectedReport.status) || DamageReportStatus.Pending,
         priority: Number(selectedReport.priority) || DamageReportPriority.Normal,
         notes: selectedReport.notes || '',
@@ -989,6 +995,7 @@ export default function DamageReportsPage() {
         estimatedCompletionDate: formData.estimatedCompletionDate || null,
         damageContent: formData.damageContent.trim(),
         images: formData.images.length > 0 ? formData.images : null,
+        afterImages: formData.afterImages.length > 0 ? formData.afterImages : null,
         status: formData.status,
         priority: formData.priority,
         notes: null, // Bỏ ghi chú chung
@@ -1156,6 +1163,7 @@ export default function DamageReportsPage() {
       eventDescription: '',
       handlerNotes: '',
       deviceId: undefined,
+      afterImages: [],
       submitting: false,
     });
     setCompletionModalError(null);
@@ -1196,6 +1204,7 @@ export default function DamageReportsPage() {
       eventDescription: report.damageContent || '',
       handlerNotes: report.handlerNotes || '',
       deviceId: report.deviceId,
+      afterImages: report.afterImages || [],
       submitting: false,
     });
     setCompletionModalError(null);
@@ -1353,6 +1362,7 @@ export default function DamageReportsPage() {
         eventTitle: completionModal.eventTitle?.trim() || null,
         eventDescription: completionModal.eventDescription?.trim() || null,
         eventDeviceId: deviceId,
+        afterImages: completionModal.afterImages.length > 0 ? completionModal.afterImages : null,
       };
 
       const trimmedHandlerNotes = completionModal.handlerNotes?.trim() ?? '';
@@ -2710,14 +2720,15 @@ export default function DamageReportsPage() {
 
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center justify-content-between">
-                      <span>Hình ảnh</span>
+                      <span>Hình ảnh lúc báo cáo</span>
                       <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => {
                         setFileManagerMode('image');
+                        setFileManagerTarget('images');
                         setShowFileManager(true);
                       }}>Chọn hình</button>
                     </label>
                     {formData.images && formData.images.length > 0 ? (
-                      <div className="d-flex flex-wrap gap-2">
+                      <div className="d-flex flex-wrap gap-2 mb-3">
                         {formData.images.map((img, idx) => (
                           <div key={`${img}-${idx}`} className="position-relative" style={{ width: 96, height: 72 }}>
                             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2727,7 +2738,29 @@ export default function DamageReportsPage() {
                         ))}
                       </div>
                     ) : (
-                      <div className="text-muted">Chưa có hình ảnh</div>
+                      <div className="text-muted mb-3">Chưa có hình ảnh báo cáo</div>
+                    )}
+
+                    <label className="form-label d-flex align-items-center justify-content-between mt-2">
+                      <span>Hình ảnh sau khi xử lý</span>
+                      <button type="button" className="btn btn-sm btn-outline-success" onClick={() => {
+                        setFileManagerMode('image');
+                        setFileManagerTarget('afterImages');
+                        setShowFileManager(true);
+                      }}>Chọn hình</button>
+                    </label>
+                    {formData.afterImages && formData.afterImages.length > 0 ? (
+                      <div className="d-flex flex-wrap gap-2">
+                        {formData.afterImages.map((img, idx) => (
+                          <div key={`${img}-${idx}`} className="position-relative" style={{ width: 96, height: 72 }}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={img} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4, border: '1px solid #dee2e6' }} />
+                            <button type="button" className="btn-close" aria-label="Remove" onClick={() => setFormData({ ...formData, afterImages: formData.afterImages.filter((_, i) => i !== idx) })} style={{ position: 'absolute', top: -6, right: -6 }} />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-muted">Chưa có hình ảnh sau xử lý</div>
                     )}
                   </div>
                 </div>
@@ -2746,7 +2779,15 @@ export default function DamageReportsPage() {
           isOpen={showFileManager}
           onClose={() => setShowFileManager(false)}
           onSelectFile={(url: string) => {
-            setFormData(prev => ({ ...prev, images: Array.from(new Set([...(prev.images || []), url])) }));
+            if (fileManagerTarget === 'images') {
+              setFormData(prev => ({ ...prev, images: Array.from(new Set([...(prev.images || []), url])) }));
+            } else {
+              if (completionModal.show) {
+                updateCompletionModal({ afterImages: Array.from(new Set([...(completionModal.afterImages || []), url])) });
+              } else {
+                setFormData(prev => ({ ...prev, afterImages: Array.from(new Set([...(prev.afterImages || []), url])) }));
+              }
+            }
             setShowFileManager(false);
           }}
           onSelectFiles={(urls: string[]) => {
@@ -2754,10 +2795,23 @@ export default function DamageReportsPage() {
               toast.warning('Vui lòng chọn ít nhất một hình ảnh');
               return;
             }
-            setFormData(prev => ({
-              ...prev,
-              images: Array.from(new Set([...(prev.images || []), ...urls])),
-            }));
+            if (fileManagerTarget === 'images') {
+              setFormData(prev => ({
+                ...prev,
+                images: Array.from(new Set([...(prev.images || []), ...urls])),
+              }));
+            } else {
+              if (completionModal.show) {
+                updateCompletionModal({ 
+                  afterImages: Array.from(new Set([...(completionModal.afterImages || []), ...urls])) 
+                });
+              } else {
+                setFormData(prev => ({
+                  ...prev,
+                  afterImages: Array.from(new Set([...(prev.afterImages || []), ...urls])),
+                }));
+              }
+            }
             setShowFileManager(false);
           }}
           accept="image/*"
@@ -2913,6 +2967,30 @@ export default function DamageReportsPage() {
                   <small className="text-muted">
                     Nội dung này sẽ được lưu vào mục &quot;Ghi chú người xử lý&quot; của báo cáo và gắn vào sự kiện.
                   </small>
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label d-flex align-items-center justify-content-between">
+                    <span>Hình ảnh sau khi xử lý (Đối chứng)</span>
+                    <button type="button" className="btn btn-sm btn-outline-success" onClick={() => {
+                      setFileManagerMode('image');
+                      setFileManagerTarget('afterImages');
+                      setShowFileManager(true);
+                    }}>Chọn hình</button>
+                  </label>
+                  {completionModal.afterImages && completionModal.afterImages.length > 0 ? (
+                    <div className="d-flex flex-wrap gap-2">
+                      {completionModal.afterImages.map((img, idx) => (
+                        <div key={`${img}-${idx}`} className="position-relative" style={{ width: 96, height: 72 }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={img} alt="after-img" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4, border: '1px solid #dee2e6' }} />
+                          <button type="button" className="btn-close" aria-label="Remove" onClick={() => updateCompletionModal({ afterImages: completionModal.afterImages.filter((_, i) => i !== idx) })} style={{ position: 'absolute', top: -6, right: -6 }} />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-muted small">Nên đính kèm hình ảnh sau khi đã xử lý xong để đối chiếu.</div>
+                  )}
                 </div>
 
                 {completionModalError && (

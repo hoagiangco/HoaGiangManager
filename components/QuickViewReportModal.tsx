@@ -276,6 +276,78 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
                       </div>
                     </div>
                   )}
+
+                  {/* After Images */}
+                  {Array.isArray(report.afterImages) && report.afterImages.length > 0 && (
+                    <div>
+                      <div className="text-muted small fw-bold text-uppercase mb-3" style={{ letterSpacing: '0.05em', color: '#27ae60' }}>
+                        Hình ảnh sau khi xử lý ({report.afterImages.length})
+                      </div>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                          gap: '12px',
+                        }}
+                      >
+                        {report.afterImages.map((img, idx) => (
+                          <div
+                            key={`${img}-${idx}`}
+                            onClick={() => onViewImages?.(report.afterImages!, idx)}
+                            style={{
+                              position: 'relative',
+                              width: '100%',
+                              paddingBottom: '75%',
+                              borderRadius: '8px',
+                              overflow: 'hidden',
+                              border: '2px solid #d1e7dd',
+                              cursor: onViewImages ? 'pointer' : 'default',
+                              transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                              backgroundColor: '#f8f9fa'
+                            }}
+                            className={onViewImages ? 'hover-shadow' : ''}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={img}
+                              alt={`Sau xử lý ${idx + 1}`}
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover',
+                              }}
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = 'https://placehold.co/400x300?text=No+Image';
+                              }}
+                            />
+                            {onViewImages && (
+                              <div 
+                                className="image-overlay"
+                                style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  backgroundColor: 'rgba(39, 174, 96, 0.2)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  opacity: 0,
+                                  transition: 'opacity 0.2s'
+                                }}
+                              >
+                                <i className="fas fa-search-plus text-white fa-lg"></i>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

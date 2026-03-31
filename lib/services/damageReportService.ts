@@ -73,6 +73,7 @@ export class DamageReportService {
         dr."EstimatedCompletionDate" as "estimatedCompletionDate",
         dr."DamageContent" as "damageContent",
         dr."Images" as images,
+        dr."AfterImages" as "afterImages",
         CAST(dr."Status"::text AS INTEGER) as status,
         CAST(dr."Priority"::text AS INTEGER) as priority,
         dr."Notes" as notes,
@@ -310,6 +311,7 @@ export class DamageReportService {
           dr."EstimatedCompletionDate" as "estimatedCompletionDate",
           dr."DamageContent" as "damageContent",
           dr."Images" as images,
+          dr."AfterImages" as "afterImages",
           CAST(dr."Status"::text AS INTEGER) as status,
           CAST(dr."Priority"::text AS INTEGER) as priority,
           dr."Notes" as notes,
@@ -383,6 +385,7 @@ export class DamageReportService {
       priority,
       deviceStatus: row.deviceStatus ? parseInt(row.deviceStatus) as DeviceStatus : undefined,
       images: row.images ? (Array.isArray(row.images) ? row.images : JSON.parse(row.images)) : [],
+      afterImages: row.afterImages ? (Array.isArray(row.afterImages) ? row.afterImages : JSON.parse(row.afterImages)) : [],
       statusName: this.getStatusName(status),
       priorityName: this.getPriorityName(priority),
       daysSinceReport,
@@ -408,6 +411,7 @@ export class DamageReportService {
         dr."EstimatedCompletionDate" as "estimatedCompletionDate",
         dr."DamageContent" as "damageContent",
         dr."Images" as images,
+        dr."AfterImages" as "afterImages",
         CAST(dr."Status"::text AS INTEGER) as status,
         CAST(dr."Priority"::text AS INTEGER) as priority,
         dr."Notes" as notes,
@@ -501,10 +505,10 @@ export class DamageReportService {
       `INSERT INTO "DamageReport" (
         "DeviceID", "DamageLocation", "ReporterID", "ReportingDepartmentID",
         "HandlerID", "AssignedDate", "ReportDate", "HandlingDate", "CompletedDate",
-        "EstimatedCompletionDate", "DamageContent", "Images", "Status", "Priority",
+        "EstimatedCompletionDate", "DamageContent", "Images", "AfterImages", "Status", "Priority",
         "Notes", "HandlerNotes", "RejectionReason", "MaintenanceBatchId", "CreatedBy", "UpdatedBy"
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
       RETURNING "ID"`,
       [
         report.deviceId || null,
@@ -519,6 +523,7 @@ export class DamageReportService {
         report.estimatedCompletionDate || null,
         report.damageContent,
         report.images ? JSON.stringify(report.images) : null,
+        report.afterImages ? JSON.stringify(report.afterImages) : null,
         report.status.toString(),
         report.priority.toString(),
         report.notes || null,
@@ -578,15 +583,16 @@ export class DamageReportService {
         "EstimatedCompletionDate" = $10,
         "DamageContent" = $11,
         "Images" = $12,
-        "Status" = $13,
-        "Priority" = $14,
-        "Notes" = $15,
-        "HandlerNotes" = $16,
-        "RejectionReason" = $17,
-        "MaintenanceBatchId" = $18,
-        "UpdatedBy" = $19,
+        "AfterImages" = $13,
+        "Status" = $14,
+        "Priority" = $15,
+        "Notes" = $16,
+        "HandlerNotes" = $17,
+        "RejectionReason" = $18,
+        "MaintenanceBatchId" = $19,
+        "UpdatedBy" = $20,
         "UpdatedAt" = CURRENT_TIMESTAMP
-      WHERE "ID" = $20`,
+      WHERE "ID" = $21`,
       [
         report.deviceId || null,
         report.damageLocation || null,
@@ -600,6 +606,7 @@ export class DamageReportService {
         report.estimatedCompletionDate || null,
         report.damageContent,
         report.images ? JSON.stringify(report.images) : null,
+        report.afterImages ? JSON.stringify(report.afterImages) : null,
         report.status.toString(),
         report.priority.toString(),
         report.notes || null,
@@ -802,6 +809,14 @@ export class DamageReportService {
       );
     }
 
+    return id;
+  }
+
+  async updateAfterImages(id: number, afterImages: string[] | null, updatedBy: string): Promise<number> {
+    await pool.query(
+      `UPDATE "DamageReport" SET "AfterImages" = $1, "UpdatedBy" = $2, "UpdatedAt" = CURRENT_TIMESTAMP WHERE "ID" = $3`,
+      [afterImages ? JSON.stringify(afterImages) : null, updatedBy, id]
+    );
     return id;
   }
 
