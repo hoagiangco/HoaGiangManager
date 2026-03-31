@@ -26,16 +26,9 @@ export async function DELETE(request: NextRequest) {
       process.env.VERCEL_URL ||
       process.env.NEXT_PUBLIC_VERCEL_URL
     );
-    const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN;
+    const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN && process.env.BLOB_READ_WRITE_TOKEN !== 'your_blob_token_here' && !process.env.BLOB_READ_WRITE_TOKEN.startsWith('YOUR_');
 
-    if (isVercel) {
-      if (!hasToken) {
-        console.error('Delete file error: Missing BLOB_READ_WRITE_TOKEN on Vercel');
-        return NextResponse.json({
-          error: 'BLOB_READ_WRITE_TOKEN is required to delete files on Vercel.',
-        }, { status: 500 });
-      }
-
+    if (hasToken) {
       try {
         const { del, list } = await import('@vercel/blob');
         const token = process.env.BLOB_READ_WRITE_TOKEN as string;

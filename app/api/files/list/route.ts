@@ -119,15 +119,15 @@ export async function GET(request: NextRequest) {
       process.env.VERCEL_URL ||
       process.env.NEXT_PUBLIC_VERCEL_URL
     );
-    const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN;
+    const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN && process.env.BLOB_READ_WRITE_TOKEN !== 'your_blob_token_here' && !process.env.BLOB_READ_WRITE_TOKEN.startsWith('YOUR_');
 
-    console.log('List files - Environment check:', { isVercel, hasToken, VERCEL: process.env.VERCEL, VERCEL_ENV: process.env.VERCEL_ENV, VERCEL_URL: process.env.VERCEL_URL });
+    console.log('List files - Storage check:', { isVercel, hasToken, VERCEL: !!process.env.VERCEL, HAS_TOKEN: hasToken });
 
-    // If on Vercel and has token, list from Blob
-    if (isVercel && hasToken) {
-      console.log('Attempting to list files from Vercel Blob...');
+    // If has token, prioritize Vercel Blob (even on local)
+    if (hasToken) {
+      console.log('Attempting to list files from Vercel Blob (Prioritized)...');
       try {
-        const { files: blobFiles, pages, total } = await listBlobFiles();
+        const { files: blobFiles } = await listBlobFiles();
         
         console.log(`Successfully retrieved ${blobFiles.length} files from Vercel Blob`);
         
@@ -136,7 +136,23 @@ export async function GET(request: NextRequest) {
           new Date(b.modified).getTime() - new Date(a.modified).getTime()
         );
 
-        return NextResponse.json({ files: blobFiles, ...(debug ? { debug: { isVercel, hasToken, pages, total } } : {}) }, {
+        // Pagination
+        const page = parseInt(url.searchParams.get('page') || '1');
+        const limit = parseInt(url.searchParams.get('limit') || '20');
+        const total = blobFiles.length;
+        const totalPages = Math.ceil(total / limit);
+        const startIndex = (page - 1) * limit;
+        const endIndex = page * limit;
+        const paginatedFiles = blobFiles.slice(startIndex, endIndex);
+
+        return NextResponse.json({ 
+          files: paginatedFiles, 
+          total,
+          page,
+          limit,
+          totalPages,
+          ...(debug ? { debug: { isVercel, hasToken } } : {}) 
+        }, {
           headers: {
             'Cache-Control': 'no-store',
           },
@@ -215,7 +231,23 @@ export async function GET(request: NextRequest) {
       new Date(b.modified).getTime() - new Date(a.modified).getTime()
     );
 
-    return NextResponse.json({ files: validFiles, ...(debug ? { debug: { isVercel, hasToken } } : {}) });
+    // Pagination
+    const page = parseInt(url.searchParams.get('page') || '1');
+    const limit = parseInt(url.searchParams.get('limit') || '20');
+    const total = validFiles.length;
+    const totalPages = Math.ceil(total / limit);
+    const startIndex = (page - 1) * limit;
+    const endIndex = page * limit;
+    const paginatedFiles = validFiles.slice(startIndex, endIndex);
+
+    return NextResponse.json({ 
+      files: paginatedFiles, 
+      total,
+      page,
+      limit,
+      totalPages,
+      ...(debug ? { debug: { isVercel, hasToken } } : {}) 
+    });
   } catch (error: any) {
     console.error('List files error:', error);
     return NextResponse.json(

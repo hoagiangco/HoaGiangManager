@@ -6,7 +6,7 @@ import { authenticate } from '@/lib/auth/middleware';
 
 // Upload to Vercel Blob (works in both local dev and production when BLOB_READ_WRITE_TOKEN is set)
 async function uploadToBlob(fileName: string, buffer: Buffer, contentType: string): Promise<string | null> {
-  const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN;
+  const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN && process.env.BLOB_READ_WRITE_TOKEN !== 'your_blob_token_here' && !process.env.BLOB_READ_WRITE_TOKEN.startsWith('YOUR_');
   
   console.log('Blob upload check:', {
     hasToken,
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
       process.env.VERCEL_URL ||
       process.env.NEXT_PUBLIC_VERCEL_URL
     );
-    const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN;
+    const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN && process.env.BLOB_READ_WRITE_TOKEN !== 'your_blob_token_here' && !process.env.BLOB_READ_WRITE_TOKEN.startsWith('YOUR_');
 
     console.log('Environment check:', { isVercel, hasToken, nodeEnv: process.env.NODE_ENV });
 

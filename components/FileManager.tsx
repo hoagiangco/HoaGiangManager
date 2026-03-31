@@ -48,13 +48,20 @@ export default function FileManager({
   const [newFileName, setNewFileName] = useState('');
   const [canManage, setCanManage] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(24); // Use 24 for grid (divisible by 2, 3, 4, 6)
+  const [totalFiles, setTotalFiles] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadFiles = async () => {
+  const loadFiles = async (page = 1) => {
     setLoading(true);
     try {
-      const response = await api.get('/files/list');
+      const response = await api.get(`/files/list?page=${page}&limit=${itemsPerPage}`);
       let fileList = response.data?.files || [];
+      setTotalFiles(response.data?.total || 0);
+      setTotalPages(response.data?.totalPages || 0);
+      setCurrentPage(response.data?.page || page);
       
       if (mode === 'image' || accept === 'image/*') {
         fileList = fileList.filter((file: FileItem) => {
@@ -77,7 +84,8 @@ export default function FileManager({
 
   useEffect(() => {
     if (isOpen) {
-      loadFiles();
+      setCurrentPage(1);
+      loadFiles(1);
       setSelectedFiles(new Set());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -249,7 +257,7 @@ export default function FileManager({
         // Add a small delay to ensure blob is available
         await new Promise(resolve => setTimeout(resolve, 1000));
         try {
-          await loadFiles();
+          loadFiles(1); // On upload, we usually want to see the newest file (on page 1)
         } catch (loadError) {
           console.error('FileManager: Failed to reload files after upload:', loadError);
         }
@@ -293,7 +301,7 @@ export default function FileManager({
       await deleteFileRequest(file);
       toast.success('Xóa file thành công');
       try {
-        await loadFiles();
+        loadFiles(currentPage);
       } catch (error) {
         console.error('FileManager: Failed to reload files after deleting:', error);
       }
@@ -355,7 +363,7 @@ export default function FileManager({
       }
 
       try {
-        await loadFiles();
+        loadFiles(currentPage);
       } catch (error) {
         console.error('FileManager: Failed to reload files after deleting selections:', error);
       }
@@ -386,7 +394,7 @@ export default function FileManager({
       const trimmedName = newName.trim();
       await api.post('/files/rename', { oldName, newName: trimmedName });
       toast.success('Đổi tên file thành công');
-      await loadFiles();
+      loadFiles(currentPage);
       setSelectedFiles(new Set());
       setRenamingFile(null);
       setNewFileName('');
@@ -485,6 +493,7 @@ export default function FileManager({
   }
 
   return (
+    <>
     <div 
       className="modal show d-block" 
       style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }} 
@@ -621,51 +630,49 @@ export default function FileManager({
                 <p>Chưa có file nào</p>
               </div>
             ) : viewMode === 'grid' ? (
-              // Grid View
-              <div className="row g-3" style={{ maxHeight: isFullscreen ? 'calc(100vh - 250px)' : '500px', overflowY: 'auto' }}>
+              // Grid View - Use more columns and less padding
+              <div className="row g-2" style={{ maxHeight: isFullscreen ? 'calc(100vh - 250px)' : '550px', overflowY: 'auto' }}>
                 {files.map((file) => {
                   const isImage = file.name.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp|svg)$/);
                   const isSelected = selectedFiles.has(file.url);
                   const isRenaming = renamingFile === file.name;
                   
                   return (
-                    <div key={file.name} className="col-md-3 col-sm-4 col-6">
+                    <div key={file.name} className="col-lg-2 col-md-3 col-sm-4 col-6">
                       <div
-                        className={`card h-100 ${isSelected ? 'border-primary border-2' : ''}`}
-                        style={{ cursor: 'pointer', position: 'relative' }}
+                        className={`card h-100 border-0 shadow-sm file-card ${isSelected ? 'selected' : ''}`}
+                        style={{ cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
                         onClick={() => !isRenaming && handleSelectFile(file)}
                       >
-                        {isSelected && (
-                          <div className="position-absolute top-0 end-0 m-2">
-                            <span className="badge bg-primary">
-                              <i className="fas fa-check"></i>
-                            </span>
+                        <div className="card-body p-1 text-center d-flex flex-column" style={{ minHeight: '140px' }}>
+                          <div className="flex-grow-1 d-flex align-items-center justify-content-center p-1 bg-light rounded" style={{ height: '100px', overflow: 'hidden' }}>
+                            {isImage ? (
+                              <img
+                                src={file.url}
+                                alt={file.name}
+                                className="img-thumbnail border-0 bg-transparent"
+                                style={{
+                                  maxHeight: '100%',
+                                  width: 'auto',
+                                  maxWidth: '100%',
+                                  objectFit: 'contain',
+                                }}
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                              />
+                            ) : (
+                              <div className="py-2">
+                                <i className={`fas ${getFileIcon(file.name)} fa-3x text-muted`}></i>
+                              </div>
+                            )}
                           </div>
-                        )}
-                        <div className="card-body text-center p-2">
-                          {isImage ? (
-                            <img
-                              src={file.url}
-                              alt={file.name}
-                              className="img-fluid rounded"
-                              style={{
-                                maxHeight: '150px',
-                                maxWidth: '100%',
-                                objectFit: 'contain',
-                              }}
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none';
-                              }}
-                            />
-                          ) : (
-                            <div className="py-4">
-                              <i className={`fas ${getFileIcon(file.name)} fa-4x text-muted`}></i>
-                            </div>
-                          )}
+                          
                           {isRenaming && canManage ? (
                             <input
                               type="text"
-                              className="form-control form-control-sm mt-2"
+                              className="form-control form-control-sm mt-1"
+                              style={{ fontSize: '0.7rem' }}
                               value={newFileName}
                               onChange={(e) => setNewFileName(e.target.value)}
                               onBlur={() => {
@@ -689,18 +696,33 @@ export default function FileManager({
                               onClick={(e) => e.stopPropagation()}
                             />
                           ) : (
-                            <div className="mt-2">
-                              <small className="d-block text-truncate" title={file.name}>
+                            <div className="mt-1 px-1 overflow-hidden">
+                              <small className="d-block text-truncate fw-medium mb-0" title={file.name} style={{ fontSize: '0.7rem', lineHeight: '1.2' }}>
                                 {file.name}
                               </small>
-                              <small className="text-muted">{formatFileSize(file.size)}</small>
+                              <small className="text-muted" style={{ fontSize: '0.65rem' }}>{formatFileSize(file.size)}</small>
                             </div>
                           )}
                         </div>
-                        {canManage && (
-                          <div className="card-footer p-1 bg-transparent border-0 d-flex justify-content-center gap-1">
+
+                        {/* Status overlay (Top-Left) */}
+                        {isSelected && (
+                          <div className="position-absolute top-0 start-0 m-1" style={{ zIndex: 12 }}>
+                            <div className="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center shadow" style={{ width: '22px', height: '22px' }}>
+                              <i className="fas fa-check" style={{ fontSize: '10px' }}></i>
+                            </div>
+                          </div>
+                        )}
+                        {isSelected && (
+                          <div className="position-absolute top-0 start-0 w-100 h-100" style={{ backgroundColor: 'rgba(13, 110, 253, 0.1)', pointerEvents: 'none', zIndex: 1 }}></div>
+                        )}
+
+                        {/* Centered Hover controls */}
+                        {canManage && !isRenaming && (
+                          <div className="file-actions position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center gap-2 opacity-0" style={{ transition: 'all 0.25s ease', zIndex: 15 }}>
                             <button
-                              className="btn btn-sm btn-outline-primary"
+                              className="btn btn-light shadow-lg rounded-circle d-flex align-items-center justify-content-center border"
+                              style={{ width: '32px', height: '32px', padding: 0 }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (isDeleting) return;
@@ -710,10 +732,11 @@ export default function FileManager({
                               title="Đổi tên"
                               disabled={isDeleting}
                             >
-                              <i className="fas fa-edit"></i>
+                              <i className="fas fa-edit text-primary"></i>
                             </button>
                             <button
-                              className="btn btn-sm btn-outline-danger"
+                              className="btn btn-light shadow-lg rounded-circle d-flex align-items-center justify-content-center border"
+                              style={{ width: '32px', height: '32px', padding: 0 }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (isDeleting) return;
@@ -722,7 +745,7 @@ export default function FileManager({
                               title="Xóa"
                               disabled={isDeleting}
                             >
-                              <i className="fas fa-trash"></i>
+                              <i className="fas fa-trash text-danger"></i>
                             </button>
                           </div>
                         )}
@@ -875,31 +898,109 @@ export default function FileManager({
               </div>
             )}
           </div>
-          <div className="modal-footer">
-            <div className="text-muted small">
-              Tổng: {files.length} file{files.length !== 1 ? 's' : ''}
-              {selectedFiles.size > 0 && ` • Đã chọn: ${selectedFiles.size}`}
-            </div>
-            <div className="ms-auto d-flex gap-2">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={onClose}
-              >
-                <i className="fas fa-times"></i> Đóng
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleConfirm}
-                disabled={selectedFiles.size === 0}
-              >
-                <i className="fas fa-check"></i> Chọn file{selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
-              </button>
+          <div className="modal-footer flex-column align-items-stretch">
+            <div className="d-flex justify-content-between align-items-center w-100 flex-wrap gap-3">
+              <div className="text-muted small">
+                Tổng: <span className="fw-bold">{totalFiles}</span> file{totalFiles !== 1 ? 's' : ''} • Trang <span className="fw-bold">{currentPage}</span> / {totalPages}
+                {selectedFiles.size > 0 && ` • Đã chọn: ${selectedFiles.size}`}
+              </div>
+              
+              {totalPages > 1 && (
+                <nav aria-label="File manager pagination">
+                  <ul className="pagination pagination-sm mb-0">
+                    <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
+                      <button 
+                        className="page-link" 
+                        onClick={() => loadFiles(currentPage - 1)}
+                        disabled={currentPage === 1 || loading}
+                      >
+                        <i className="fas fa-chevron-left"></i>
+                      </button>
+                    </li>
+                    
+                    {[...Array(totalPages)].map((_, i) => {
+                      const pageNum = i + 1;
+                      // Logic to show limited page numbers
+                      if (
+                        pageNum === 1 || 
+                        pageNum === totalPages || 
+                        (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
+                      ) {
+                        return (
+                          <li key={pageNum} className={`page-item ${currentPage === pageNum ? 'active' : ''}`}>
+                            <button 
+                              className="page-link" 
+                              onClick={() => loadFiles(pageNum)}
+                              disabled={loading}
+                            >
+                              {pageNum}
+                            </button>
+                          </li>
+                        );
+                      } else if (pageNum === currentPage - 2 || pageNum === currentPage + 2) {
+                        return <li key={pageNum} className="page-item disabled"><span className="page-link">...</span></li>;
+                      }
+                      return null;
+                    })}
+
+                    <li className={`page-item ${currentPage === totalPages ? 'disabled' : ''}`}>
+                      <button 
+                        className="page-link" 
+                        onClick={() => loadFiles(currentPage + 1)}
+                        disabled={currentPage === totalPages || loading}
+                      >
+                        <i className="fas fa-chevron-right"></i>
+                      </button>
+                    </li>
+                  </ul>
+                </nav>
+              )}
+              
+              <div className="d-flex gap-2">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={onClose}
+                >
+                  <i className="fas fa-times me-1"></i> Đóng
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleConfirm}
+                  disabled={selectedFiles.size === 0}
+                >
+                  <i className="fas fa-check me-1"></i> Chọn file{selectedFiles.size > 1 ? ` (${selectedFiles.size})` : ''}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
+    <style jsx>{`
+      .file-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+        border: 1px solid transparent !important;
+      }
+      .file-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+      }
+      .file-card:hover .file-actions {
+        opacity: 1 !important;
+      }
+      .file-card.selected {
+        background-color: rgba(13, 110, 253, 0.05);
+        border: 1px solid rgba(13, 110, 253, 0.5) !important;
+      }
+      .btn-xs {
+        padding: 0.1rem 0.3rem;
+        font-size: 0.7rem;
+        line-height: 1;
+        border-radius: 0.2rem;
+      }
+    `}</style>
+    </>
   );
 }
