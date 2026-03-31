@@ -1154,11 +1154,19 @@ export default function DamageReportsPage() {
 
   const canUpdateStatusForReport = (report?: DamageReportVM | null): boolean => {
     if (!report) return false;
-    if (report.status === DamageReportStatus.Completed) return false;
     if (!userPermissions.canUpdateStatus) return false;
+    
+    // Admin has full control over all states
     if (isAdmin(currentUser?.roles)) return true;
+
+    // For non-admin (User/Handler)
     if (currentUserStaffId === null) return false;
-    return report.handlerId === currentUserStaffId;
+    // Must be the assigned handler to update status
+    if (report.handlerId !== currentUserStaffId) return false;
+    
+    // User can move forward from Pending or InProgress
+    // Once it reaches Completed, Rejected or Cancelled, it's locked for User.
+    return report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.InProgress;
   };
 
   const resetCompletionModal = () => {
@@ -1712,58 +1720,70 @@ export default function DamageReportsPage() {
               <div className="row g-2 align-items-center">
                 {/* Status Filter */}
                 <div className="col-12 col-sm-6 col-md-auto">
-                  <div className="d-flex align-items-center gap-2 flex-nowrap container-fluid px-0">
-                    <span className="small text-muted fw-bold text-nowrap" style={{ minWidth: '70px' }}>Trạng thái:</span>
-                    <select
-                      className="form-control form-control-sm flex-grow-1"
-                      value={selectedStatus}
-                      onChange={(e) => setSelectedStatus(Number(e.target.value) as DamageReportStatus | 0)}
-                      style={{ borderRadius: '6px' }}
-                    >
-                      <option value="0">Tất cả</option>
-                      <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
-                      <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
-                      <option value={DamageReportStatus.Completed}>Hoàn thành</option>
-                      <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
-                      <option value={DamageReportStatus.Rejected}>Từ chối</option>
-                    </select>
+                  <div className="row g-2 align-items-center">
+                    <div className="col-auto" style={{ width: '85px' }}>
+                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Trạng thái:</span>
+                    </div>
+                    <div className="col">
+                      <select
+                        className="form-select form-select-sm"
+                        value={selectedStatus}
+                        onChange={(e) => setSelectedStatus(Number(e.target.value) as DamageReportStatus | 0)}
+                        style={{ borderRadius: '6px' }}
+                      >
+                        <option value="0">Tất cả</option>
+                        <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
+                        <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
+                        <option value={DamageReportStatus.Completed}>Hoàn thành</option>
+                        <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
+                        <option value={DamageReportStatus.Rejected}>Từ chối</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
                 
                 {/* Priority Filter */}
                 <div className="col-12 col-sm-6 col-md-auto">
-                  <div className="d-flex align-items-center gap-2 flex-nowrap container-fluid px-0">
-                    <span className="small text-muted fw-bold text-nowrap" style={{ minWidth: '70px' }}>Ưu tiên:</span>
-                    <select
-                      className="form-control form-control-sm flex-grow-1"
-                      value={selectedPriority}
-                      onChange={(e) => setSelectedPriority(Number(e.target.value) as DamageReportPriority | 0)}
-                      style={{ borderRadius: '6px' }}
-                    >
-                      <option value="0">Tất cả</option>
-                      <option value={DamageReportPriority.Low}>Thấp</option>
-                      <option value={DamageReportPriority.Normal}>Bình thường</option>
-                      <option value={DamageReportPriority.High}>Cao</option>
-                      <option value={DamageReportPriority.Urgent}>Khẩn cấp</option>
-                    </select>
+                  <div className="row g-2 align-items-center">
+                    <div className="col-auto" style={{ width: '85px' }}>
+                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Ưu tiên:</span>
+                    </div>
+                    <div className="col">
+                      <select
+                        className="form-select form-select-sm"
+                        value={selectedPriority}
+                        onChange={(e) => setSelectedPriority(Number(e.target.value) as DamageReportPriority | 0)}
+                        style={{ borderRadius: '6px' }}
+                      >
+                        <option value="0">Tất cả</option>
+                        <option value={DamageReportPriority.Low}>Thấp</option>
+                        <option value={DamageReportPriority.Normal}>Bình thường</option>
+                        <option value={DamageReportPriority.High}>Cao</option>
+                        <option value={DamageReportPriority.Urgent}>Khẩn cấp</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
                 {/* Department Filter */}
                 <div className="col-12 col-md-auto">
-                  <div className="d-flex align-items-center gap-2 flex-nowrap container-fluid px-0">
-                    <span className="small text-muted fw-bold text-nowrap" style={{ minWidth: '70px' }}>Phòng ban:</span>
-                    <select
-                      className="form-control form-control-sm flex-grow-1"
-                      value={selectedDepartment}
-                      onChange={(e) => setSelectedDepartment(Number(e.target.value))}
-                      style={{ borderRadius: '6px' }}
-                    >
-                      <option value="0">Tất cả</option>
-                      {departments.map(dept => (
-                        <option key={dept.id} value={dept.id}>{dept.name}</option>
-                      ))}
-                    </select>
+                  <div className="row g-2 align-items-center">
+                    <div className="col-auto" style={{ width: '85px' }}>
+                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Phòng ban:</span>
+                    </div>
+                    <div className="col">
+                      <select
+                        className="form-select form-select-sm"
+                        value={selectedDepartment}
+                        onChange={(e) => setSelectedDepartment(Number(e.target.value))}
+                        style={{ borderRadius: '6px' }}
+                      >
+                        <option value="0">Tất cả</option>
+                        {departments.map(dept => (
+                          <option key={dept.id} value={dept.id}>{dept.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
 
@@ -1989,11 +2009,31 @@ export default function DamageReportsPage() {
                                 }}
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.7rem' }}>Chờ xử lý</option>
-                                <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.7rem' }}>Đang xử lý</option>
-                                <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.7rem' }}>Hoàn thành</option>
-                                <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.7rem' }}>Đã hủy</option>
-                                <option value={DamageReportStatus.Rejected} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.7rem' }}>Từ chối</option>
+                                 {isAdmin(currentUser?.roles) ? (
+                                  <>
+                                    <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.7rem' }}>Chờ xử lý</option>
+                                    <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.7rem' }}>Đang xử lý</option>
+                                    <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.7rem' }}>Hoàn thành</option>
+                                    <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.7rem' }}>Đã hủy</option>
+                                    <option value={DamageReportStatus.Rejected} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.7rem' }}>Từ chối</option>
+                                  </>
+                                ) : (
+                                  <>
+                                    {/* User can only see Pending option if they are currently Pending */}
+                                    {report.status === DamageReportStatus.Pending && (
+                                      <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.7rem' }}>Chờ xử lý</option>
+                                    )}
+                                    {/* Can transition to or stay in InProgress */}
+                                    {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.InProgress) && (
+                                      <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.7rem' }}>Đang xử lý</option>
+                                    )}
+                                    <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.7rem' }}>Hoàn thành</option>
+                                    {report.status === DamageReportStatus.Cancelled && (
+                                      <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.7rem' }}>Đã hủy</option>
+                                    )}
+                                    <option value={DamageReportStatus.Rejected} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.7rem' }}>Từ chối</option>
+                                  </>
+                                )}
                               </select>
                             </div>
                           </td>
@@ -2186,11 +2226,29 @@ export default function DamageReportsPage() {
                               }}
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.75rem' }}>Chờ xử lý</option>
-                              <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.75rem' }}>Đang xử lý</option>
-                              <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.75rem' }}>Hoàn thành</option>
-                              <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>Đã hủy</option>
-                              <option value={DamageReportStatus.Rejected} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.75rem' }}>Từ chối</option>
+                              {isAdmin(currentUser?.roles) ? (
+                                <>
+                                  <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.75rem' }}>Chờ xử lý</option>
+                                  <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.75rem' }}>Đang xử lý</option>
+                                  <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.75rem' }}>Hoàn thành</option>
+                                  <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>Đã hủy</option>
+                                  <option value={DamageReportStatus.Rejected} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.75rem' }}>Từ chối</option>
+                                </>
+                              ) : (
+                                <>
+                                  {report.status === DamageReportStatus.Pending && (
+                                    <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.75rem' }}>Chờ xử lý</option>
+                                  )}
+                                  {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.InProgress) && (
+                                    <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.75rem' }}>Đang xử lý</option>
+                                  )}
+                                  <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.75rem' }}>Hoàn thành</option>
+                                  {report.status === DamageReportStatus.Cancelled && (
+                                    <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>Đã hủy</option>
+                                  )}
+                                  <option value={DamageReportStatus.Rejected} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.75rem' }}>Từ chối</option>
+                                </>
+                              )}
                             </select>
                           </div>
                           <div className="col-6">
