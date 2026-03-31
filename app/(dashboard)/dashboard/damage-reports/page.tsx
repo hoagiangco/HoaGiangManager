@@ -2719,49 +2719,59 @@ export default function DamageReportsPage() {
                   </div>
 
                   <div className="col-12">
-                    <label className="form-label d-flex align-items-center justify-content-between">
-                      <span>Hình ảnh lúc báo cáo</span>
-                      <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => {
-                        setFileManagerMode('image');
-                        setFileManagerTarget('images');
-                        setShowFileManager(true);
-                      }}>Chọn hình</button>
-                    </label>
-                    {formData.images && formData.images.length > 0 ? (
-                      <div className="d-flex flex-wrap gap-2 mb-3">
-                        {formData.images.map((img, idx) => (
-                          <div key={`${img}-${idx}`} className="position-relative" style={{ width: 96, height: 72 }}>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={img} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4, border: '1px solid #dee2e6' }} />
-                            <button type="button" className="btn-close" aria-label="Remove" onClick={() => setFormData({ ...formData, images: formData.images.filter((_, i) => i !== idx) })} style={{ position: 'absolute', top: -6, right: -6 }} />
-                          </div>
-                        ))}
+                    <div className="row g-2">
+                      <div className="col-12 col-md-6">
+                        <div className="p-3 border rounded h-100" style={{ backgroundColor: '#f8fbff', borderColor: '#e1e8f0' }}>
+                          <label className="form-label d-flex align-items-center justify-content-between mb-2">
+                            <span className="fw-bold" style={{ color: '#0d6efd' }}><i className="fas fa-camera me-1"></i> Hình ảnh lúc báo cáo</span>
+                            <button type="button" className="btn btn-xs btn-primary py-0" style={{ fontSize: '0.7rem' }} onClick={() => {
+                              setFileManagerMode('image');
+                              setFileManagerTarget('images');
+                              setShowFileManager(true);
+                            }}>Chọn hình</button>
+                          </label>
+                          {formData.images && formData.images.length > 0 ? (
+                            <div className="d-flex flex-wrap gap-2">
+                              {formData.images.map((img, idx) => (
+                                <div key={`${img}-${idx}`} className="position-relative" style={{ width: 70, height: 55 }}>
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={img} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4, border: '1px solid #dee2e6' }} />
+                                  <button type="button" className="btn-close" aria-label="Remove" onClick={() => setFormData({ ...formData, images: formData.images.filter((_, i) => i !== idx) })} style={{ position: 'absolute', top: -5, right: -5, width: '0.5rem', height: '0.5rem' }} />
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-muted small italic">Chưa có hình ảnh báo cáo</div>
+                          )}
+                        </div>
                       </div>
-                    ) : (
-                      <div className="text-muted mb-3">Chưa có hình ảnh báo cáo</div>
-                    )}
 
-                    <label className="form-label d-flex align-items-center justify-content-between mt-2">
-                      <span>Hình ảnh sau khi xử lý</span>
-                      <button type="button" className="btn btn-sm btn-outline-success" onClick={() => {
-                        setFileManagerMode('image');
-                        setFileManagerTarget('afterImages');
-                        setShowFileManager(true);
-                      }}>Chọn hình</button>
-                    </label>
-                    {formData.afterImages && formData.afterImages.length > 0 ? (
-                      <div className="d-flex flex-wrap gap-2">
-                        {formData.afterImages.map((img, idx) => (
-                          <div key={`${img}-${idx}`} className="position-relative" style={{ width: 96, height: 72 }}>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={img} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4, border: '1px solid #dee2e6' }} />
-                            <button type="button" className="btn-close" aria-label="Remove" onClick={() => setFormData({ ...formData, afterImages: formData.afterImages.filter((_, i) => i !== idx) })} style={{ position: 'absolute', top: -6, right: -6 }} />
-                          </div>
-                        ))}
+                      <div className="col-12 col-md-6">
+                        <div className="p-3 border rounded h-100" style={{ backgroundColor: '#f6fff9', borderColor: '#e1f0e4' }}>
+                          <label className="form-label d-flex align-items-center justify-content-between mb-2">
+                            <span className="fw-bold" style={{ color: '#198754' }}><i className="fas fa-check-circle me-1"></i> Hình ảnh sau khi xử lý</span>
+                            <button type="button" className="btn btn-xs btn-success py-0" style={{ fontSize: '0.7rem' }} onClick={() => {
+                              setFileManagerMode('image');
+                              setFileManagerTarget('afterImages');
+                              setShowFileManager(true);
+                            }}>Chọn hình</button>
+                          </label>
+                          {formData.afterImages && formData.afterImages.length > 0 ? (
+                            <div className="d-flex flex-wrap gap-2">
+                              {formData.afterImages.map((img, idx) => (
+                                <div key={`${img}-${idx}`} className="position-relative" style={{ width: 70, height: 55 }}>
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={img} alt="img" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4, border: '1px solid #dee2e6' }} />
+                                  <button type="button" className="btn-close" aria-label="Remove" onClick={() => setFormData({ ...formData, afterImages: formData.afterImages.filter((_, i) => i !== idx) })} style={{ position: 'absolute', top: -5, right: -5, width: '0.5rem', height: '0.5rem' }} />
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-muted small italic">Chưa có hình ảnh sau xử lý</div>
+                          )}
+                        </div>
                       </div>
-                    ) : (
-                      <div className="text-muted">Chưa có hình ảnh sau xử lý</div>
-                    )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2970,27 +2980,35 @@ export default function DamageReportsPage() {
                 </div>
 
                 <div className="mb-3">
-                  <label className="form-label d-flex align-items-center justify-content-between">
-                    <span>Hình ảnh sau khi xử lý (Đối chứng)</span>
-                    <button type="button" className="btn btn-sm btn-outline-success" onClick={() => {
-                      setFileManagerMode('image');
-                      setFileManagerTarget('afterImages');
-                      setShowFileManager(true);
-                    }}>Chọn hình</button>
-                  </label>
-                  {completionModal.afterImages && completionModal.afterImages.length > 0 ? (
-                    <div className="d-flex flex-wrap gap-2">
-                      {completionModal.afterImages.map((img, idx) => (
-                        <div key={`${img}-${idx}`} className="position-relative" style={{ width: 96, height: 72 }}>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={img} alt="after-img" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4, border: '1px solid #dee2e6' }} />
-                          <button type="button" className="btn-close" aria-label="Remove" onClick={() => updateCompletionModal({ afterImages: completionModal.afterImages.filter((_, i) => i !== idx) })} style={{ position: 'absolute', top: -6, right: -6 }} />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-muted small">Nên đính kèm hình ảnh sau khi đã xử lý xong để đối chiếu.</div>
-                  )}
+                  <div className="p-3 border rounded shadow-sm" style={{ backgroundColor: '#f6fff9', borderColor: '#d1e7dd' }}>
+                    <label className="form-label d-flex align-items-center justify-content-between mb-2">
+                      <span className="fw-bold" style={{ color: '#198754' }}>
+                        <i className="fas fa-check-circle me-1"></i> Hình ảnh sau khi xử lý (Đối chứng)
+                      </span>
+                      <button type="button" className="btn btn-sm btn-success py-1" style={{ fontSize: '0.8rem' }} onClick={() => {
+                        setFileManagerMode('image');
+                        setFileManagerTarget('afterImages');
+                        setShowFileManager(true);
+                      }}>
+                        <i className="fas fa-plus me-1"></i> Chọn hình
+                      </button>
+                    </label>
+                    {completionModal.afterImages && completionModal.afterImages.length > 0 ? (
+                      <div className="d-flex flex-wrap gap-2">
+                        {completionModal.afterImages.map((img, idx) => (
+                          <div key={`${img}-${idx}`} className="position-relative" style={{ width: 100, height: 75 }}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={img} alt="after-img" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 6, border: '1px solid #dee2e6' }} />
+                            <button type="button" className="btn-close" aria-label="Remove" onClick={() => updateCompletionModal({ afterImages: completionModal.afterImages.filter((_, i) => i !== idx) })} style={{ position: 'absolute', top: -5, right: -5, width: '0.6rem', height: '0.6rem' }} />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-muted small bg-white p-2 rounded border border-dashed text-center">
+                        <i className="fas fa-image me-1 opacity-50"></i> Nên đính kèm hình ảnh sau khi đã xử lý xong để đối chiếu.
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {completionModalError && (

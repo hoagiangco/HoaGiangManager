@@ -207,9 +207,9 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
 
                   {/* Images */}
                   {Array.isArray(report.images) && report.images.length > 0 && (
-                    <div>
-                      <div className="text-muted small fw-bold text-uppercase mb-3" style={{ letterSpacing: '0.05em' }}>
-                        Hình ảnh đính kèm ({report.images.length})
+                    <div className="mb-4">
+                      <div className="text-muted small fw-bold text-uppercase mb-3" style={{ letterSpacing: '0.05em', color: '#3498db' }}>
+                        <i className="fas fa-camera me-1"></i> Hình ảnh lúc báo cáo ({report.images.length})
                       </div>
                       <div
                         style={{
@@ -277,11 +277,15 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
                     </div>
                   )}
 
+                  {Array.isArray(report.images) && report.images.length > 0 && Array.isArray(report.afterImages) && report.afterImages.length > 0 && (
+                    <hr className="my-2 opacity-5" />
+                  )}
+
                   {/* After Images */}
                   {Array.isArray(report.afterImages) && report.afterImages.length > 0 && (
-                    <div>
+                    <div className="mt-2">
                       <div className="text-muted small fw-bold text-uppercase mb-3" style={{ letterSpacing: '0.05em', color: '#27ae60' }}>
-                        Hình ảnh sau khi xử lý ({report.afterImages.length})
+                        <i className="fas fa-check-circle me-1"></i> Hình ảnh sau khi xử lý ({report.afterImages.length})
                       </div>
                       <div
                         style={{
