@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '@/lib/utils/api';
-import useSWR from 'swr';
+import useSWR, { mutate as globalMutate } from 'swr';
 import { fetcher } from '@/lib/utils/swr-fetcher';
 import { toast } from 'react-toastify';
 import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, StaffVM, Department, DeviceCategory, EventType, DeviceStatus } from '@/types';
@@ -201,6 +201,7 @@ type CompletionModalState = {
   afterImages: string[];
   submitting: boolean;
   finalDeviceStatus?: number;
+  targetStatus: DamageReportStatus;
 };
 
 export default function DamageReportsPage() {
@@ -277,6 +278,7 @@ export default function DamageReportsPage() {
     afterImages: [],
     submitting: false,
     finalDeviceStatus: DeviceStatus.DangSuDung,
+    targetStatus: DamageReportStatus.Completed,
   });
 
   // Modal device filter state
@@ -508,7 +510,7 @@ export default function DamageReportsPage() {
     return params.toString();
   }, [selectedStatus, selectedPriority, selectedDevice, selectedDepartment]);
 
-  const { data: reportsResponse, isLoading: reportsLoading } = useSWR(
+  const { data: reportsResponse, isLoading: reportsLoading, mutate } = useSWR(
     `/damage-reports?${currentParams}`, 
     fetcher, 
     { refreshInterval: 10000 }
@@ -536,7 +538,8 @@ export default function DamageReportsPage() {
   }, [reportsLoading]);
 
   const loadData = async () => {
-    // This is now handled by SWR
+    mutate();
+    globalMutate('/reports/pending');
   };
 
   const loadDevices = async () => {
@@ -1194,6 +1197,7 @@ export default function DamageReportsPage() {
       afterImages: [],
       submitting: false,
       finalDeviceStatus: DeviceStatus.DangSuDung,
+      targetStatus: DamageReportStatus.Completed,
     });
     setCompletionModalError(null);
   };
@@ -1221,21 +1225,27 @@ export default function DamageReportsPage() {
     }
   };
 
-  const openCompletionModal = async (report: DamageReportVM) => {
-    await loadCompletionEventTypes();
+  const openStatusUpdateModal = async (report: DamageReportVM, targetStatus: DamageReportStatus) => {
+    if (targetStatus === DamageReportStatus.Completed) {
+      await loadCompletionEventTypes();
+    }
+    
     setCompletionModal({
       show: true,
       report,
       eventTypeId: undefined,
-      eventTitle: report.deviceName
-        ? `Hoàn thành xử lý - ${report.deviceName}`
-        : 'Hoàn thành xử lý công việc',
+      eventTitle: targetStatus === DamageReportStatus.Completed
+        ? (report.deviceName ? `Hoàn thành xử lý - ${report.deviceName}` : 'Hoàn thành xử lý công việc')
+        : targetStatus === DamageReportStatus.Cancelled
+          ? `Hủy báo cáo - ${report.deviceName || 'Mô tả chung'}`
+          : `Từ chối báo cáo - ${report.deviceName || 'Mô tả chung'}`,
       eventDescription: report.damageContent || '',
       handlerNotes: report.handlerNotes || '',
       deviceId: report.deviceId,
       afterImages: report.afterImages || [],
       submitting: false,
       finalDeviceStatus: DeviceStatus.DangSuDung,
+      targetStatus,
     });
     setCompletionModalError(null);
   };
@@ -1260,8 +1270,11 @@ export default function DamageReportsPage() {
       return;
     }
 
-    if (newStatus === DamageReportStatus.Completed && report?.deviceId) {
-      await openCompletionModal(report);
+    // Capture device status for terminal states
+    if ((newStatus === DamageReportStatus.Completed || 
+         newStatus === DamageReportStatus.Cancelled || 
+         newStatus === DamageReportStatus.Rejected) && report?.deviceId) {
+      await openStatusUpdateModal(report, newStatus);
       return;
     }
 
@@ -1371,15 +1384,20 @@ export default function DamageReportsPage() {
       return;
     }
 
-    if (!completionModal.eventTypeId) {
-      setCompletionModalError('Vui lòng chọn loại xử lý');
-      return;
-    }
+    const { targetStatus } = completionModal;
 
-    const deviceId = completionModal.deviceId || completionModal.report.deviceId;
-    if (!deviceId) {
-      setCompletionModalError('Báo cáo chưa gắn thiết bị, vui lòng chọn thiết bị để tạo sự kiện');
-      return;
+    // Validation for Completed status
+    if (targetStatus === DamageReportStatus.Completed) {
+      if (!completionModal.eventTypeId) {
+        setCompletionModalError('Vui lòng chọn loại xử lý');
+        return;
+      }
+
+      const deviceId = completionModal.deviceId || completionModal.report.deviceId;
+      if (!deviceId) {
+        setCompletionModalError('Báo cáo chưa gắn thiết bị, vui lòng chọn thiết bị để tạo sự kiện');
+        return;
+      }
     }
 
     setCompletionModalError(null);
@@ -1387,14 +1405,17 @@ export default function DamageReportsPage() {
 
     try {
       const payload: any = {
-        status: DamageReportStatus.Completed,
-        eventTypeId: completionModal.eventTypeId,
-        eventTitle: completionModal.eventTitle?.trim() || null,
-        eventDescription: completionModal.eventDescription?.trim() || null,
-        eventDeviceId: deviceId,
-        afterImages: completionModal.afterImages.length > 0 ? completionModal.afterImages : null,
+        status: targetStatus,
         finalDeviceStatus: completionModal.finalDeviceStatus,
       };
+
+      if (targetStatus === DamageReportStatus.Completed) {
+        payload.eventTypeId = completionModal.eventTypeId;
+        payload.eventTitle = completionModal.eventTitle?.trim() || null;
+        payload.eventDescription = completionModal.eventDescription?.trim() || null;
+        payload.eventDeviceId = completionModal.deviceId || completionModal.report.deviceId;
+        payload.afterImages = completionModal.afterImages.length > 0 ? completionModal.afterImages : null;
+      }
 
       const trimmedHandlerNotes = completionModal.handlerNotes?.trim() ?? '';
       const originalHandlerNotes = completionModal.report.handlerNotes?.trim() ?? '';
@@ -1642,40 +1663,36 @@ export default function DamageReportsPage() {
               >
                 <i className={`fas ${filtersOpen ? 'fa-chevron-up' : 'fa-filter'}`} style={{ fontSize: '0.7rem' }}></i>
               </button>
-              <button
-                className={`btn btn-sm d-flex align-items-center justify-content-center ${myWorkFilter ? 'btn-info' : 'btn-outline-info'}`}
-                onClick={() => {
-                  if (currentUserStaffId === null) {
-                    toast.warning('Tài khoản của bạn chưa liên kết với nhân viên, không thể lọc My Work.');
-                    return;
-                  }
-                  skipPageResetOnMyWorkToggle.current = true;
-                  setMyWorkFilter(!myWorkFilter);
-                  if (!myWorkFilter) setMyReportFilter(false);
-                }}
-                title="Lọc công việc của tôi"
-                style={{ width: myWorkFilter ? 'auto' : '24px', minWidth: '24px', height: '24px', padding: myWorkFilter ? '0 4px' : '0' }}
-              >
-                <i className="fas fa-user-tie" style={{ fontSize: '0.7rem' }}></i>
-                <span className="d-none d-md-inline ms-1" style={{ fontSize: '0.65rem' }}>{myWorkFilter ? 'All' : ''}</span>
-              </button>
-              <button
-                className={`btn btn-sm d-flex align-items-center justify-content-center ${myReportFilter ? 'btn-success' : 'btn-outline-success'}`}
-                onClick={() => {
-                  if (currentUserStaffId === null) {
-                    toast.warning('Tài khoản của bạn chưa liên kết với nhân viên, không thể lọc My Report.');
-                    return;
-                  }
-                  skipPageResetOnMyReportToggle.current = true;
-                  setMyReportFilter(!myReportFilter);
-                  if (!myReportFilter) setMyWorkFilter(false);
-                }}
-                title="Lọc báo cáo của tôi"
-                style={{ width: myReportFilter ? 'auto' : '24px', minWidth: '24px', height: '24px', padding: myReportFilter ? '0 4px' : '0' }}
-              >
-                <i className="fas fa-file-alt" style={{ fontSize: '0.7rem' }}></i>
-                <span className="d-none d-md-inline ms-1" style={{ fontSize: '0.65rem' }}>{myReportFilter ? 'All' : ''}</span>
-              </button>
+              {currentUserStaffId !== null && (
+                <>
+                  <button
+                    className={`btn btn-sm d-flex align-items-center justify-content-center ${myWorkFilter ? 'btn-info' : 'btn-outline-info'}`}
+                    onClick={() => {
+                      skipPageResetOnMyWorkToggle.current = true;
+                      setMyWorkFilter(!myWorkFilter);
+                      if (!myWorkFilter) setMyReportFilter(false);
+                    }}
+                    title="Lọc công việc của tôi"
+                    style={{ width: myWorkFilter ? 'auto' : '24px', minWidth: '24px', height: '24px', padding: myWorkFilter ? '0 4px' : '0' }}
+                  >
+                    <i className="fas fa-user-tie" style={{ fontSize: '0.7rem' }}></i>
+                    <span className="d-none d-md-inline ms-1" style={{ fontSize: '0.65rem' }}>{myWorkFilter ? 'All' : ''}</span>
+                  </button>
+                  <button
+                    className={`btn btn-sm d-flex align-items-center justify-content-center ${myReportFilter ? 'btn-success' : 'btn-outline-success'}`}
+                    onClick={() => {
+                      skipPageResetOnMyReportToggle.current = true;
+                      setMyReportFilter(!myReportFilter);
+                      if (!myReportFilter) setMyWorkFilter(false);
+                    }}
+                    title="Lọc báo cáo của tôi"
+                    style={{ width: myReportFilter ? 'auto' : '24px', minWidth: '24px', height: '24px', padding: myReportFilter ? '0 4px' : '0' }}
+                  >
+                    <i className="fas fa-file-alt" style={{ fontSize: '0.7rem' }}></i>
+                    <span className="d-none d-md-inline ms-1" style={{ fontSize: '0.65rem' }}>{myReportFilter ? 'All' : ''}</span>
+                  </button>
+                </>
+              )}
               <div className="ms-md-1 d-flex gap-1 align-items-center">
                 {isAdmin(currentUser?.roles) && (
                   <button
@@ -2839,13 +2856,16 @@ export default function DamageReportsPage() {
         />
       )}
 
-      {/* Completion Classification Modal */}
+      {/* Status Update Modal (Generic Completion Modal) */}
       {completionModal.show && completionModal.report && (
         <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">Hoàn thành báo cáo</h5>
+                <h5 className="modal-title">
+                  {completionModal.targetStatus === DamageReportStatus.Completed ? 'Hoàn thành báo cáo' : 
+                   completionModal.targetStatus === DamageReportStatus.Cancelled ? 'Hủy báo cáo' : 'Từ chối báo cáo'}
+                </h5>
                 <button
                   type="button"
                   className="btn-close"
@@ -2869,6 +2889,7 @@ export default function DamageReportsPage() {
                   </div>
                 </div>
 
+                {completionModal.targetStatus === DamageReportStatus.Completed && (
                 <div className="mb-3">
                   <label className="form-label">
                     Loại xử lý <span className="text-danger">*</span>
@@ -2906,7 +2927,9 @@ export default function DamageReportsPage() {
                     </select>
                   )}
                 </div>
+                )}
 
+                {completionModal.targetStatus === DamageReportStatus.Completed && (
                 <div className="mb-3">
                   <label className="form-label">
                     Thiết bị liên quan
@@ -2934,10 +2957,11 @@ export default function DamageReportsPage() {
                     Có thể chọn thiết bị khác nếu cần điều chỉnh trước khi hoàn thành.
                   </small>
                 </div>
+                )}
 
                 <div className="mb-3">
                   <label className="form-label text-secondary" style={{ fontSize: '0.85rem' }}>
-                    <i className="fas fa-desktop me-1"></i> Trạng thái vật tư hiện tại <span className="text-danger">*</span>
+                    <i className="fas fa-desktop me-1"></i> Xác nhận tình trạng thiết bị <span className="text-danger">*</span>
                   </label>
                   <select
                     className="form-select"
@@ -2945,50 +2969,60 @@ export default function DamageReportsPage() {
                     onChange={(e) => updateCompletionModal({ finalDeviceStatus: Number(e.target.value) })}
                     disabled={completionModal.submitting}
                   >
-                    <option value={DeviceStatus.DangSuDung}>Đang sử dụng</option>
+                    <option value={DeviceStatus.DangSuDung}>Đang sử dụng (Bình thường)</option>
                     <option value={DeviceStatus.HuHong}>Hư hỏng không dùng được</option>
+                    <option value={DeviceStatus.CoHuHong}>Có hư hỏng (Cần theo dõi thêm)</option>
                   </select>
                 </div>
 
-                <div className="mb-3">
-                  <label className="form-label">Tiêu đề sự kiện</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={completionModal.eventTitle}
-                    onChange={(e) => updateCompletionModal({ eventTitle: e.target.value })}
-                    placeholder="Ví dụ: Hoàn thành sửa chữa thiết bị"
-                    disabled={completionModal.submitting}
-                  />
-                </div>
+                {completionModal.targetStatus === DamageReportStatus.Completed && (
+                <>
+                  <div className="mb-3">
+                    <label className="form-label">Tiêu đề sự kiện</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={completionModal.eventTitle}
+                      onChange={(e) => updateCompletionModal({ eventTitle: e.target.value })}
+                      placeholder="Ví dụ: Hoàn thành sửa chữa thiết bị"
+                      disabled={completionModal.submitting}
+                    />
+                  </div>
+
+                  <div className="mb-3">
+                    <label className="form-label">Nội dung sự kiện</label>
+                    <textarea
+                      className="form-control"
+                      rows={3}
+                      value={completionModal.eventDescription}
+                      onChange={(e) => updateCompletionModal({ eventDescription: e.target.value })}
+                      placeholder="Mô tả ngắn gọn công việc đã thực hiện"
+                      disabled={completionModal.submitting}
+                    />
+                  </div>
+                </>
+                )}
 
                 <div className="mb-3">
-                  <label className="form-label">Nội dung sự kiện</label>
+                  <label className="form-label">
+                    {completionModal.targetStatus === DamageReportStatus.Completed ? 'Ghi chú người xử lý' : 'Lý do / Ghi chú'}
+                  </label>
                   <textarea
                     className="form-control"
-                    rows={3}
-                    value={completionModal.eventDescription}
-                    onChange={(e) => updateCompletionModal({ eventDescription: e.target.value })}
-                    placeholder="Mô tả ngắn gọn công việc đã thực hiện"
-                    disabled={completionModal.submitting}
-                  />
-                </div>
-
-                <div className="mb-3">
-                  <label className="form-label">Ghi chú người xử lý</label>
-                  <textarea
-                    className="form-control"
-                    rows={2}
+                    rows={completionModal.targetStatus === DamageReportStatus.Completed ? 2 : 4}
                     value={completionModal.handlerNotes}
                     onChange={(e) => updateCompletionModal({ handlerNotes: e.target.value })}
-                    placeholder="Ghi chú nội bộ cho báo cáo"
+                    placeholder={completionModal.targetStatus === DamageReportStatus.Completed ? "Ghi chú nội bộ cho báo cáo" : "Nhập lý do cụ thể..."}
                     disabled={completionModal.submitting}
                   />
                   <small className="text-muted">
-                    Nội dung này sẽ được lưu vào mục &quot;Ghi chú người xử lý&quot; của báo cáo và gắn vào sự kiện.
+                    {completionModal.targetStatus === DamageReportStatus.Completed 
+                      ? 'Nội dung này sẽ được lưu vào mục "Ghi chú người xử lý" của báo cáo và gắn vào sự kiện.'
+                      : 'Nội dung này sẽ được lưu vào mục "Ghi chú người xử lý" của báo cáo.'}
                   </small>
                 </div>
 
+                {completionModal.targetStatus === DamageReportStatus.Completed && (
                 <div className="mb-3">
                   <div className="p-3 border rounded shadow-sm" style={{ backgroundColor: '#f6fff9', borderColor: '#d1e7dd' }}>
                     <label className="form-label d-flex align-items-center justify-content-between mb-2">
@@ -3020,6 +3054,7 @@ export default function DamageReportsPage() {
                     )}
                   </div>
                 </div>
+                )}
 
                 {completionModalError && (
                   <div className="alert alert-danger py-2 px-3" role="alert">

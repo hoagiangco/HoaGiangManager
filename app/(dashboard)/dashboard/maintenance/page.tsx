@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import api from '@/lib/utils/api';
-import useSWR from 'swr';
+import useSWR, { mutate as globalMutate } from 'swr';
 import { fetcher } from '@/lib/utils/swr-fetcher';
 import { toast } from 'react-toastify';
 import { formatDateDisplay, formatDateInput } from '@/lib/utils/dateFormat';
@@ -270,19 +270,19 @@ function MaintenancePageContent() {
   }, [catData, eventTypeData]);
 
   // Main polling data
-  const { data: batchesResponse, isLoading: loadingBatches } = useSWR(
+  const { data: batchesResponse, isLoading: loadingBatches, mutate: mutateBatches } = useSWR(
     activeTab === 'batches' ? '/events/maintenance-batches?all=true' : null, 
     fetcher, 
     { refreshInterval: 20000 }
   );
 
-  const { data: plansResponse, isLoading: loadingPlans } = useSWR(
+  const { data: plansResponse, isLoading: loadingPlans, mutate: mutatePlans } = useSWR(
     (activeTab === 'plans' || activeTab === 'cancelled') ? '/device-reminder-plans' : null, 
     fetcher, 
     { refreshInterval: 20000 }
   );
 
-  const { data: eventsResponse } = useSWR(
+  const { data: eventsResponse, mutate: mutateEvents } = useSWR(
     (activeTab === 'plans' || activeTab === 'cancelled' || activeTab === 'batches') ? '/events?eventTypeId=0' : null, 
     fetcher, 
     { refreshInterval: 15000 }
@@ -356,9 +356,17 @@ function MaintenancePageContent() {
     setLoading(loadingBatches || loadingPlans);
   }, [loadingBatches, loadingPlans]);
 
-  const loadData = async () => {};
+  const loadData = async () => { 
+    mutateBatches(); 
+    mutateEvents(); 
+    globalMutate('/reports/pending');
+  };
   const loadFormData = async () => {};
-  const loadAllPlans = async () => {};
+  const loadAllPlans = async () => { 
+    mutatePlans(); 
+    mutateEvents(); 
+    globalMutate('/reports/pending');
+  };
 
   // Load devices when category changes
   useEffect(() => {

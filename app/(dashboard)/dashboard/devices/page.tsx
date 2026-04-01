@@ -218,7 +218,7 @@ function DevicesPageContent() {
     }).toString();
   }, [selectedCategory, selectedDepartment, selectedStatus, searchKeyword, currentPage, itemsPerPage, sortField, sortOrder]);
 
-  const { data: response, isLoading: reportsLoading } = useSWR(
+  const { data: response, isLoading: reportsLoading, mutate } = useSWR(
     `/devices?${currentParams}`, 
     fetcher, 
     { refreshInterval: 15000 }
@@ -237,7 +237,7 @@ function DevicesPageContent() {
     setLoading(reportsLoading);
   }, [reportsLoading]);
 
-  const loadData = async () => { /* Now handled by SWR */ };
+  const loadData = async () => { mutate(); };
   const loadCategories = async () => { /* Now handled by SWR */ };
   const loadDepartments = async () => { /* Now handled by SWR */ };
 
@@ -807,8 +807,74 @@ function DevicesPageContent() {
           <div className={`card mb-2 filter-card ${filtersOpen ? 'filter-open' : 'filter-collapsed'}`} style={{ backgroundColor: '#f8f9fa', border: '1px solid #e9ecef' }}>
             <div className="card-body py-2 px-2 px-md-3">
               <div className="row g-2 align-items-center">
-                {/* Search Bar */}
-                <div className="col-12 col-md">
+                {/* Category Filter */}
+                <div className="col-12 col-md-auto order-last order-md-first">
+                  <div className="d-flex align-items-center gap-2">
+                    <div style={{ width: '85px' }}>
+                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Danh mục:</span>
+                    </div>
+                    <select
+                      className="form-select form-select-sm flex-grow-1"
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(Number(e.target.value))}
+                      style={{ borderRadius: '6px', width: '100%', minWidth: '120px' }}
+                    >
+                      <option value="0">Tất cả</option>
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Department Filter */}
+                <div className="col-12 col-md-auto order-last order-md-first">
+                  <div className="d-flex align-items-center gap-2">
+                    <div style={{ width: '85px' }}>
+                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Phòng ban:</span>
+                    </div>
+                    <select
+                      className="form-select form-select-sm flex-grow-1"
+                      value={selectedDepartment}
+                      onChange={(e) => setSelectedDepartment(Number(e.target.value))}
+                      style={{ borderRadius: '6px', width: '100%', minWidth: '120px' }}
+                    >
+                      <option value="0">Tất cả</option>
+                      {departments.map((dep) => (
+                        <option key={dep.id} value={dep.id}>
+                          {dep.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Status Filter */}
+                <div className="col-12 col-md-auto order-last order-md-first">
+                  <div className="d-flex align-items-center gap-2">
+                    <div style={{ width: '85px' }}>
+                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Trạng thái:</span>
+                    </div>
+                    <select
+                      className="form-select form-select-sm flex-grow-1"
+                      value={selectedStatus}
+                      onChange={(e) => setSelectedStatus(Number(e.target.value) as DeviceStatus | 0)}
+                      style={{ borderRadius: '6px', width: '100%', minWidth: '120px' }}
+                    >
+                      <option value="0">Tất cả</option>
+                      <option value={DeviceStatus.DangSuDung}>Đang sử dụng</option>
+                      <option value={DeviceStatus.DangSuaChua}>Đang sửa chữa</option>
+                      <option value={DeviceStatus.CoHuHong}>Có hư hỏng</option>
+                      <option value={DeviceStatus.HuHong}>Hư hỏng không dùng được</option>
+                      <option value={DeviceStatus.DaThanhLy}>Đã thanh lý</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Search Bar + Clear Filter Button */}
+                <div className="col order-first order-md-last flex-grow-1" style={{ minWidth: '250px' }}>
                   <div className="input-group input-group-sm">
                     <span className="input-group-text bg-white border-end-0">
                       <i className="fas fa-search text-muted"></i>
@@ -820,103 +886,20 @@ function DevicesPageContent() {
                       value={searchKeyword}
                       onChange={(e) => setSearchKeyword(e.target.value)}
                     />
-                    {searchKeyword && (
-                      <button
-                        className="btn btn-outline-secondary"
-                        type="button"
-                        onClick={() => setSearchKeyword('')}
-                      >
-                        <i className="fas fa-times"></i>
-                      </button>
-                    )}
+                    <button
+                      className="btn btn-outline-danger"
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategory(0);
+                        setSelectedDepartment(0);
+                        setSelectedStatus(0);
+                        setSearchKeyword('');
+                      }}
+                      title="Xóa bộ lọc"
+                    >
+                      <i className="fas fa-times"></i>
+                    </button>
                   </div>
-                </div>
-
-                {/* Category Filter */}
-                <div className="col-12 col-sm-6 col-md-auto">
-                  <div className="row g-2 align-items-center">
-                    <div className="col-auto" style={{ width: '85px' }}>
-                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Danh mục:</span>
-                    </div>
-                    <div className="col">
-                      <select
-                        className="form-select form-select-sm"
-                        value={selectedCategory}
-                        onChange={(e) => setSelectedCategory(Number(e.target.value))}
-                        style={{ borderRadius: '6px' }}
-                      >
-                        <option value="0">Tất cả</option>
-                        {categories.map((cat) => (
-                          <option key={cat.id} value={cat.id}>
-                            {cat.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Department Filter */}
-                <div className="col-12 col-sm-6 col-md-auto">
-                  <div className="row g-2 align-items-center">
-                    <div className="col-auto" style={{ width: '85px' }}>
-                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Phòng ban:</span>
-                    </div>
-                    <div className="col">
-                      <select
-                        className="form-select form-select-sm"
-                        value={selectedDepartment}
-                        onChange={(e) => setSelectedDepartment(Number(e.target.value))}
-                        style={{ borderRadius: '6px' }}
-                      >
-                        <option value="0">Tất cả</option>
-                        {departments.map((dep) => (
-                          <option key={dep.id} value={dep.id}>
-                            {dep.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Status Filter */}
-                <div className="col-12 col-md-auto">
-                  <div className="row g-2 align-items-center">
-                    <div className="col-auto" style={{ width: '85px' }}>
-                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Trạng thái:</span>
-                    </div>
-                    <div className="col">
-                      <select
-                        className="form-select form-select-sm"
-                        value={selectedStatus}
-                        onChange={(e) => setSelectedStatus(Number(e.target.value) as DeviceStatus | 0)}
-                        style={{ borderRadius: '6px' }}
-                      >
-                        <option value="0">Tất cả</option>
-                        <option value={DeviceStatus.DangSuDung}>Đang sử dụng</option>
-                        <option value={DeviceStatus.DangSuaChua}>Đang sửa chữa</option>
-                        <option value={DeviceStatus.CoHuHong}>Có hư hỏng</option>
-                        <option value={DeviceStatus.HuHong}>Hư hỏng không dùng được</option>
-                        <option value={DeviceStatus.DaThanhLy}>Đã thanh lý</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="col-12 col-md-auto">
-                  <button
-                    className="btn btn-outline-danger btn-sm w-100"
-                    onClick={() => {
-                      setSelectedCategory(0);
-                      setSelectedDepartment(0);
-                      setSelectedStatus(0);
-                      setSearchKeyword('');
-                    }}
-                    title="Xóa bộ lọc"
-                  >
-                    <i className="fas fa-times"></i> <span className="d-md-none ms-1">Xóa bộ lọc</span>
-                  </button>
                 </div>
               </div>
             </div>
@@ -1057,19 +1040,20 @@ function DevicesPageContent() {
                       {getSortIcon('status')}
                     </div>
                   </th>
+                  <th style={{ minWidth: '180px' }}>Tình trạng báo cáo</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-4">
+                    <td colSpan={9} className="text-center py-4">
                       <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
                       <span className="text-muted">Đang tải dữ liệu...</span>
                     </td>
                   </tr>
                 ) : currentDevices.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-4">
+                    <td colSpan={9} className="text-center py-4">
                       <span className="text-muted">Không có dữ liệu</span>
                     </td>
                   </tr>
@@ -1098,6 +1082,36 @@ function DevicesPageContent() {
                       <td>{device.deviceCategoryName}</td>
                       <td>{device.departmentName}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>{getStatusBadge(device.status)}</td>
+                      <td>
+                        {device.lastReportId ? (
+                          <div 
+                            className="d-flex flex-column gap-1" 
+                            style={{ cursor: 'pointer', maxWidth: '250px' }}
+                            onClick={() => handleQuickViewReport(device.lastReportId!)}
+                          >
+                            <div className="d-flex align-items-center gap-1">
+                              <span className={getReportStatusBadgeClass(device.lastReportStatus!)} style={{ fontSize: '0.65rem' }}>
+                                {device.lastReportStatus === DamageReportStatus.Pending ? 'Chờ xử lý' :
+                                 device.lastReportStatus === DamageReportStatus.Assigned ? 'Đã phân công' :
+                                 device.lastReportStatus === DamageReportStatus.InProgress ? 'Đang xử lý' :
+                                 device.lastReportStatus === DamageReportStatus.Completed ? 'Hoàn thành' :
+                                 device.lastReportStatus === DamageReportStatus.Cancelled ? 'Hủy' :
+                                 device.lastReportStatus === DamageReportStatus.Rejected ? 'Từ chối' : 'KĐ'}
+                              </span>
+                              <small className="text-muted" style={{ fontSize: '0.7rem' }}>#{device.lastReportId}</small>
+                            </div>
+                            <div 
+                              className="text-truncate small text-primary" 
+                              style={{ fontSize: '0.75rem', textDecoration: 'underline' }}
+                              title={device.lastReportContent || ''}
+                            >
+                              {device.lastReportContent || 'Xem chi tiết'}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-muted small">Chưa có báo cáo</span>
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}

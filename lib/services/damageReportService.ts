@@ -644,7 +644,9 @@ export class DamageReportService {
     // Auto-update device status when status changes
     if (report.deviceId) {
       if (report.status === DamageReportStatus.Cancelled || report.status === DamageReportStatus.Rejected) {
-        await pool.query(`UPDATE "Device" SET "Status" = '1' WHERE "ID" = $1`, [report.deviceId]);
+        // Revert to '1' (DangSuDung) by default if not specified otherwise
+        // Actually, syncDeviceStatus will handle the logic if we don't hardcode it here.
+        // Let's remove the hardcoded '1' update to let syncDeviceStatus decide or rely on manual updateStatus.
       }
       await this.syncDeviceStatus(report.deviceId);
     }
@@ -702,9 +704,10 @@ export class DamageReportService {
     }
 
     if (deviceId) {
-      if (status === DamageReportStatus.Completed && finalDeviceStatus) {
+      if (finalDeviceStatus) {
         await pool.query(`UPDATE "Device" SET "Status" = $1 WHERE "ID" = $2`, [finalDeviceStatus.toString(), deviceId]);
       } else if (status === DamageReportStatus.Cancelled || status === DamageReportStatus.Rejected) {
+        // Fallback to '1' (DangSuDung) only if no finalDeviceStatus provided
         await pool.query(`UPDATE "Device" SET "Status" = '1' WHERE "ID" = $1`, [deviceId]);
       }
 
@@ -1016,34 +1019,56 @@ export class DamageReportService {
     if (!deviceId) return;
 
     try {
-      // Find all reports for this device
-      const reportsQuery = await pool.query(
-        `SELECT "Status" FROM "DamageReport" WHERE "DeviceID" = $1`,
+      // Find the LATEST report for this device to determine its primary status
+      const latestReportQuery = await pool.query(
+        `SELECT CAST("Status"::text AS INTEGER) as status 
+         FROM "DamageReport" 
+         WHERE "DeviceID" = $1 
+         ORDER BY "ReportDate" DESC, "ID" DESC LIMIT 1`,
         [deviceId]
       );
 
-      const statuses = reportsQuery.rows.map(row => parseInt(row.Status) as DamageReportStatus);
+      if (latestReportQuery.rows.length === 0) {
+        console.log(`No reports for device ${deviceId}. Keeping current status.`);
+        return;
+      }
+
+      const latestStatus = latestReportQuery.rows[0].status as DamageReportStatus;
       
       let newDeviceStatus: number | null = null;
       
-      if (statuses.includes(DamageReportStatus.InProgress)) {
+      if (latestStatus === DamageReportStatus.InProgress) {
         newDeviceStatus = DeviceStatus.DangSuaChua; // 2
       } else if (
-        statuses.includes(DamageReportStatus.Pending) || 
-        statuses.includes(DamageReportStatus.Assigned)
+        latestStatus === DamageReportStatus.Pending || 
+        latestStatus === DamageReportStatus.Assigned
       ) {
         newDeviceStatus = DeviceStatus.CoHuHong; // 5
+      } else if (
+        latestStatus === DamageReportStatus.Cancelled || 
+        latestStatus === DamageReportStatus.Rejected
+      ) {
+        // If the latest report is cancelled/rejected, it shouldn't be driving a 'broken' status
+        // We revert to 1 (DangSuDung) unless there's another active report
+        const activeReportsQuery = await pool.query(
+          `SELECT "Status" FROM "DamageReport" 
+           WHERE "DeviceID" = $1 AND "Status" IN ('1', '2', '3')
+           LIMIT 1`,
+          [deviceId]
+        );
+        
+        if (activeReportsQuery.rows.length === 0) {
+          newDeviceStatus = DeviceStatus.DangSuDung; // 1
+        }
       }
+      // Note: DamageReportStatus.Completed is handled manually in updateStatus via finalDeviceStatus
 
       if (newDeviceStatus !== null) {
-        // Update the device status only if there are active reports driving it to 2 or 5
         await pool.query(
           `UPDATE "Device" SET "Status" = $1 WHERE "ID" = $2`,
           [newDeviceStatus.toString(), deviceId]
         );
-        console.log(`Successfully synced status for device ${deviceId} to ${newDeviceStatus}`);
-      } else {
-        console.log(`No active reports to override status for device ${deviceId}. Keeping current manual status.`);
+        console.log(`Successfully synced status for device ${deviceId} to ${newDeviceStatus} based on latest report.`);
       }
     } catch (error) {
       console.error(`Failed to sync device status for device ${deviceId}:`, error);

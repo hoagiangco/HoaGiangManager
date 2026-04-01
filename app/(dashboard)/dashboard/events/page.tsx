@@ -120,7 +120,7 @@ function EventsPageContent() {
   const staffList = (staffRes?.data || []) as StaffVM[];
 
   // Poll events list (10s)
-  const { data: eventsRes, isLoading: eventsLoading } = useSWR(
+  const { data: eventsRes, isLoading: eventsLoading, mutate } = useSWR(
     `/events?eventTypeId=${selectedEventType}`, 
     fetcher, 
     { refreshInterval: 10000 }
@@ -136,7 +136,7 @@ function EventsPageContent() {
     setLoading(eventsLoading);
   }, [eventsLoading]);
 
-  const loadData = async (eventTypeId: number = selectedEventType) => {};
+  const loadData = async (eventTypeId: number = selectedEventType) => { mutate(); };
   const loadEventTypes = async () => {};
   const loadDevices = async () => {};
   const loadStaff = async () => {};

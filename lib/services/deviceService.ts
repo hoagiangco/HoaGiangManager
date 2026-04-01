@@ -28,10 +28,23 @@ export class DeviceService {
           dep."Name" as "departmentName",
           d."DeviceCategoryID" as "deviceCategoryId",
           dc."Name" as "deviceCategoryName",
-          CAST(d."Status"::text AS INTEGER) as status
+          CAST(d."Status"::text AS INTEGER) as status,
+          lr."lastReportStatus",
+          lr."lastReportContent",
+          lr."lastReportId"
         FROM "Device" d
         INNER JOIN "DeviceCategory" dc ON d."DeviceCategoryID" = dc."ID"
         INNER JOIN "Department" dep ON d."DepartmentID" = dep."ID"
+        LEFT JOIN LATERAL (
+          SELECT 
+            CAST(dr."Status"::text AS INTEGER) as "lastReportStatus",
+            dr."DamageContent" as "lastReportContent",
+            dr."ID" as "lastReportId"
+          FROM "DamageReport" dr
+          WHERE dr."DeviceID" = d."ID"
+          ORDER BY dr."ReportDate" DESC, dr."ID" DESC
+          LIMIT 1
+        ) lr ON TRUE
       `;
 
       const params: any[] = [];
@@ -146,10 +159,23 @@ export class DeviceService {
           dep."Name" as "departmentName",
           d."DeviceCategoryID" as "deviceCategoryId",
           dc."Name" as "deviceCategoryName",
-          CAST(d."Status"::text AS INTEGER) as status
+          CAST(d."Status"::text AS INTEGER) as status,
+          lr."lastReportStatus",
+          lr."lastReportContent",
+          lr."lastReportId"
         FROM "Device" d
         INNER JOIN "DeviceCategory" dc ON d."DeviceCategoryID" = dc."ID"
         INNER JOIN "Department" dep ON d."DepartmentID" = dep."ID"
+        LEFT JOIN LATERAL (
+          SELECT 
+            CAST(dr."Status"::text AS INTEGER) as "lastReportStatus",
+            dr."DamageContent" as "lastReportContent",
+            dr."ID" as "lastReportId"
+          FROM "DamageReport" dr
+          WHERE dr."DeviceID" = d."ID"
+          ORDER BY dr."ReportDate" DESC, dr."ID" DESC
+          LIMIT 1
+        ) lr ON TRUE
         ${whereClause}
         ORDER BY ${sortBy} ${order}
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}
@@ -191,10 +217,23 @@ export class DeviceService {
           dep."Name" as "departmentName",
           d."DeviceCategoryID" as "deviceCategoryId",
           dc."Name" as "deviceCategoryName",
-          CAST(d."Status"::text AS INTEGER) as status
+          CAST(d."Status"::text AS INTEGER) as status,
+          lr."lastReportStatus",
+          lr."lastReportContent",
+          lr."lastReportId"
         FROM "Device" d
         INNER JOIN "DeviceCategory" dc ON d."DeviceCategoryID" = dc."ID"
         INNER JOIN "Department" dep ON d."DepartmentID" = dep."ID"
+        LEFT JOIN LATERAL (
+          SELECT 
+            CAST(dr."Status"::text AS INTEGER) as "lastReportStatus",
+            dr."DamageContent" as "lastReportContent",
+            dr."ID" as "lastReportId"
+          FROM "DamageReport" dr
+          WHERE dr."DeviceID" = d."ID"
+          ORDER BY dr."ReportDate" DESC, dr."ID" DESC
+          LIMIT 1
+        ) lr ON TRUE
         WHERE d."ID" IN (${placeholders})
         ORDER BY d."Name"
       `;
@@ -236,10 +275,23 @@ export class DeviceService {
           dep."Name" as "departmentName",
           d."DeviceCategoryID" as "deviceCategoryId",
           dc."Name" as "deviceCategoryName",
-          CAST(d."Status"::text AS INTEGER) as status
+          CAST(d."Status"::text AS INTEGER) as status,
+          lr."lastReportStatus",
+          lr."lastReportContent",
+          lr."lastReportId"
         FROM "Device" d
         INNER JOIN "DeviceCategory" dc ON d."DeviceCategoryID" = dc."ID"
         INNER JOIN "Department" dep ON d."DepartmentID" = dep."ID"
+        LEFT JOIN LATERAL (
+          SELECT 
+            CAST(dr."Status"::text AS INTEGER) as "lastReportStatus",
+            dr."DamageContent" as "lastReportContent",
+            dr."ID" as "lastReportId"
+          FROM "DamageReport" dr
+          WHERE dr."DeviceID" = d."ID"
+          ORDER BY dr."ReportDate" DESC, dr."ID" DESC
+          LIMIT 1
+        ) lr ON TRUE
         WHERE d."DepartmentID" = $1
         ORDER BY d."Name"
       `;

@@ -51,6 +51,9 @@ export interface DeviceVM extends Device {
   departmentName?: string;
   deviceCategoryName?: string;
   statusName?: string;
+  lastReportStatus?: DamageReportStatus;
+  lastReportContent?: string;
+  lastReportId?: number;
 }
 
 // Staff types
