@@ -845,19 +845,19 @@ function DevicesPageContent() {
           </div>
           
           {/* Filter Section */}
-          <div className={`card mb-3 filter-card ${filtersOpen ? 'filter-open' : 'filter-collapsed'}`} style={{ backgroundColor: '#f8f9fa' }}>
-            <div className="card-body py-2">
-              <div className="row g-2 align-items-end">
-                <div className="col-md-3">
-                  <label className="form-label small mb-1">Tìm kiếm</label>
+          <div className={`card mb-2 filter-card ${filtersOpen ? 'filter-open' : 'filter-collapsed'}`} style={{ backgroundColor: '#f8f9fa', border: '1px solid #e9ecef' }}>
+            <div className="card-body py-2 px-2 px-md-3">
+              <div className="row g-2 align-items-center">
+                {/* Search Bar */}
+                <div className="col-12 col-md">
                   <div className="input-group input-group-sm">
-                    <span className="input-group-text">
-                      <i className="fas fa-search"></i>
+                    <span className="input-group-text bg-white border-end-0">
+                      <i className="fas fa-search text-muted"></i>
                     </span>
                     <input
                       type="text"
-                      className="form-control"
-                      placeholder="Tên, serial, mô tả..."
+                      className="form-control border-start-0"
+                      placeholder="Tìm kiếm tên, serial, mô tả..."
                       value={searchKeyword}
                       onChange={(e) => setSearchKeyword(e.target.value)}
                     />
@@ -872,61 +872,91 @@ function DevicesPageContent() {
                     )}
                   </div>
                 </div>
-                <div className="col-md-2">
-                  <label className="form-label small mb-1">Danh mục</label>
-                  <select
-                    className="form-control form-control-sm"
-                    value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(Number(e.target.value))}
-                  >
-                    <option value="0">Tất cả</option>
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
+
+                {/* Category Filter */}
+                <div className="col-12 col-sm-6 col-md-auto">
+                  <div className="row g-2 align-items-center">
+                    <div className="col-auto" style={{ width: '85px' }}>
+                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Danh mục:</span>
+                    </div>
+                    <div className="col">
+                      <select
+                        className="form-select form-select-sm"
+                        value={selectedCategory}
+                        onChange={(e) => setSelectedCategory(Number(e.target.value))}
+                        style={{ borderRadius: '6px' }}
+                      >
+                        <option value="0">Tất cả</option>
+                        {categories.map((cat) => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                <div className="col-md-2">
-                  <label className="form-label small mb-1">Phòng ban</label>
-                  <select
-                    className="form-control form-control-sm"
-                    value={selectedDepartment}
-                    onChange={(e) => setSelectedDepartment(Number(e.target.value))}
-                  >
-                    <option value="0">Tất cả</option>
-                    {departments.map((dep) => (
-                      <option key={dep.id} value={dep.id}>
-                        {dep.name}
-                      </option>
-                    ))}
-                  </select>
+
+                {/* Department Filter */}
+                <div className="col-12 col-sm-6 col-md-auto">
+                  <div className="row g-2 align-items-center">
+                    <div className="col-auto" style={{ width: '85px' }}>
+                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Phòng ban:</span>
+                    </div>
+                    <div className="col">
+                      <select
+                        className="form-select form-select-sm"
+                        value={selectedDepartment}
+                        onChange={(e) => setSelectedDepartment(Number(e.target.value))}
+                        style={{ borderRadius: '6px' }}
+                      >
+                        <option value="0">Tất cả</option>
+                        {departments.map((dep) => (
+                          <option key={dep.id} value={dep.id}>
+                            {dep.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                <div className="col-md-2">
-                  <label className="form-label small mb-1">Trạng thái</label>
-                  <select
-                    className="form-control form-control-sm"
-                    value={selectedStatus}
-                    onChange={(e) => setSelectedStatus(Number(e.target.value) as DeviceStatus | 0)}
-                  >
-                    <option value="0">Tất cả</option>
-                    <option value={DeviceStatus.DangSuDung}>Đang sử dụng</option>
-                    <option value={DeviceStatus.DangSuaChua}>Đang sửa chữa</option>
-                    <option value={DeviceStatus.HuHong}>Hư hỏng</option>
-                    <option value={DeviceStatus.DaThanhLy}>Đã thanh lý</option>
-                  </select>
+
+                {/* Status Filter */}
+                <div className="col-12 col-md-auto">
+                  <div className="row g-2 align-items-center">
+                    <div className="col-auto" style={{ width: '85px' }}>
+                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Trạng thái:</span>
+                    </div>
+                    <div className="col">
+                      <select
+                        className="form-select form-select-sm"
+                        value={selectedStatus}
+                        onChange={(e) => setSelectedStatus(Number(e.target.value) as DeviceStatus | 0)}
+                        style={{ borderRadius: '6px' }}
+                      >
+                        <option value="0">Tất cả</option>
+                        <option value={DeviceStatus.DangSuDung}>Đang sử dụng</option>
+                        <option value={DeviceStatus.DangSuaChua}>Đang sửa chữa</option>
+                        <option value={DeviceStatus.CoHuHong}>Có hư hỏng</option>
+                        <option value={DeviceStatus.HuHong}>Hư hỏng không dùng được</option>
+                        <option value={DeviceStatus.DaThanhLy}>Đã thanh lý</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                <div className="col-md-3">
+
+                <div className="col-12 col-md-auto">
                   <button
-                    className="btn btn-secondary btn-sm w-100"
+                    className="btn btn-outline-danger btn-sm w-100"
                     onClick={() => {
                       setSelectedCategory(0);
                       setSelectedDepartment(0);
                       setSelectedStatus(0);
                       setSearchKeyword('');
                     }}
+                    title="Xóa bộ lọc"
                   >
-                    <i className="fas fa-filter"></i> Xóa bộ lọc
+                    <i className="fas fa-times"></i> <span className="d-md-none ms-1">Xóa bộ lọc</span>
                   </button>
                 </div>
               </div>
@@ -1416,6 +1446,7 @@ function DevicesPageContent() {
                       >
                         <option value={DeviceStatus.DangSuDung}>Đang sử dụng</option>
                         <option value={DeviceStatus.DangSuaChua}>Đang sửa chữa</option>
+                        <option value={DeviceStatus.CoHuHong}>Có hư hỏng</option>
                         <option value={DeviceStatus.HuHong}>Hư hỏng không dùng được</option>
                         <option value={DeviceStatus.DaThanhLy}>Đã thanh lý</option>
                       </select>

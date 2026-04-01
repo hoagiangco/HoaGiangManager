@@ -99,27 +99,57 @@ export default function DashboardLayout({
   // Menu items based on role
   const isAdmin = user?.roles?.includes('Admin');
   
-  const menuItems = [];
+  const menuGroups = [];
   
   if (isAdmin) {
-    // Admin sees all menu items
-    menuItems.push(
-      { href: '/dashboard', label: 'Trang chủ', icon: 'fas fa-home' },
-      { href: '/dashboard/devices', label: 'Thiết bị', icon: 'fas fa-laptop' },
-      { href: '/dashboard/departments', label: 'Phòng ban', icon: 'fas fa-building' },
-      { href: '/dashboard/device-categories', label: 'Danh mục thiết bị', icon: 'fas fa-box' },
-      { href: '/dashboard/staff', label: 'Nhân viên', icon: 'fas fa-users' },
-      { href: '/dashboard/maintenance', label: 'Bảo trì', icon: 'fas fa-wrench' },
-      { href: '/dashboard/events', label: 'Sự kiện', icon: 'fas fa-calendar' },
-      { href: '/dashboard/event-types', label: 'Loại sự kiện', icon: 'fas fa-tags' },
-      { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' },
-      { href: '/dashboard/admin', label: 'Quản trị', icon: 'fas fa-cog' }
+    // Admin sees all menu items grouped
+    menuGroups.push(
+      {
+        title: 'Tổng quan',
+        items: [
+          { href: '/dashboard', label: 'Trang chủ', icon: 'fas fa-home' }
+        ]
+      },
+      {
+        title: 'Quản lý tài sản',
+        items: [
+          { href: '/dashboard/devices', label: 'Thiết bị', icon: 'fas fa-laptop' },
+          { href: '/dashboard/device-categories', label: 'Danh mục thiết bị', icon: 'fas fa-box' },
+          { href: '/dashboard/departments', label: 'Phòng ban', icon: 'fas fa-building' }
+        ]
+      },
+      {
+        title: 'Hoạt động',
+        items: [
+          { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' },
+          { href: '/dashboard/maintenance', label: 'Bảo trì', icon: 'fas fa-wrench' },
+          { href: '/dashboard/events', label: 'Sự kiện', icon: 'fas fa-calendar' },
+          { href: '/dashboard/event-types', label: 'Loại sự kiện', icon: 'fas fa-tags' }
+        ]
+      },
+      {
+        title: 'Hệ thống',
+        items: [
+          { href: '/dashboard/staff', label: 'Nhân viên', icon: 'fas fa-users' },
+          { href: '/dashboard/admin', label: 'Quản trị', icon: 'fas fa-cog' }
+        ]
+      }
     );
   } else {
-    // User only sees damage reports
-    menuItems.push(
-      { href: '/dashboard', label: 'Trang chủ', icon: 'fas fa-home' },
-      { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' }
+    // User only sees limited items grouped
+    menuGroups.push(
+      {
+        title: 'Tổng quan',
+        items: [
+          { href: '/dashboard', label: 'Trang chủ', icon: 'fas fa-home' }
+        ]
+      },
+      {
+        title: 'Hoạt động',
+        items: [
+          { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' }
+        ]
+      }
     );
   }
 
@@ -145,27 +175,32 @@ export default function DashboardLayout({
           </button>
         </div>
         <nav className="sidebar-nav">
-          <ul className="sidebar-menu">
-            {menuItems.map((item) => (
-              <li key={item.href} className="sidebar-menu-item">
-                <Link
-                  href={item.href}
-                  className={`sidebar-menu-link ${pathname === item.href ? 'active' : ''}`}
-                  title={sidebarCollapsed ? item.label : ''}
-                  onClick={() => {
-                    if (window.innerWidth <= 768) {
-                      setMobileMenuOpen(false);
-                    }
-                  }}
-                >
-                  <i className={item.icon}></i>
-                  {!sidebarCollapsed && <span>{item.label}</span>}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          {menuGroups.map((group, groupIdx) => (
+            <div key={groupIdx} className="sidebar-menu-group">
+              {!sidebarCollapsed && <div className="sidebar-menu-title">{group.title}</div>}
+              <ul className="sidebar-menu">
+                {group.items.map((item) => (
+                  <li key={item.href} className="sidebar-menu-item">
+                    <Link
+                      href={item.href}
+                      className={`sidebar-menu-link ${pathname === item.href ? 'active' : ''}`}
+                      title={sidebarCollapsed ? item.label : ''}
+                      onClick={() => {
+                        if (window.innerWidth <= 768) {
+                          setMobileMenuOpen(false);
+                        }
+                      }}
+                    >
+                      <i className={item.icon}></i>
+                      {!sidebarCollapsed && <span>{item.label}</span>}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </nav>
-        {!sidebarCollapsed && (
+        {(!sidebarCollapsed || mobileMenuOpen) && (
           <div className="sidebar-footer">
             <div className="sidebar-user">
               <i className="fas fa-user-circle"></i>
@@ -174,6 +209,9 @@ export default function DashboardLayout({
             <button className="btn btn-outline-light btn-sm w-100" onClick={handleLogout}>
               <i className="fas fa-sign-out-alt"></i> Đăng xuất
             </button>
+            <div className="copyright-notice">
+              Copy right by LeeKhiem
+            </div>
           </div>
         )}
       </aside>
