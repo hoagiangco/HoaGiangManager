@@ -383,13 +383,11 @@ a {
 }
 
 .copyright-notice {
-  font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
   text-align: center;
-  padding-top: 0.75rem;
-  margin-top: 0.75rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: 0.5rem;
+  padding: 0.25rem 0;
+  letter-spacing: 0.05em;
 }
 
 /* Main Content */

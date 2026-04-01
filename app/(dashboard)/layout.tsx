@@ -202,13 +202,6 @@ export default function DashboardLayout({
         </nav>
         {(!sidebarCollapsed || mobileMenuOpen) && (
           <div className="sidebar-footer">
-            <div className="sidebar-user">
-              <i className="fas fa-user-circle"></i>
-              <span>{user?.fullName || user?.email}</span>
-            </div>
-            <button className="btn btn-outline-light btn-sm w-100" onClick={handleLogout}>
-              <i className="fas fa-sign-out-alt"></i> Đăng xuất
-            </button>
             <div className="copyright-notice">
               Copy right by LeeKhiem
             </div>

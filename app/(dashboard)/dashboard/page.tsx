@@ -59,16 +59,16 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchStats = async () => {
+    let pollingInterval: NodeJS.Timeout;
+
+    const fetchStaticStats = async () => {
       try {
-        const [devicesRes, departmentsRes, staffRes, eventsRes, damageReportsRes, notificationsRes, pendingReportsRes] = await Promise.all([
+        const [devicesRes, departmentsRes, staffRes, eventsRes, damageReportsRes] = await Promise.all([
           api.get('/devices?limit=9999'),
           api.get('/departments'),
           api.get('/staff?departmentId=0'),
           api.get('/events?eventTypeId=0'),
           api.get('/damage-reports'),
-          api.get('/maintenance/notifications').catch(() => ({ data: { status: true, data: { overduePlans: 0, upcomingPlans: 0, pendingEvents: 0 } } })),
-          api.get('/reports/pending').catch(() => ({ data: { status: true, data: { pending: { totalCount: 0, unassignedCount: 0, handlers: [] }, inProgress: { totalCount: 0, unassignedCount: 0, handlers: [] } } } })),
         ]);
 
         setStats({
@@ -78,6 +78,28 @@ export default function DashboardPage() {
           events: eventsRes.data.data?.length || 0,
           damageReports: damageReportsRes.data.data?.length || 0,
         });
+      } catch (error: any) {
+        console.error('Error fetching static stats:', error);
+        setStats({
+          devices: 0,
+          departments: 0,
+          staff: 0,
+          events: 0,
+          damageReports: 0,
+        });
+      }
+    };
+
+    const fetchNotifications = async () => {
+      try {
+        const [notificationsRes, pendingReportsRes] = await Promise.all([
+          api.get('/maintenance/notifications').catch(() => ({ 
+            data: { status: true, data: { overduePlans: 0, upcomingPlans: 0, pendingEvents: 0 } } 
+          })),
+          api.get('/reports/pending').catch(() => ({ 
+            data: { status: true, data: { pending: { totalCount: 0, unassignedCount: 0, handlers: [] }, inProgress: { totalCount: 0, unassignedCount: 0, handlers: [] } } } 
+          })),
+        ]);
 
         if (notificationsRes.data?.status && notificationsRes.data?.data) {
           setNotifications(notificationsRes.data.data);
@@ -86,24 +108,26 @@ export default function DashboardPage() {
         if (pendingReportsRes.data?.status && pendingReportsRes.data?.data) {
           setPendingReports(pendingReportsRes.data.data);
         }
-      } catch (error: any) {
-        console.error('Error fetching stats:', error);
-        const errorMessage = error.response?.data?.error || error.message || 'Lỗi khi tải thống kê';
-        console.error('Error details:', errorMessage);
-        // Set stats to 0 on error instead of keeping previous values
-        setStats({
-          devices: 0,
-          departments: 0,
-          staff: 0,
-          events: 0,
-          damageReports: 0,
-        });
-      } finally {
-        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching notifications (polling):', error);
       }
     };
 
-    fetchStats();
+    const initializeData = async () => {
+      setLoading(true);
+      await Promise.all([fetchStaticStats(), fetchNotifications()]);
+      setLoading(false);
+
+      // Start polling notifications every 10 seconds for real-time updates
+      pollingInterval = setInterval(fetchNotifications, 10000);
+    };
+
+    initializeData();
+
+    // Cleanup interval on unmount
+    return () => {
+      if (pollingInterval) clearInterval(pollingInterval);
+    };
   }, []);
 
   if (loading) {
