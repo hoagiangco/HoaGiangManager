@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/utils/api';
+import useSWR from 'swr';
+import { fetcher } from '@/lib/utils/swr-fetcher';
 import { toast } from 'react-toastify';
 import { EventStatus, EventType, EventVM, DamageReportVM, DeviceVM, StaffVM } from '@/types';
 import { formatDateDisplay, formatDateInput } from '@/lib/utils/dateFormat';
@@ -84,9 +86,6 @@ const getStatusLabel = (status: EventStatus | undefined | null): string => {
 function EventsPageContent() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [allEvents, setAllEvents] = useState<EventVM[]>([]);
-  const [eventTypes, setEventTypes] = useState<EventType[]>([]);
-  const [devices, setDevices] = useState<DeviceVM[]>([]);
-  const [staffList, setStaffList] = useState<StaffVM[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEventType, setSelectedEventType] = useState(0);
   const [statusFilter, setStatusFilter] = useState<'all' | EventStatus>('all');
@@ -111,62 +110,36 @@ function EventsPageContent() {
     error: null,
   });
 
-  const loadData = async (eventTypeId: number = selectedEventType) => {
-    try {
-      setLoading(true);
-      const response = await api.get(`/events?eventTypeId=${eventTypeId}`);
-      if (response.data.status) {
-        setAllEvents(response.data.data || []);
-      }
-    } catch (error) {
-      toast.error('Lỗi khi tải danh sách sự kiện');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Static/Reference data
+  const { data: eventTypesRes } = useSWR('/event-types', fetcher);
+  const { data: devicesRes } = useSWR('/devices?limit=1000', fetcher);
+  const { data: staffRes } = useSWR('/staff?departmentId=0', fetcher);
 
-  const loadEventTypes = async () => {
-    try {
-      const response = await api.get('/event-types');
-      if (response.data.status) {
-        setEventTypes(response.data.data || []);
-      }
-    } catch (error) {
-      console.error('Error loading event types:', error);
-    }
-  };
+  const eventTypes = (eventTypesRes?.data || []) as EventType[];
+  const devices = (devicesRes?.data || []) as DeviceVM[];
+  const staffList = (staffRes?.data || []) as StaffVM[];
 
-  const loadDevices = async () => {
-    try {
-      const response = await api.get('/devices?limit=1000');
-      if (response.data.status) {
-        setDevices(response.data.data || []);
-      }
-    } catch (error) {
-      console.error('Error loading devices:', error);
-    }
-  };
-
-  const loadStaff = async () => {
-    try {
-      const response = await api.get('/staff?departmentId=0');
-      if (response.data.status) {
-        setStaffList(response.data.data || []);
-      }
-    } catch (error) {
-      console.error('Error loading staff:', error);
-    }
-  };
+  // Poll events list (10s)
+  const { data: eventsRes, isLoading: eventsLoading } = useSWR(
+    `/events?eventTypeId=${selectedEventType}`, 
+    fetcher, 
+    { refreshInterval: 10000 }
+  );
 
   useEffect(() => {
-    loadEventTypes();
-    loadDevices();
-    loadStaff();
-  }, []);
+    if (eventsRes?.status) {
+      setAllEvents(eventsRes.data || []);
+    }
+  }, [eventsRes]);
 
   useEffect(() => {
-    loadData(selectedEventType);
-  }, [selectedEventType]);
+    setLoading(eventsLoading);
+  }, [eventsLoading]);
+
+  const loadData = async (eventTypeId: number = selectedEventType) => {};
+  const loadEventTypes = async () => {};
+  const loadDevices = async () => {};
+  const loadStaff = async () => {};
 
   useEffect(() => {
     setCurrentPage(1);

@@ -7,6 +7,8 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { AuthProvider } from '@/lib/contexts/AuthContext';
 import api from '@/lib/utils/api';
+import useSWR from 'swr';
+import { fetcher } from '@/lib/utils/swr-fetcher';
 
 export default function DashboardLayout({
   children,
@@ -19,6 +21,17 @@ export default function DashboardLayout({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [staffName, setStaffName] = useState<string | null>(null);
+
+  // Menu items based on role
+  const isAdmin = user?.roles?.includes('Admin');
+
+  // Poll pending reports globally (10s)
+  const { data: pendingReportsData } = useSWR(isAdmin ? '/reports/pending' : null, fetcher, {
+    refreshInterval: 10000,
+    revalidateOnFocus: true
+  });
+
+  const pendingCount = pendingReportsData?.data?.pending?.totalCount || 0;
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -97,8 +110,6 @@ export default function DashboardLayout({
   };
 
   // Menu items based on role
-  const isAdmin = user?.roles?.includes('Admin');
-  
   const menuGroups = [];
   
   if (isAdmin) {
@@ -227,7 +238,22 @@ export default function DashboardLayout({
                 <span>{staffName || user?.fullName || user?.email || 'Account'}</span>
               </span>
             </div>
-            <div className="top-navbar-right ms-auto">
+            <div className="top-navbar-right ms-auto d-flex align-items-center gap-3">
+              {isAdmin && (
+                <Link 
+                  href="/dashboard/damage-reports?status=1" 
+                  className="notification-link position-relative d-flex align-items-center text-primary"
+                  title={`${pendingCount} báo cáo chờ xử lý`}
+                >
+                  <i className="fas fa-bell fs-5"></i>
+                  {pendingCount > 0 && (
+                    <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" 
+                      style={{ padding: '2px 5px', fontSize: '10px' }}>
+                      {pendingCount > 99 ? '99+' : pendingCount}
+                    </span>
+                  )}
+                </Link>
+              )}
               <button 
                 className="btn btn-outline-primary btn-sm" 
                 onClick={handleLogout}

@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import api from '@/lib/utils/api';
+import useSWR from 'swr';
+import { fetcher } from '@/lib/utils/swr-fetcher';
 import { toast } from 'react-toastify';
 import { formatDateDisplay, formatDateInput } from '@/lib/utils/dateFormat';
 import DateInput from '@/components/DateInput';
@@ -258,15 +260,105 @@ function MaintenancePageContent() {
     }
   }, []);
 
+  // Static data for form
+  const { data: catData } = useSWR(activeTab === 'create' ? '/device-categories' : null, fetcher);
+  const { data: eventTypeData } = useSWR(activeTab === 'create' ? '/event-types' : null, fetcher);
+
   useEffect(() => {
-    if (activeTab === 'create') {
-      loadFormData();
-    } else if (activeTab === 'plans' || activeTab === 'cancelled') {
-      loadAllPlans();
-    } else {
-      loadData();
+    if (catData?.status) setCategories(catData.data || []);
+    if (eventTypeData?.status) setEventTypes(eventTypeData.data || []);
+  }, [catData, eventTypeData]);
+
+  // Main polling data
+  const { data: batchesResponse, isLoading: loadingBatches } = useSWR(
+    activeTab === 'batches' ? '/events/maintenance-batches?all=true' : null, 
+    fetcher, 
+    { refreshInterval: 20000 }
+  );
+
+  const { data: plansResponse, isLoading: loadingPlans } = useSWR(
+    (activeTab === 'plans' || activeTab === 'cancelled') ? '/device-reminder-plans' : null, 
+    fetcher, 
+    { refreshInterval: 20000 }
+  );
+
+  const { data: eventsResponse } = useSWR(
+    (activeTab === 'plans' || activeTab === 'cancelled' || activeTab === 'batches') ? '/events?eventTypeId=0' : null, 
+    fetcher, 
+    { refreshInterval: 15000 }
+  );
+
+  const { data: reportsResponse } = useSWR(
+    (activeTab === 'plans' || activeTab === 'cancelled') ? '/damage-reports' : null, 
+    fetcher, 
+    { refreshInterval: 20000 }
+  );
+
+  useEffect(() => {
+    if (batchesResponse?.status) setBatches(batchesResponse.data || []);
+  }, [batchesResponse]);
+
+  useEffect(() => {
+    if (plansResponse?.status) {
+      const plans = plansResponse.data || [];
+      setAllPlans(plans);
+
+      if (eventsResponse?.status) {
+        const allEvents = eventsResponse.data || [];
+        const eventsMap: Record<number, BatchEvent> = {};
+
+        plans.forEach((plan: DeviceReminderPlanVM) => {
+          const planBatchId = plan.metadata?.maintenanceBatchId;
+          const matchingEvents = allEvents.filter((event: any) => {
+            const eventBatchId = event.metadata?.maintenanceBatchId;
+            return event.deviceId === plan.deviceId &&
+              event.eventTypeId === plan.eventTypeId &&
+              eventBatchId === planBatchId &&
+              (event.status === 'planned' || event.status === 'in_progress' || event.status === 'completed');
+          });
+
+          if (matchingEvents.length > 0) {
+            const latestEvent = matchingEvents.sort((a: any, b: any) => {
+              const dateA = a.eventDate ? new Date(a.eventDate).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+              const dateB = b.eventDate ? new Date(b.eventDate).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+              return dateB - dateA;
+            })[0];
+            eventsMap[plan.id] = latestEvent;
+
+            const completedEvents = matchingEvents
+              .filter((e: any) => e.status === 'completed')
+              .sort((a: any, b: any) => {
+                const dateA = a.endDate ? new Date(a.endDate).getTime() : 0;
+                const dateB = b.endDate ? new Date(b.endDate).getTime() : 0;
+                return dateB - dateA;
+              });
+
+            if (completedEvents.length > 0) {
+              const lastCompleted = completedEvents[0];
+              plan.lastCompletedEvent = {
+                endDate: lastCompleted.endDate ? new Date(lastCompleted.endDate) : null,
+                staffName: lastCompleted.staffName || null,
+                notes: lastCompleted.description || lastCompleted.notes || null,
+              };
+            }
+          }
+        });
+        setPlanEvents(eventsMap);
+      }
+
+      if (reportsResponse?.status) {
+        setMaintenanceReports(reportsResponse.data || []);
+      }
     }
-  }, [activeTab]);
+  }, [plansResponse, eventsResponse, reportsResponse]);
+
+  useEffect(() => {
+    setLoading(loadingBatches || loadingPlans);
+  }, [loadingBatches, loadingPlans]);
+
+  const loadData = async () => {};
+  const loadFormData = async () => {};
+  const loadAllPlans = async () => {};
 
   // Load devices when category changes
   useEffect(() => {
@@ -303,24 +395,6 @@ function MaintenancePageContent() {
     }
   }, [deviceSearchKeyword, allDevices]);
 
-  const loadFormData = async () => {
-    try {
-      // Load categories
-      const catResponse = await api.get('/device-categories');
-      if (catResponse.data.status) {
-        setCategories(catResponse.data.data || []);
-      }
-
-      // Load event types
-      const eventResponse = await api.get('/event-types');
-      if (eventResponse.data.status) {
-        setEventTypes(eventResponse.data.data || []);
-      }
-    } catch (error: any) {
-      console.error('Error loading form data:', error);
-      toast.error('Lỗi khi tải dữ liệu form');
-    }
-  };
 
   const loadCategoryDevices = async (categoryId: number) => {
     setLoadingDevices(true);
@@ -426,113 +500,12 @@ function MaintenancePageContent() {
     setDeviceSearchKeyword('');
   };
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const response = await api.get('/events/maintenance-batches?all=true');
-      if (response.data.status) {
-        setBatches(response.data.data || []);
-      } else {
-        toast.error(response.data.error || 'Lỗi khi tải dữ liệu');
-      }
-    } catch (error: any) {
-      console.error('Error loading maintenance data:', error);
-      toast.error(error.response?.data?.error || 'Lỗi khi tải dữ liệu');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleQuickViewReport = (reportId: number) => {
     setSelectedQuickReportId(reportId);
     setShowQuickView(true);
   };
 
-  const loadAllPlans = async () => {
-    setLoading(true);
-    try {
-      const response = await api.get('/device-reminder-plans');
-      if (response.data.status) {
-        const plans = response.data.data || [];
-        setAllPlans(plans);
-
-        // Load events for these plans
-        try {
-          const eventsResponse = await api.get('/events?eventTypeId=0');
-          if (eventsResponse.data.status) {
-            const allEvents = eventsResponse.data.data || [];
-
-            // Create a map of planId -> latest event
-            // Match events with plans by deviceId, eventTypeId, and maintenanceBatchId
-            const eventsMap: Record<number, BatchEvent> = {};
-
-            plans.forEach((plan: DeviceReminderPlanVM) => {
-              const planBatchId = plan.metadata?.maintenanceBatchId;
-
-              // Find all matching events for this plan
-              const matchingEvents = allEvents.filter((event: any) => {
-                const eventBatchId = event.metadata?.maintenanceBatchId;
-                return event.deviceId === plan.deviceId &&
-                  event.eventTypeId === plan.eventTypeId &&
-                  eventBatchId === planBatchId &&
-                  (event.status === 'planned' || event.status === 'in_progress' || event.status === 'completed');
-              });
-
-              if (matchingEvents.length > 0) {
-                // Get the most recent event (by eventDate or createdAt) - for current status
-                const latestEvent = matchingEvents.sort((a: any, b: any) => {
-                  const dateA = a.eventDate ? new Date(a.eventDate).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
-                  const dateB = b.eventDate ? new Date(b.eventDate).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
-                  return dateB - dateA;
-                })[0];
-
-                eventsMap[plan.id] = latestEvent;
-
-                // Find the last completed event for this plan
-                const completedEvents = matchingEvents
-                  .filter((e: any) => e.status === 'completed')
-                  .sort((a: any, b: any) => {
-                    const dateA = a.endDate ? new Date(a.endDate).getTime() : (a.eventDate ? new Date(a.eventDate).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0));
-                    const dateB = b.endDate ? new Date(b.endDate).getTime() : (b.eventDate ? new Date(b.eventDate).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0));
-                    return dateB - dateA;
-                  });
-
-                if (completedEvents.length > 0) {
-                  const lastCompleted = completedEvents[0];
-                  plan.lastCompletedEvent = {
-                    endDate: lastCompleted.endDate ? new Date(lastCompleted.endDate) : null,
-                    staffName: lastCompleted.staffName || null,
-                    notes: lastCompleted.description || lastCompleted.notes || null,
-                  };
-                }
-              }
-            });
-
-            setPlanEvents(eventsMap);
-          }
-        } catch (error) {
-          console.error('Error loading events for plans:', error);
-        }
-
-        // Load all damage reports for matching
-        try {
-          const reportsResponse = await api.get('/damage-reports');
-          if (reportsResponse.data.status) {
-            setMaintenanceReports(reportsResponse.data.data || []);
-          }
-        } catch (error) {
-          console.error('Error loading damage reports for maintenance:', error);
-        }
-      } else {
-        toast.error(response.data.error || 'Lỗi khi tải danh sách kế hoạch');
-      }
-    } catch (error: any) {
-      console.error('Error loading plans:', error);
-      toast.error(error.response?.data?.error || 'Lỗi khi tải danh sách kế hoạch');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Group plans by maintenanceBatchId
   const groupedPlans = React.useMemo(() => {

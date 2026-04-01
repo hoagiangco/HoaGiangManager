@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import React from 'react';
 import api from '@/lib/utils/api';
+import useSWR from 'swr';
+import { fetcher } from '@/lib/utils/swr-fetcher';
 import { toast } from 'react-toastify';
 import { DeviceVM, DeviceStatus, DeviceCategory, Department, DeviceHistorySummary, EventStatus, DamageReportStatus } from '@/types';
 import { formatDateDisplay, formatDateInput, formatDateTime } from '@/lib/utils/dateFormat';
@@ -22,8 +24,6 @@ function DevicesPageContent() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [devices, setDevices] = useState<DeviceVM[]>([]);
   const [allDevices, setAllDevices] = useState<DeviceVM[]>([]); // Store all devices from API
-  const [categories, setCategories] = useState<DeviceCategory[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState(0);
   const [selectedDepartment, setSelectedDepartment] = useState(0);
@@ -198,89 +198,48 @@ function DevicesPageContent() {
   }, [showFileManager]); // Trigger when modal closes
   const [isEdit, setIsEdit] = useState(false);
 
+  // SWR hooks for data fetching
+  const { data: categoriesData } = useSWR<{ status: boolean; data: DeviceCategory[] }>('/device-categories', fetcher);
+  const { data: departmentsData } = useSWR<{ status: boolean; data: Department[] }>('/departments', fetcher);
+
+  const categories = (categoriesData?.data || []) as DeviceCategory[];
+  const departments = (departmentsData?.data || []) as Department[];
+
+  const currentParams = useMemo(() => {
+    return new URLSearchParams({
+      cateId: selectedCategory.toString(),
+      departmentId: selectedDepartment.toString(),
+      status: selectedStatus.toString(),
+      search: searchKeyword,
+      page: currentPage.toString(),
+      limit: itemsPerPage.toString(),
+      sortField: sortField,
+      sortOrder: sortOrder
+    }).toString();
+  }, [selectedCategory, selectedDepartment, selectedStatus, searchKeyword, currentPage, itemsPerPage, sortField, sortOrder]);
+
+  const { data: response, isLoading: reportsLoading } = useSWR(
+    `/devices?${currentParams}`, 
+    fetcher, 
+    { refreshInterval: 15000 }
+  );
+
+  // Update devices when response matches
   useEffect(() => {
-    loadCategories();
-    loadDepartments();
-    loadData();
-  }, []);
+    if (response?.status) {
+      setDevices(response.data || []);
+      setAllDevices(response.data || []);
+      setTotalItems(response.total || 0);
+    }
+  }, [response]);
 
-  // Fetch data when filters or pagination change
   useEffect(() => {
-    loadData();
-    // We don't reset currentPage here because we want to be able to navigate pages
-  }, [selectedCategory, selectedDepartment, selectedStatus, currentPage, itemsPerPage, sortField, sortOrder]);
+    setLoading(reportsLoading);
+  }, [reportsLoading]);
 
-  // Handle search with debounce
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (currentPage !== 1) {
-        setCurrentPage(1);
-      } else {
-        loadData();
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [searchKeyword]);
-
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams({
-        cateId: selectedCategory.toString(),
-        departmentId: selectedDepartment.toString(),
-        status: selectedStatus.toString(),
-        search: searchKeyword,
-        page: currentPage.toString(),
-        limit: itemsPerPage.toString(),
-        sortField: sortField,
-        sortOrder: sortOrder
-      });
-      
-      const response = await api.get(`/devices?${params.toString()}`);
-      if (response.data.status) {
-        setDevices(response.data.data || []);
-        setAllDevices(response.data.data || []); // For compatibility with existing code
-        setTotalItems(response.data.total || 0);
-      } else {
-        toast.error(response.data.error || 'Lỗi khi tải dữ liệu');
-        setDevices([]);
-        setTotalItems(0);
-      }
-    } catch (error: any) {
-      console.error('Load devices error:', error);
-      const errorMessage = error.response?.data?.error || error.message || 'Lỗi khi tải dữ liệu';
-      toast.error(errorMessage);
-      setDevices([]);
-      setTotalItems(0);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-  const loadCategories = async () => {
-    try {
-      const response = await api.get('/device-categories');
-      if (response.data.status) {
-        setCategories(response.data.data || []);
-      }
-    } catch (error: any) {
-      console.error('Error loading categories:', error);
-      toast.error('Lỗi khi tải danh mục');
-    }
-  };
-
-  const loadDepartments = async () => {
-    try {
-      const response = await api.get('/departments');
-      if (response.data.status) {
-        setDepartments(response.data.data || []);
-      }
-    } catch (error: any) {
-      console.error('Error loading departments:', error);
-      toast.error('Lỗi khi tải phòng ban');
-    }
-  };
+  const loadData = async () => { /* Now handled by SWR */ };
+  const loadCategories = async () => { /* Now handled by SWR */ };
+  const loadDepartments = async () => { /* Now handled by SWR */ };
 
   const handleNew = () => {
     setIsEdit(false);

@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '@/lib/utils/api';
+import useSWR from 'swr';
+import { fetcher } from '@/lib/utils/swr-fetcher';
 import { toast } from 'react-toastify';
 import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, StaffVM, Department, DeviceCategory, EventType, DeviceStatus } from '@/types';
 import { formatDateDisplay, formatDateInput, formatDateRange, formatDateFilename } from '@/lib/utils/dateFormat';
@@ -496,9 +498,31 @@ export default function DamageReportsPage() {
     return cleanup;
   }, []);
 
-  // Load lists on mount
+  // Use SWR for real-time polling of reports
+  const currentParams = useMemo(() => {
+    const params = new URLSearchParams();
+    if (selectedStatus > 0) params.append('status', selectedStatus.toString());
+    if (selectedPriority > 0) params.append('priority', selectedPriority.toString());
+    if (selectedDevice > 0) params.append('deviceId', selectedDevice.toString());
+    if (selectedDepartment > 0) params.append('departmentId', selectedDepartment.toString());
+    return params.toString();
+  }, [selectedStatus, selectedPriority, selectedDevice, selectedDepartment]);
+
+  const { data: reportsResponse, isLoading: reportsLoading } = useSWR(
+    `/damage-reports?${currentParams}`, 
+    fetcher, 
+    { refreshInterval: 10000 }
+  );
+
+  // Update allReports when SWR data changes
   useEffect(() => {
-    loadData();
+    if (reportsResponse?.status) {
+      setAllReports(reportsResponse.data || []);
+    }
+  }, [reportsResponse]);
+
+  // Rest of the data loading (can be moved to SWR later if needed, but keeping simple for now)
+  useEffect(() => {
     loadDevices();
     loadDeviceCategories();
     loadStaff();
@@ -506,24 +530,13 @@ export default function DamageReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (selectedStatus > 0) params.append('status', selectedStatus.toString());
-      if (selectedPriority > 0) params.append('priority', selectedPriority.toString());
-      if (selectedDevice > 0) params.append('deviceId', selectedDevice.toString());
-      if (selectedDepartment > 0) params.append('departmentId', selectedDepartment.toString());
+  // Use the loading state from SWR for reports
+  useEffect(() => {
+    setLoading(reportsLoading);
+  }, [reportsLoading]);
 
-      const response = await api.get(`/damage-reports?${params.toString()}`);
-      if (response.data.status) {
-        setAllReports(response.data.data || []);
-      }
-    } catch (error) {
-      toast.error('Lỗi khi tải danh sách báo cáo');
-    } finally {
-      setLoading(false);
-    }
+  const loadData = async () => {
+    // This is now handled by SWR
   };
 
   const loadDevices = async () => {

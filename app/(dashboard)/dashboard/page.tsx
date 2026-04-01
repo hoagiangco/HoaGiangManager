@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import api from '@/lib/utils/api';
+import useSWR from 'swr';
+import { fetcher } from '@/lib/utils/swr-fetcher';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/contexts/AuthContext';
@@ -32,103 +34,46 @@ interface PendingReportsNotifications {
 export default function DashboardPage() {
   const { user, isAdmin } = useAuth();
   const router = useRouter();
-  const [stats, setStats] = useState({
-    devices: 0,
-    departments: 0,
-    staff: 0,
-    events: 0,
-    damageReports: 0,
+  // Fetch notifications with 10s polling
+  const { data: notificationsData } = useSWR('/maintenance/notifications', fetcher, {
+    refreshInterval: 10000,
+    fallbackData: { status: true, data: { overduePlans: 0, upcomingPlans: 0, pendingEvents: 0 } }
   });
-  const [notifications, setNotifications] = useState<MaintenanceNotifications>({
-    overduePlans: 0,
-    upcomingPlans: 0,
-    pendingEvents: 0,
+
+  // Fetch pending reports with 10s polling
+  const { data: pendingReportsData } = useSWR('/reports/pending', fetcher, {
+    refreshInterval: 10000,
+    fallbackData: { 
+      status: true, 
+      data: { 
+        pending: { totalCount: 0, unassignedCount: 0, handlers: [] }, 
+        inProgress: { totalCount: 0, unassignedCount: 0, handlers: [] } 
+      } 
+    }
   });
-  const [pendingReports, setPendingReports] = useState<PendingReportsNotifications>({
-    pending: {
-      totalCount: 0,
-      unassignedCount: 0,
-      handlers: [],
-    },
-    inProgress: {
-      totalCount: 0,
-      unassignedCount: 0,
-      handlers: [],
-    },
-  });
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let pollingInterval: NodeJS.Timeout;
+  // Fetch static stats (refreshed every 30s)
+  const { data: devicesData } = useSWR('/devices?limit=9999', fetcher, { refreshInterval: 30000 });
+  const { data: departmentsData } = useSWR('/departments', fetcher, { refreshInterval: 30000 });
+  const { data: staffData } = useSWR('/staff?departmentId=0', fetcher, { refreshInterval: 30000 });
+  const { data: eventsData } = useSWR('/events?eventTypeId=0', fetcher, { refreshInterval: 30000 });
+  const { data: damageReportsData } = useSWR('/damage-reports', fetcher, { refreshInterval: 30000 });
 
-    const fetchStaticStats = async () => {
-      try {
-        const [devicesRes, departmentsRes, staffRes, eventsRes, damageReportsRes] = await Promise.all([
-          api.get('/devices?limit=9999'),
-          api.get('/departments'),
-          api.get('/staff?departmentId=0'),
-          api.get('/events?eventTypeId=0'),
-          api.get('/damage-reports'),
-        ]);
+  const notifications = notificationsData?.data || { overduePlans: 0, upcomingPlans: 0, pendingEvents: 0 };
+  const pendingReports = pendingReportsData?.data || {
+    pending: { totalCount: 0, unassignedCount: 0, handlers: [] },
+    inProgress: { totalCount: 0, unassignedCount: 0, handlers: [] }
+  };
 
-        setStats({
-          devices: devicesRes.data.data?.length || 0,
-          departments: departmentsRes.data.data?.length || 0,
-          staff: staffRes.data.data?.length || 0,
-          events: eventsRes.data.data?.length || 0,
-          damageReports: damageReportsRes.data.data?.length || 0,
-        });
-      } catch (error: any) {
-        console.error('Error fetching static stats:', error);
-        setStats({
-          devices: 0,
-          departments: 0,
-          staff: 0,
-          events: 0,
-          damageReports: 0,
-        });
-      }
-    };
+  const stats = {
+    devices: devicesData?.data?.length || 0,
+    departments: departmentsData?.data?.length || 0,
+    staff: staffData?.data?.length || 0,
+    events: eventsData?.data?.length || 0,
+    damageReports: damageReportsData?.data?.length || 0,
+  };
 
-    const fetchNotifications = async () => {
-      try {
-        const [notificationsRes, pendingReportsRes] = await Promise.all([
-          api.get('/maintenance/notifications').catch(() => ({ 
-            data: { status: true, data: { overduePlans: 0, upcomingPlans: 0, pendingEvents: 0 } } 
-          })),
-          api.get('/reports/pending').catch(() => ({ 
-            data: { status: true, data: { pending: { totalCount: 0, unassignedCount: 0, handlers: [] }, inProgress: { totalCount: 0, unassignedCount: 0, handlers: [] } } } 
-          })),
-        ]);
-
-        if (notificationsRes.data?.status && notificationsRes.data?.data) {
-          setNotifications(notificationsRes.data.data);
-        }
-
-        if (pendingReportsRes.data?.status && pendingReportsRes.data?.data) {
-          setPendingReports(pendingReportsRes.data.data);
-        }
-      } catch (error) {
-        console.error('Error fetching notifications (polling):', error);
-      }
-    };
-
-    const initializeData = async () => {
-      setLoading(true);
-      await Promise.all([fetchStaticStats(), fetchNotifications()]);
-      setLoading(false);
-
-      // Start polling notifications every 10 seconds for real-time updates
-      pollingInterval = setInterval(fetchNotifications, 10000);
-    };
-
-    initializeData();
-
-    // Cleanup interval on unmount
-    return () => {
-      if (pollingInterval) clearInterval(pollingInterval);
-    };
-  }, []);
+  const loading = !devicesData || !notificationsData || !pendingReportsData;
 
   if (loading) {
     return <div className="text-center">Đang tải...</div>;
@@ -167,7 +112,7 @@ export default function DashboardPage() {
                           )}
                           {pendingReports.pending.handlers.length > 0 && (
                             <div className="small text-muted mt-1">
-                              {pendingReports.pending.handlers.map((handler, index) => (
+                              {pendingReports.pending.handlers.map((handler: ReportHandler, index: number) => (
                                 <span key={handler.handlerId}>
                                   {index > 0 && ', '}
                                   <strong>{handler.handlerName}</strong> ({handler.count})
@@ -194,7 +139,7 @@ export default function DashboardPage() {
                           )}
                           {pendingReports.inProgress.handlers.length > 0 && (
                             <div className="small text-muted mt-1">
-                              {pendingReports.inProgress.handlers.map((handler, index) => (
+                              {pendingReports.inProgress.handlers.map((handler: ReportHandler, index: number) => (
                                 <span key={handler.handlerId}>
                                   {index > 0 && ', '}
                                   <strong>{handler.handlerName}</strong> ({handler.count})
