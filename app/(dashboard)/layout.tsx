@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
+import { PushNotificationManager } from '@/components/PushNotificationManager';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { ToastContainer } from 'react-toastify';
@@ -268,6 +269,9 @@ export default function DashboardLayout({
 
         {/* Page Content */}
         <main className="page-content">
+          <Suspense>
+            <PushNotificationManager />
+          </Suspense>
           {children}
         </main>
       </div>

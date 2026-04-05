@@ -2,6 +2,7 @@ import pool from '../db';
 import { PoolClient } from 'pg';
 import { DamageReport, DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceStatus, EventStatus } from '@/types';
 import { EventService } from './eventService';
+import { sendPushNotification } from '../notifications/web-push';
 
 export class DamageReportService {
   private async ensureHistorySequence(client?: PoolClient): Promise<void> {
@@ -555,7 +556,41 @@ export class DamageReportService {
       await this.syncDeviceStatus(report.deviceId);
     }
 
+    // Send push notification to all subscribers (Admins/Managers)
+    // In a real app, we would filter by role, but here we notify all for visibility
+    this.notifyNewReport(id, report.damageContent).catch(err => console.error('Failed to send push notifications:', err));
+
     return id;
+  }
+
+  private async notifyNewReport(reportId: number, content: string) {
+    try {
+      const subsRes = await pool.query('SELECT "Endpoint", "P256dh", "Auth" FROM "PushSubscription"');
+      const payload = {
+        title: 'Báo cáo hư hỏng mới ⚠️',
+        body: content.length > 100 ? content.substring(0, 100) + '...' : content,
+        icon: '/icons/icon.svg',
+        data: {
+          url: `/dashboard/damage-reports`
+        },
+        tag: `report-${reportId}`,
+        vibrate: [200, 100, 200],
+        requireInteraction: true
+      };
+
+      for (const row of subsRes.rows) {
+          const sub = {
+              endpoint: row.Endpoint,
+              keys: {
+                  p256dh: row.P256dh,
+                  auth: row.Auth
+              }
+          };
+          await sendPushNotification(sub as any, payload);
+      }
+    } catch (error) {
+      console.error('Error fetching subscriptions for notify:', error);
+    }
   }
 
   async update(report: DamageReport): Promise<number> {
@@ -1019,56 +1054,36 @@ export class DamageReportService {
     if (!deviceId) return;
 
     try {
-      // Find the LATEST report for this device to determine its primary status
-      const latestReportQuery = await pool.query(
+      // Find ALL active reports for this device to determine the most critical status
+      // Priority: InProgress (3) > (Pending (1) or Assigned (2))
+      const activeReportsRes = await pool.query(
         `SELECT CAST("Status"::text AS INTEGER) as status 
          FROM "DamageReport" 
-         WHERE "DeviceID" = $1 
-         ORDER BY "ReportDate" DESC, "ID" DESC LIMIT 1`,
+         WHERE "DeviceID" = $1 AND "Status" IN ('1', '2', '3')`,
         [deviceId]
       );
 
-      if (latestReportQuery.rows.length === 0) {
-        console.log(`No reports for device ${deviceId}. Keeping current status.`);
-        return;
-      }
-
-      const latestStatus = latestReportQuery.rows[0].status as DamageReportStatus;
+      const activeStatuses = activeReportsRes.rows.map(r => r.status as DamageReportStatus);
       
       let newDeviceStatus: number | null = null;
       
-      if (latestStatus === DamageReportStatus.InProgress) {
+      if (activeStatuses.includes(DamageReportStatus.InProgress)) {
         newDeviceStatus = DeviceStatus.DangSuaChua; // 2
-      } else if (
-        latestStatus === DamageReportStatus.Pending || 
-        latestStatus === DamageReportStatus.Assigned
-      ) {
+      } else if (activeStatuses.length > 0) {
+        // Has other active reports (Pending/Assigned)
         newDeviceStatus = DeviceStatus.CoHuHong; // 5
-      } else if (
-        latestStatus === DamageReportStatus.Cancelled || 
-        latestStatus === DamageReportStatus.Rejected
-      ) {
-        // If the latest report is cancelled/rejected, it shouldn't be driving a 'broken' status
-        // We revert to 1 (DangSuDung) unless there's another active report
-        const activeReportsQuery = await pool.query(
-          `SELECT "Status" FROM "DamageReport" 
-           WHERE "DeviceID" = $1 AND "Status" IN ('1', '2', '3')
-           LIMIT 1`,
-          [deviceId]
-        );
-        
-        if (activeReportsQuery.rows.length === 0) {
-          newDeviceStatus = DeviceStatus.DangSuDung; // 1
-        }
+      } else {
+        // No active reports - Check if we should revert to Normal
+        // We revert to 1 (DangSuDung) if there are no reports driving a non-normal status
+        newDeviceStatus = DeviceStatus.DangSuDung; // 1
       }
-      // Note: DamageReportStatus.Completed is handled manually in updateStatus via finalDeviceStatus
 
       if (newDeviceStatus !== null) {
         await pool.query(
           `UPDATE "Device" SET "Status" = $1 WHERE "ID" = $2`,
           [newDeviceStatus.toString(), deviceId]
         );
-        console.log(`Successfully synced status for device ${deviceId} to ${newDeviceStatus} based on latest report.`);
+        console.log(`Successfully synced status for device ${deviceId} to ${newDeviceStatus} based on active reports.`);
       }
     } catch (error) {
       console.error(`Failed to sync device status for device ${deviceId}:`, error);

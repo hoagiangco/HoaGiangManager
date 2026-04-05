@@ -30,6 +30,7 @@ export async function PUT(
       eventDeviceId,
       handlerNotes,
       afterImages,
+      finalDeviceStatus,
     } = body || {};
 
     // Admin and User can update status
@@ -122,7 +123,7 @@ export async function PUT(
 
     const eventService = new EventService();
 
-    await damageReportService.updateStatus(id, nextStatus as DamageReportStatus, user.userId);
+    await damageReportService.updateStatus(id, nextStatus as DamageReportStatus, user.userId, finalDeviceStatus);
 
     // Khi chuyển từ Pending (1) sang InProgress (3), tự động gán ngày bắt đầu là ngày hiện tại
     if (previousStatus === DamageReportStatus.Pending && nextStatus === DamageReportStatus.InProgress) {
