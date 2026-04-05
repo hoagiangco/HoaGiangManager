@@ -30,12 +30,14 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
         if (!registration) {
             try {
                 registration = await navigator.serviceWorker.register('/sw.js');
+                // Wait briefly for it to activate if needed
+                await new Promise(resolve => setTimeout(resolve, 1000));
             } catch (err) {
                 console.error('SW Registration Failed:', err);
                 return null;
             }
         }
-        return await navigator.serviceWorker.ready;
+        return registration;
     }
 
     async function checkSubscription() {
