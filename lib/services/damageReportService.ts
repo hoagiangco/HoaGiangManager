@@ -556,9 +556,12 @@ export class DamageReportService {
       await this.syncDeviceStatus(report.deviceId);
     }
 
-    // Send push notification to all subscribers (Admins/Managers)
-    // In a real app, we would filter by role, but here we notify all for visibility
-    this.notifyNewReport(id, report.damageContent).catch(err => console.error('Failed to send push notifications:', err));
+    // Await notification to ensure it finishes on serverless (Vercel)
+    try {
+        await this.notifyNewReport(id, report.damageContent);
+    } catch (err) {
+        console.error('Failed to send push notifications:', err);
+    }
 
     return id;
   }
@@ -587,9 +590,12 @@ export class DamageReportService {
               }
           };
           await sendPushNotification(sub as any, payload);
+          // Optional: log success per subscription in dev
+          // console.log(`Push sent to ${sub.endpoint}`);
       }
     } catch (error) {
       console.error('Error fetching subscriptions for notify:', error);
+      throw error; // Rethrow to catch in create method
     }
   }
 

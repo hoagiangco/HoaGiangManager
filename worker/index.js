@@ -9,9 +9,12 @@ self.addEventListener('push', function(event) {
             vibrate: data.vibrate || [100, 50, 100],
             data: data.data || { url: '/dashboard' },
             tag: data.tag || 'hoagiang-report',
-            renotify: data.renotify !== false,
-            requireInteraction: data.requireInteraction || false,
-            actions: data.actions || []
+            renotify: true, // Always re-notify even if tag is same
+            requireInteraction: true,
+            actions: [
+                { action: 'open', title: 'Xem chi tiết' },
+                { action: 'close', title: 'Đóng' }
+            ]
         };
         event.waitUntil(self.registration.showNotification(data.title, options));
     } catch (e) {

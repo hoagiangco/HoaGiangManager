@@ -13,6 +13,9 @@ export async function POST(req: NextRequest) {
         const subscription = await req.json();
         const { endpoint, keys } = subscription;
 
+        // Log for debugging (will show in Vercel logs)
+        console.log(`[Push Subscription] User: ${session.user.id}, Endpoint: ${endpoint.substring(0, 30)}...`);
+
         if (!endpoint || !keys?.p256dh || !keys?.auth) {
             return NextResponse.json({ status: false, error: 'Invalid subscription data' }, { status: 400 });
         }

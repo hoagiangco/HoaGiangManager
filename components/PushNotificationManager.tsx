@@ -10,6 +10,7 @@ export function PushNotificationManager() {
     const [isSupported, setIsSupported] = useState(false);
     const [subscription, setSubscription] = useState<PushSubscription | null>(null);
     const [permission, setPermission] = useState<NotificationPermission>('default');
+    const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         if ('serviceWorker' in navigator && 'PushManager' in window) {
@@ -19,27 +20,40 @@ export function PushNotificationManager() {
     }, []);
 
     async function checkSubscription() {
-        const registration = await navigator.serviceWorker.ready;
-        const sub = await registration.pushManager.getSubscription();
-        setSubscription(sub);
-        setPermission(Notification.permission);
+        try {
+            const registration = await navigator.serviceWorker.ready;
+            const sub = await registration.pushManager.getSubscription();
+            setSubscription(sub);
+            setPermission(Notification.permission);
+        } catch (e) {
+            console.error('Check subscription error:', e);
+        }
     }
 
     async function subscribeToPush() {
         if (!VAPID_PUBLIC_KEY) {
             console.error('VAPID public key is not set');
+            toast.error('Lỗi cấu hình hệ thống: Thiếu khóa VAPID. Hãy kiểm tra biến môi trường.');
             return;
         }
 
+        setIsLoading(true);
         try {
             const registration = await navigator.serviceWorker.ready;
             
             // Ask for permission if not granted
+            if (Notification.permission === 'denied') {
+                toast.warning('Bạn đã chặn thông báo. Vui lòng mở cài đặt trình duyệt để cho phép lại.');
+                setIsLoading(false);
+                return;
+            }
+
             if (Notification.permission !== 'granted') {
                 const p = await Notification.requestPermission();
                 setPermission(p);
                 if (p !== 'granted') {
-                    toast.error('Vui lòng cấp quyền thông báo để nhận tin tức mới nhất');
+                    toast.error('Bạn cần cấp quyền thông báo để tính năng này hoạt động');
+                    setIsLoading(false);
                     return;
                 }
             }
@@ -53,13 +67,15 @@ export function PushNotificationManager() {
             const response = await api.post('/api/notifications/subscribe', sub);
             if (response.data.status) {
                 setSubscription(sub);
-                toast.success('Đăng ký nhận thông báo thành công');
+                toast.success('🎉 Tuyệt vời! Bạn sẽ nhận được thông báo khi có báo cáo mới.');
             } else {
-                throw new Error(response.data.error || 'Lỗi khi lưu đăng ký');
+                throw new Error(response.data.error || 'Lỗi khi lưu đăng ký trên máy chủ');
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Push subscription error:', error);
-            toast.error('Không thể đăng ký nhận thông báo. Vui lòng thử lại sau.');
+            toast.error(`Không thể bật thông báo: ${error.message || 'Lỗi không xác định'}`);
+        } finally {
+            setIsLoading(false);
         }
     }
 
@@ -72,10 +88,20 @@ export function PushNotificationManager() {
             {permission !== 'granted' && (
                 <button 
                     onClick={subscribeToPush}
+                    disabled={isLoading}
                     className="btn btn-warning shadow-lg btn-sm rounded-pill px-3"
                     title="Đăng ký nhận thông báo"
                 >
-                    <i className="fas fa-bell me-1"></i> Bật thông báo
+                    {isLoading ? (
+                        <>
+                            <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                            Đang xử lý...
+                        </>
+                    ) : (
+                        <>
+                            <i className="fas fa-bell me-1"></i> Bật thông báo
+                        </>
+                    )}
                 </button>
             )}
         </div>
