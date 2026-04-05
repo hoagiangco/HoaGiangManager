@@ -709,48 +709,60 @@ export class DamageReportService {
   }
 
   async updateStatus(id: number, status: DamageReportStatus, updatedBy: string, finalDeviceStatus?: number | null): Promise<number> {
-    // Get current status
-    const currentResult = await pool.query(
-      `SELECT "Status", "DeviceID" FROM "DamageReport" WHERE "ID" = $1`,
-      [id]
-    );
-    
-    if (currentResult.rows.length === 0) {
-      throw new Error('Báo cáo không tồn tại');
-    }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    const currentStatus = currentResult.rows[0].Status;
-    const deviceId = currentResult.rows[0].DeviceID;
-
-    // Update status
-    await pool.query(
-      `UPDATE "DamageReport" SET "Status" = $1, "UpdatedBy" = $2, "UpdatedAt" = CURRENT_TIMESTAMP WHERE "ID" = $3`,
-      [status.toString(), updatedBy, id]
-    );
-
-    // Track change in history
-    if (currentStatus !== status.toString()) {
-      await this.ensureHistorySequence();
-      await pool.query(
-        `INSERT INTO "DamageReportHistory" ("DamageReportID", "FieldName", "OldValue", "NewValue", "ChangedBy")
-         VALUES ($1, 'Status', $2, $3, $4)`,
-        [id, currentStatus, status.toString(), updatedBy]
+      // Get current info
+      const currentRes = await client.query(
+        `SELECT "Status" as status, "DeviceID" as device_id FROM "DamageReport" WHERE "ID" = $1`,
+        [id]
       );
-    }
-
-    if (deviceId) {
-      if (finalDeviceStatus) {
-        await pool.query(`UPDATE "Device" SET "Status" = $1 WHERE "ID" = $2`, [finalDeviceStatus.toString(), deviceId]);
-      } else if (status === DamageReportStatus.Cancelled || status === DamageReportStatus.Rejected) {
-        // Fallback to '1' (DangSuDung) only if no finalDeviceStatus provided
-        await pool.query(`UPDATE "Device" SET "Status" = '1' WHERE "ID" = $1`, [deviceId]);
+      
+      if (currentRes.rows.length === 0) {
+        throw new Error('Báo cáo không tồn tại');
       }
 
-      await this.syncDeviceStatus(deviceId);
-    }
+      const row = currentRes.rows[0];
+      const currentStatusStr = String(row.status || '');
+      const deviceId = row.device_id;
 
-    return id;
+      // Update report status
+      await client.query(
+        `UPDATE "DamageReport" SET "Status" = $1, "UpdatedBy" = $2, "UpdatedAt" = CURRENT_TIMESTAMP WHERE "ID" = $3`,
+        [status.toString(), updatedBy, id]
+      );
+
+      // History
+      if (currentStatusStr !== status.toString()) {
+        await this.ensureHistorySequence();
+        await client.query(
+          `INSERT INTO "DamageReportHistory" ("DamageReportID", "FieldName", "OldValue", "NewValue", "ChangedBy")
+           VALUES ($1, 'Status', $2, $3, $4)`,
+          [id, currentStatusStr, status.toString(), updatedBy]
+        );
+      }
+
+      // Sync Device
+      if (deviceId) {
+        if (finalDeviceStatus) {
+          await client.query(`UPDATE "Device" SET "Status" = $1 WHERE "ID" = $2`, [finalDeviceStatus.toString(), deviceId]);
+        }
+        
+        // Recalculate device status based on ALL reports
+        await this.syncDeviceStatus(deviceId, client);
+      }
+
+      await client.query('COMMIT');
+      return id;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
+
 
   async updateHandlingDate(id: number, handlingDate: Date | null, updatedBy: string): Promise<void> {
     const currentResult = await pool.query(
@@ -1050,43 +1062,44 @@ export class DamageReportService {
     }
   }
 
-  private async syncDeviceStatus(deviceId: number): Promise<void> {
+  // Centralized robust sync method
+  private async syncDeviceStatus(deviceId: any, clientToUse?: any): Promise<void> {
     if (!deviceId) return;
+    const deviceIdNum = parseInt(deviceId.toString());
+    if (isNaN(deviceIdNum)) return;
 
+    const dbClient = clientToUse || pool;
+    
     try {
       // Find ALL active reports for this device to determine the most critical status
-      // Priority: InProgress (3) > (Pending (1) or Assigned (2))
-      const activeReportsRes = await pool.query(
-        `SELECT CAST("Status"::text AS INTEGER) as status 
+      // We query for Pending (1), Assigned (2), and InProgress (3)
+      // Using ::text and numeric IN for maximum compatibility with different column types
+      const res = await dbClient.query(
+        `SELECT CAST("Status"::text AS INTEGER) as status
          FROM "DamageReport" 
-         WHERE "DeviceID" = $1 AND "Status" IN ('1', '2', '3')`,
-        [deviceId]
+         WHERE "DeviceID" = $1 AND "Status"::text IN ('1', '2', '3')`,
+        [deviceIdNum]
       );
 
-      const activeStatuses = activeReportsRes.rows.map(r => r.status as DamageReportStatus);
+      const activeStatuses = res.rows.map((r: any) => r.status);
       
-      let newDeviceStatus: number | null = null;
+      let newStatus: number = DeviceStatus.DangSuDung; // Default (1)
       
       if (activeStatuses.includes(DamageReportStatus.InProgress)) {
-        newDeviceStatus = DeviceStatus.DangSuaChua; // 2
+        // Any report is InProgress (3) -> Device is Under Repair (2)
+        newStatus = DeviceStatus.DangSuaChua;
       } else if (activeStatuses.length > 0) {
-        // Has other active reports (Pending/Assigned)
-        newDeviceStatus = DeviceStatus.CoHuHong; // 5
-      } else {
-        // No active reports - Check if we should revert to Normal
-        // We revert to 1 (DangSuDung) if there are no reports driving a non-normal status
-        newDeviceStatus = DeviceStatus.DangSuDung; // 1
+        // No InProgress, but some are Pending (1) or Assigned (2) -> Device has Damage (5)
+        newStatus = DeviceStatus.CoHuHong;
       }
 
-      if (newDeviceStatus !== null) {
-        await pool.query(
-          `UPDATE "Device" SET "Status" = $1 WHERE "ID" = $2`,
-          [newDeviceStatus.toString(), deviceId]
-        );
-        console.log(`Successfully synced status for device ${deviceId} to ${newDeviceStatus} based on active reports.`);
-      }
-    } catch (error) {
-      console.error(`Failed to sync device status for device ${deviceId}:`, error);
+      await dbClient.query(
+        `UPDATE "Device" SET "Status" = $1 WHERE "ID" = $2`,
+        [newStatus.toString(), deviceIdNum]
+      );
+      console.log(`Sync success: Device ${deviceIdNum} status updated to ${newStatus}`);
+    } catch (err) {
+      console.error('syncDeviceStatus failed:', err);
     }
   }
 }
