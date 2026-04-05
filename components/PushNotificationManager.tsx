@@ -24,19 +24,34 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
         }
     }, []);
 
-    async function getSWRegistration() {
+    async function getSWRegistration(): Promise<ServiceWorkerRegistration | null> {
         if (!('serviceWorker' in navigator)) return null;
         let registration = await navigator.serviceWorker.getRegistration();
+        
         if (!registration) {
             try {
                 registration = await navigator.serviceWorker.register('/sw.js');
-                // Wait briefly for it to activate if needed
-                await new Promise(resolve => setTimeout(resolve, 1000));
             } catch (err) {
                 console.error('SW Registration Failed:', err);
                 return null;
             }
         }
+
+        if (registration.active) return registration;
+
+        // If SW is still installing/waiting, we must wait for it to be active
+        // because pushManager.subscribe requires an active worker.
+        const sw = registration.installing || registration.waiting;
+        if (sw) {
+            return new Promise((resolve) => {
+                sw.addEventListener('statechange', () => {
+                    if (sw.state === 'activated') {
+                        resolve(registration);
+                    }
+                });
+            });
+        }
+        
         return registration;
     }
 
