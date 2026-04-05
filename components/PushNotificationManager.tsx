@@ -39,20 +39,22 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
 
         if (registration.active) return registration;
 
-        // If SW is still installing/waiting, we must wait for it to be active
-        // because pushManager.subscribe requires an active worker.
+        // Wait for installing/waiting SW to become active (Max 3 seconds to avoid infinite loop)
         const sw = registration.installing || registration.waiting;
         if (sw) {
-            return new Promise((resolve) => {
+            await new Promise<void>((resolve) => {
+                const timeoutId = setTimeout(resolve, 3000);
                 sw.addEventListener('statechange', () => {
-                    if (sw.state === 'activated') {
-                        resolve(registration);
+                    if (sw.state === 'activated' || sw.state === 'redundant') {
+                        clearTimeout(timeoutId);
+                        resolve();
                     }
                 });
             });
         }
         
-        return registration;
+        // Return only if an active worker is actually ready, otherwise it will crash when subscribing
+        return registration.active ? registration : null;
     }
 
     async function checkSubscription() {
