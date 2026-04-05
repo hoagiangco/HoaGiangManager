@@ -24,9 +24,23 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
         }
     }, []);
 
+    async function getSWRegistration() {
+        if (!('serviceWorker' in navigator)) return null;
+        let registration = await navigator.serviceWorker.getRegistration();
+        if (!registration) {
+            try {
+                registration = await navigator.serviceWorker.register('/sw.js');
+            } catch (err) {
+                console.error('SW Registration Failed:', err);
+                return null;
+            }
+        }
+        return await navigator.serviceWorker.ready;
+    }
+
     async function checkSubscription() {
         try {
-            const registration = await navigator.serviceWorker.getRegistration();
+            const registration = await getSWRegistration();
             if (!registration) return;
             
             const sub = await registration.pushManager.getSubscription();
@@ -45,9 +59,9 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
 
         setIsLoading(true);
         try {
-            const registration = await navigator.serviceWorker.getRegistration();
+            const registration = await getSWRegistration();
             if (!registration) {
-                toast.error('Hệ thống thông báo chưa sẵn sàng. Vui lòng tải lại trang (F5).');
+                toast.error('Hệ thống thông báo bị trình duyệt chặn hoặc chưa sẵn sàng.');
                 return;
             }
             
@@ -82,7 +96,7 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
     async function unsubscribeFromPush() {
         setIsLoading(true);
         try {
-            const registration = await navigator.serviceWorker.getRegistration();
+            const registration = await getSWRegistration();
             if (!registration) return;
             
             const sub = await registration.pushManager.getSubscription();
