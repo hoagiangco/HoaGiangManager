@@ -100,7 +100,7 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
                 applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
             });
 
-            await api.post('/api/notifications/subscribe', sub);
+            await api.post('/notifications/subscribe', sub);
             setSubscription(sub);
             toast.success('Đã bật thông báo đẩy thành công! 🔔');
         } catch (error: any) {
@@ -121,7 +121,7 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
             const sub = await registration.pushManager.getSubscription();
             
             if (sub) {
-                await api.post('/api/notifications/unsubscribe', { endpoint: sub.endpoint });
+                await api.post('/notifications/unsubscribe', { endpoint: sub.endpoint });
                 await sub.unsubscribe();
                 setSubscription(null);
                 setPermission('default');
