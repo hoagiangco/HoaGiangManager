@@ -3,10 +3,15 @@
 import { useEffect, useState } from 'react';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
+import Link from 'next/link';
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
-export function PushNotificationManager() {
+interface PushNotificationManagerProps {
+    pendingCount?: number;
+}
+
+export function PushNotificationManager({ pendingCount = 0 }: PushNotificationManagerProps) {
     const [isSupported, setIsSupported] = useState(false);
     const [subscription, setSubscription] = useState<PushSubscription | null>(null);
     const [permission, setPermission] = useState<NotificationPermission>('default');
@@ -21,7 +26,9 @@ export function PushNotificationManager() {
 
     async function checkSubscription() {
         try {
-            const registration = await navigator.serviceWorker.ready;
+            const registration = await navigator.serviceWorker.getRegistration();
+            if (!registration) return;
+            
             const sub = await registration.pushManager.getSubscription();
             setSubscription(sub);
             setPermission(Notification.permission);
@@ -32,30 +39,27 @@ export function PushNotificationManager() {
 
     async function subscribeToPush() {
         if (!VAPID_PUBLIC_KEY) {
-            console.error('VAPID public key is not set');
-            toast.error('Lỗi cấu hình hệ thống: Thiếu khóa VAPID. Hãy kiểm tra biến môi trường.');
+            toast.error('Lỗi cấu hình Push (Thiếu VAPID Key)');
             return;
         }
 
         setIsLoading(true);
         try {
-            const registration = await navigator.serviceWorker.ready;
+            const registration = await navigator.serviceWorker.getRegistration();
+            if (!registration) {
+                toast.error('Hệ thống thông báo chưa sẵn sàng. Vui lòng tải lại trang (F5).');
+                return;
+            }
             
-            // Ask for permission if not granted
             if (Notification.permission === 'denied') {
-                toast.warning('Bạn đã chặn thông báo. Vui lòng mở cài đặt trình duyệt để cho phép lại.');
-                setIsLoading(false);
+                toast.warning('Vui lòng mở cài đặt trình duyệt để cho phép nhận thông báo.');
                 return;
             }
 
             if (Notification.permission !== 'granted') {
                 const p = await Notification.requestPermission();
                 setPermission(p);
-                if (p !== 'granted') {
-                    toast.error('Bạn cần cấp quyền thông báo để tính năng này hoạt động');
-                    setIsLoading(false);
-                    return;
-                }
+                if (p !== 'granted') return;
             }
 
             const sub = await registration.pushManager.subscribe({
@@ -63,17 +67,36 @@ export function PushNotificationManager() {
                 applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
             });
 
-            // Send subscription to server
-            const response = await api.post('/api/notifications/subscribe', sub);
-            if (response.data.status) {
-                setSubscription(sub);
-                toast.success('🎉 Tuyệt vời! Bạn sẽ nhận được thông báo khi có báo cáo mới.');
-            } else {
-                throw new Error(response.data.error || 'Lỗi khi lưu đăng ký trên máy chủ');
-            }
+            await api.post('/api/notifications/subscribe', sub);
+            setSubscription(sub);
+            toast.success('Đã bật thông báo đẩy thành công! 🔔');
         } catch (error: any) {
             console.error('Push subscription error:', error);
-            toast.error(`Không thể bật thông báo: ${error.message || 'Lỗi không xác định'}`);
+            if (error.message && error.message.includes('User denied')) return;
+            toast.error('Không thể bật thông báo đẩy.');
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    async function unsubscribeFromPush() {
+        setIsLoading(true);
+        try {
+            const registration = await navigator.serviceWorker.getRegistration();
+            if (!registration) return;
+            
+            const sub = await registration.pushManager.getSubscription();
+            
+            if (sub) {
+                await api.post('/api/notifications/unsubscribe', { endpoint: sub.endpoint });
+                await sub.unsubscribe();
+                setSubscription(null);
+                setPermission('default');
+                toast.info('Đã tắt thông báo đẩy.');
+            }
+        } catch (error: any) {
+            console.error('Push unsubscription error:', error);
+            toast.error('Lỗi khi tắt thông báo.');
         } finally {
             setIsLoading(false);
         }
@@ -81,29 +104,55 @@ export function PushNotificationManager() {
 
     if (!isSupported) return null;
 
-    // We can return a button or just handle it silently, but for now we won't return UI 
-    // and instead expose a trigger if needed, or just auto-subscribe if permission is granted.
+    const isSubscribed = !!subscription;
+
     return (
-        <div style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 9999 }}>
-            {permission !== 'granted' && (
+        <div className="d-flex align-items-center" style={{ minWidth: '35px' }}>
+            <div className="position-relative">
+                {/* Bell Icon (Push Toggle) */}
                 <button 
-                    onClick={subscribeToPush}
+                    onClick={isSubscribed ? unsubscribeFromPush : subscribeToPush}
                     disabled={isLoading}
-                    className="btn btn-warning shadow-lg btn-sm rounded-pill px-3"
-                    title="Đăng ký nhận thông báo"
+                    className="btn btn-link p-0 border-0 shadow-none d-flex align-items-center justify-content-center"
+                    style={{ 
+                        color: 'inherit', 
+                        textDecoration: 'none',
+                        width: '32px',
+                        height: '32px',
+                        transition: 'all 0.2s ease'
+                    }}
+                    title={isSubscribed ? 'Đang bật - Nhấn để Tắt thông báo đẩy' : 'Đang tắt - Nhấn để Bật thông báo đẩy'}
                 >
                     {isLoading ? (
-                        <>
-                            <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                            Đang xử lý...
-                        </>
+                        <div className="spinner-border spinner-border-sm text-primary" role="status" style={{ width: '1.2rem', height: '1.2rem' }}></div>
                     ) : (
-                        <>
-                            <i className="fas fa-bell me-1"></i> Bật thông báo
-                        </>
+                        <i className={`fas ${isSubscribed ? 'fa-bell text-warning' : 'fa-bell-slash text-muted opacity-50'} fs-5`}></i>
                     )}
                 </button>
-            )}
+                
+                {/* Badge for Pending Reports (Click to view) */}
+                {pendingCount > 0 && (
+                    <Link 
+                        href="/dashboard/damage-reports?status=1"
+                        className="position-absolute badge rounded-pill bg-danger border border-white text-white d-flex align-items-center justify-content-center" 
+                        style={{ 
+                            top: '-5px',
+                            right: '-8px',
+                            padding: '3px 6px', 
+                            fontSize: '11px', 
+                            textDecoration: 'none',
+                            zIndex: 10,
+                            minWidth: '18px',
+                            height: '18px',
+                            fontWeight: 'bold',
+                            boxShadow: '0 2px 4px rgba(220, 53, 69, 0.4)'
+                        }}
+                        title={`${pendingCount} báo cáo chờ - Nhấn để xem`}
+                    >
+                        {pendingCount > 99 ? '99+' : pendingCount}
+                    </Link>
+                )}
+            </div>
         </div>
     );
 }

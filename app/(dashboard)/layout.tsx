@@ -241,19 +241,9 @@ export default function DashboardLayout({
             </div>
             <div className="top-navbar-right ms-auto d-flex align-items-center gap-3">
               {isAdmin && (
-                <Link 
-                  href="/dashboard/damage-reports?status=1" 
-                  className="notification-link position-relative d-flex align-items-center text-primary"
-                  title={`${pendingCount} báo cáo chờ xử lý`}
-                >
-                  <i className="fas fa-bell fs-5"></i>
-                  {pendingCount > 0 && (
-                    <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" 
-                      style={{ padding: '2px 5px', fontSize: '10px' }}>
-                      {pendingCount > 99 ? '99+' : pendingCount}
-                    </span>
-                  )}
-                </Link>
+                <div className="notification-wrapper d-flex align-items-center">
+                  <PushNotificationManager pendingCount={pendingCount} />
+                </div>
               )}
               <button 
                 className="btn btn-outline-primary btn-sm" 
@@ -269,9 +259,6 @@ export default function DashboardLayout({
 
         {/* Page Content */}
         <main className="page-content">
-          <Suspense>
-            <PushNotificationManager />
-          </Suspense>
           {children}
         </main>
       </div>
