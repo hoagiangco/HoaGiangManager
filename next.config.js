@@ -4,6 +4,7 @@ const withPWA = require('next-pwa')({
   skipWaiting: true,
   disable: false, // Enable PWA in development for testing
   customWorkerDir: 'worker',
+  buildExcludes: [/app-build-manifest\.json$/],
 });
 
 /** @type {import('next').NextConfig} */
