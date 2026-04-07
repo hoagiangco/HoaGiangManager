@@ -794,7 +794,15 @@ function DevicesPageContent() {
               </button>
               <button 
                 className="btn btn-white btn-sm border ms-1" 
-                onClick={loadData}
+                onClick={() => {
+                  setSelectedCategory(0);
+                  setSelectedDepartment(0);
+                  setSelectedStatus(0);
+                  setSearchKeyword('');
+                  setCurrentPage(1);
+                  loadData();
+                  toast.success('Đã tải lại dữ liệu và xóa bộ lọc');
+                }}
                 title="Tải lại dữ liệu"
                 id="reload-devices-btn"
               >

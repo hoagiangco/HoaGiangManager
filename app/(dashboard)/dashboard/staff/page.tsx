@@ -277,6 +277,10 @@ function StaffPageContent() {
         aValue = a.birthday ? new Date(a.birthday).getTime() : 0;
         bValue = b.birthday ? new Date(b.birthday).getTime() : 0;
         break;
+      case 'email':
+        aValue = a.email || '';
+        bValue = b.email || '';
+        break;
       case 'department':
         aValue = a.departmentName || '';
         bValue = b.departmentName || '';
@@ -320,6 +324,7 @@ function StaffPageContent() {
       name: 'Tên nhân viên',
       gender: 'Giới tính',
       birthday: 'Ngày sinh',
+      email: 'Email',
       department: 'Phòng ban',
     };
     return labels[field] || field;
@@ -627,6 +632,15 @@ function StaffPageContent() {
                   </th>
                   <th 
                     style={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => handleSort('email')}
+                  >
+                    <div className="d-flex align-items-center gap-2">
+                      <span>Email</span>
+                      {getSortIcon('email')}
+                    </div>
+                  </th>
+                  <th 
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
                     onClick={() => handleSort('department')}
                   >
                     <div className="d-flex align-items-center gap-2">
@@ -639,7 +653,7 @@ function StaffPageContent() {
               <tbody>
                 {currentStaff.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-4">
+                    <td colSpan={6} className="text-center py-4">
                       <span className="text-muted">Không có dữ liệu</span>
                     </td>
                   </tr>
@@ -661,6 +675,7 @@ function StaffPageContent() {
                           : <span className="text-muted">-</span>
                         }
                       </td>
+                      <td>{staffMember.email || <span className="text-muted">-</span>}</td>
                       <td>{staffMember.departmentName || <span className="text-muted">-</span>}</td>
                     </tr>
                   ))

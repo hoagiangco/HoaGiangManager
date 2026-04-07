@@ -1818,7 +1818,10 @@ function MaintenancePageContent() {
           </h2>
           <button
             className="btn btn-white btn-sm border"
-            onClick={loadData}
+            onClick={() => {
+              loadData();
+              toast.success('Đã tải lại dữ liệu');
+            }}
             title="Tải lại dữ liệu"
             id="reload-maintenance-btn"
           >

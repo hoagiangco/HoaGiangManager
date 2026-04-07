@@ -1070,8 +1070,8 @@ export default function DamageReportsPage() {
 
   // Pagination
   const totalPages = Math.ceil(reports.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
+  const startIndex = viewMode === 'card' ? 0 : (currentPage - 1) * itemsPerPage;
+  const endIndex = viewMode === 'card' ? currentPage * itemsPerPage : startIndex + itemsPerPage;
   const currentReports = reports.slice(startIndex, endIndex);
 
   const handleSort = (field: string) => {
@@ -1734,7 +1734,24 @@ export default function DamageReportsPage() {
                 )}
                 <button
                   className="btn btn-white btn-sm border d-flex align-items-center justify-content-center"
-                  onClick={() => loadData()}
+                  onClick={() => {
+                    setSearchKeyword('');
+                    setSearchInputValue('');
+                    setSelectedStatus(0);
+                    setSelectedPriority(0);
+                    setSelectedDepartment(0);
+                    setSelectedDevice(0);
+                    if (!isAdmin(currentUser?.roles)) {
+                      setMyWorkFilter(true);
+                      setMyReportFilter(false);
+                    } else {
+                      setMyWorkFilter(false);
+                      setMyReportFilter(false);
+                    }
+                    setCurrentPage(1);
+                    loadData();
+                    toast.success('Đã tải lại dữ liệu và xóa bộ lọc');
+                  }}
                   title="Tải lại dữ liệu"
                   style={{ width: '24px', height: '24px', padding: 0, backgroundColor: '#fff' }}
                 >
@@ -2456,12 +2473,24 @@ export default function DamageReportsPage() {
                 ))
               )}
             </div>
+            {/* Nút Xem thêm cho Mobile */}
+            {reports.length > currentReports.length && (
+              <div className="text-center mt-4 mb-2">
+                <button 
+                  className="btn btn-primary px-4 py-2 shadow-sm"
+                  style={{ borderRadius: '20px', fontWeight: '600', backgroundColor: '#0d6efd' }}
+                  onClick={() => setCurrentPage(prev => prev + 1)}
+                >
+                  <i className="fas fa-chevron-down me-2"></i> Xem thêm
+                </button>
+              </div>
+            )}
           </div>
         )}
 
         </div>
         {/* Pagination Sticky Footer */}
-        {totalPages > 1 && (
+        {totalPages > 1 && viewMode === 'table' && (
           <div 
             className="card-footer bg-white border-top py-2 mobile-sticky-footer" 
             style={{ 
