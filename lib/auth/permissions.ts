@@ -1,6 +1,7 @@
 // Permission and role utilities
 
 export enum Role {
+  SuperAdmin = 'SuperAdmin',
   Admin = 'Admin',
   User = 'User',
 }
@@ -28,8 +29,12 @@ export function hasAllRoles(userRoles: string[] | undefined, roles: (Role | stri
   return roles.every(role => userRoles.includes(role));
 }
 
+export function isSuperAdmin(userRoles: string[] | undefined): boolean {
+  return hasRole(userRoles, Role.SuperAdmin);
+}
+
 export function isAdmin(userRoles: string[] | undefined): boolean {
-  return hasRole(userRoles, Role.Admin);
+  return hasRole(userRoles, Role.Admin) || isSuperAdmin(userRoles);
 }
 
 export function isUser(userRoles: string[] | undefined): boolean {

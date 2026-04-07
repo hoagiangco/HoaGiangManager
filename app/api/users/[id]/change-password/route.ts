@@ -17,9 +17,14 @@ export async function PUT(
       );
     }
 
-    // Check if user is admin
-    const isAdminUser = user.roles && user.roles.includes('Admin');
-    if (!isAdminUser) {
+    // Check if user is admin or superadmin
+    const isAdminUser = user.roles && (user.roles.includes('Admin') || user.roles.includes('SuperAdmin'));
+    
+    // Check if user wants to change their own password (always allowed if logged in)
+    const isSelfEdit = user.userId === params.id;
+    
+    // Normal admins can change passwords for other users, but cannot change passwords for SuperAdmin
+    if (!isAdminUser && !isSelfEdit) {
       return NextResponse.json(
         { status: false, error: 'Chỉ admin mới có quyền đổi mật khẩu' },
         { status: 403 }
@@ -44,16 +49,29 @@ export async function PUT(
 
     const userId = params.id;
 
-    // Check if user exists
-    const userResult = await pool.query(
-      'SELECT "Id" FROM "AspNetUsers" WHERE "Id" = $1',
-      [userId]
-    );
+    // Check if user exists and get their roles
+    const userResult = await pool.query(`
+      SELECT u."Id", ARRAY_AGG(r."Name") as roles 
+      FROM "AspNetUsers" u
+      LEFT JOIN "AspNetUserRoles" ur ON u."Id" = ur."UserId"
+      LEFT JOIN "AspNetRoles" r ON ur."RoleId" = r."Id"
+      WHERE u."Id" = $1
+      GROUP BY u."Id"
+    `, [userId]);
 
     if (userResult.rows.length === 0) {
       return NextResponse.json(
         { status: false, error: 'User không tồn tại' },
         { status: 404 }
+      );
+    }
+
+    const targetRoles = userResult.rows[0].roles || [];
+
+    if (targetRoles.includes('SuperAdmin') && !isSelfEdit) {
+      return NextResponse.json(
+        { status: false, error: 'Forbidden: Không được phép đổi mật khẩu SuperAdmin' },
+        { status: 403 }
       );
     }
 

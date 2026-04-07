@@ -55,15 +55,26 @@ export async function PUT(
     }
 
     // Only Admin can update users
-    if (!user.roles || !user.roles.includes('Admin')) {
+    if (!user.roles || (!user.roles.includes('Admin') && !user.roles.includes('SuperAdmin'))) {
       return NextResponse.json(
         { status: false, error: 'Forbidden: Chỉ quản trị viên mới được cập nhật người dùng' },
         { status: 403 }
       );
     }
 
-    const userData = await request.json();
     const userService = new UserService();
+    const targetUser = await userService.getById(params.id);
+    
+    if (targetUser?.roles?.includes('SuperAdmin')) {
+       // Cannot modify SuperAdmin unless you are the SuperAdmin
+       if (params.id !== user.userId) {
+         return NextResponse.json(
+            { status: false, error: 'Forbidden: Không được phép sửa SuperAdmin' },
+            { status: 403 }
+         );
+       }
+    }
+    const userData = await request.json();
     await userService.update({ ...userData, id: params.id });
 
     return NextResponse.json({
@@ -93,7 +104,7 @@ export async function DELETE(
     }
 
     // Only Admin can delete users
-    if (!user.roles || !user.roles.includes('Admin')) {
+    if (!user.roles || (!user.roles.includes('Admin') && !user.roles.includes('SuperAdmin'))) {
       return NextResponse.json(
         { status: false, error: 'Forbidden: Chỉ quản trị viên mới được xóa người dùng' },
         { status: 403 }
@@ -109,6 +120,16 @@ export async function DELETE(
     }
 
     const userService = new UserService();
+    const targetUser = await userService.getById(params.id);
+
+    // No one can ever delete the SuperAdmin
+    if (targetUser?.roles?.includes('SuperAdmin')) {
+        return NextResponse.json(
+            { status: false, error: 'Forbidden: Không được phép xóa SuperAdmin' },
+            { status: 403 }
+        );
+    }
+
     const result = await userService.delete(params.id);
 
     return NextResponse.json({
