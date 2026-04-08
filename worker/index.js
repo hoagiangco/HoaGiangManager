@@ -30,8 +30,15 @@ self.addEventListener('push', function(event) {
 self.addEventListener('notificationclick', function(event) {
     event.notification.close();
 
-    // Nếu người dùng bấm nút "Đóng" thì không làm gì thêm
-    if (event.action === 'close') {
+    // Nếu người dùng bấm nút "Đóng" hoặc các hành động đóng khác thì không làm gì thêm
+    const action = event.action;
+    if (action === 'close' || action === 'dismiss') {
+        return;
+    }
+
+    // Nếu không phải là click vào thân thông báo (action rỗng) và cũng không phải nút "open" 
+    // thì cũng không mở app (phòng trường hợp trình duyệt gửi action lạ)
+    if (action !== '' && action !== 'open') {
         return;
     }
 

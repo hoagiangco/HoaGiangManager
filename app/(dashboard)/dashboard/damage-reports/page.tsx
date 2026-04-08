@@ -786,9 +786,17 @@ export default function DamageReportsPage() {
           aValue = a.displayLocation || '';
           bValue = b.displayLocation || '';
           break;
+        case 'damageContent':
+          aValue = a.damageContent || '';
+          bValue = b.damageContent || '';
+          break;
         case 'reporterName':
           aValue = a.reporterName || '';
           bValue = b.reporterName || '';
+          break;
+        case 'handlerName':
+          aValue = a.handlerName || '';
+          bValue = b.handlerName || '';
           break;
         default:
           aValue = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -1951,9 +1959,11 @@ export default function DamageReportsPage() {
                           />
                         </div>
                       </th>
-                      <th style={{ minWidth: '200px' }}>Nội dung</th>
                       <th style={{ cursor: 'pointer', minWidth: '150px' }} onClick={() => handleSort('displayLocation')}>
                         Vị trí/Thiết bị {getSortIcon('displayLocation')}
+                      </th>
+                      <th style={{ cursor: 'pointer', minWidth: '200px' }} onClick={() => handleSort('damageContent')}>
+                        Nội dung {getSortIcon('damageContent')}
                       </th>
                       <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reportDate')}>
                         Ngày b/c {getSortIcon('reportDate')}
@@ -1961,7 +1971,9 @@ export default function DamageReportsPage() {
                       <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reporterName')}>
                         Người b/c {getSortIcon('reporterName')}
                       </th>
-                      <th style={{ minWidth: '120px' }}>Người xử lý</th>
+                      <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('handlerName')}>
+                        Người xử lý {getSortIcon('handlerName')}
+                      </th>
                       <th style={{ minWidth: '120px' }}>Người cập nhật</th>
                       <th style={{ cursor: 'pointer', minWidth: '100px' }} onClick={() => handleSort('status')}>
                         Trạng thái {getSortIcon('status')}
@@ -2016,15 +2028,15 @@ export default function DamageReportsPage() {
                             </div>
                           </td>
                           <td>
-                            <div style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {report.damageContent || 'N/A'}
-                            </div>
-                          </td>
-                          <td>
                             {report.displayLocation || 'Không xác định'}
                             {report.isOverdue && (
                               <i className="fas fa-exclamation-triangle text-danger ms-1" title="Quá hạn"></i>
                             )}
+                          </td>
+                          <td>
+                            <div style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {report.damageContent || 'N/A'}
+                            </div>
                           </td>
                           <td>{report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}</td>
                           <td>{report.reporterName || 'N/A'}</td>
@@ -2882,6 +2894,7 @@ export default function DamageReportsPage() {
             setCurrentImageIndex(index);
             setShowImageModal(true);
           }}
+          onUpdate={loadData}
         />
       )}
 

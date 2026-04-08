@@ -232,11 +232,20 @@ export default function DashboardLayout({
               </button>
               <span 
                 className="top-navbar-user d-flex align-items-center gap-2"
-                title={staffName || user?.fullName || user?.email}
+                title={`${staffName || user?.fullName || user?.email} (${user?.roles?.join(', ') || 'User'})`}
                 aria-label={staffName || user?.fullName || user?.email}
               >
                 <i className="fas fa-user-circle"></i>
-                <span>{staffName || user?.fullName || user?.email || 'Account'}</span>
+                <div className="d-flex flex-column align-items-start" style={{ lineHeight: '1' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: '600', marginBottom: '1px' }}>
+                    {staffName || user?.fullName || user?.email || 'Account'}
+                  </span>
+                  {user?.roles && (
+                    <span style={{ fontSize: '0.65rem', opacity: '0.7', fontWeight: '500', color: '#6c757d' }}>
+                      {user.roles.join(', ')}
+                    </span>
+                  )}
+                </div>
               </span>
             </div>
             <div className="top-navbar-right ms-auto d-flex align-items-center gap-3">

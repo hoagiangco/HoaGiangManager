@@ -880,11 +880,67 @@ export class DamageReportService {
     return id;
   }
 
+  async updateImages(id: number, images: string[] | null, updatedBy: string): Promise<number> {
+    const currentResult = await pool.query(
+      `SELECT "Images" FROM "DamageReport" WHERE "ID" = $1`,
+      [id]
+    );
+    
+    if (currentResult.rows.length === 0) {
+      throw new Error('Báo cáo không tồn tại');
+    }
+
+    const currentImages = currentResult.rows[0].Images;
+
+    await pool.query(
+      `UPDATE "DamageReport" SET "Images" = $1, "UpdatedBy" = $2, "UpdatedAt" = CURRENT_TIMESTAMP WHERE "ID" = $3`,
+      [images ? JSON.stringify(images) : null, updatedBy, id]
+    );
+
+    // Track history
+    const beforeValue = currentImages ? (typeof currentImages === 'string' ? currentImages : JSON.stringify(currentImages)) : '[]';
+    const afterValue = images ? JSON.stringify(images) : '[]';
+
+    if (beforeValue !== afterValue) {
+      await pool.query(
+        `INSERT INTO "DamageReportHistory" ("DamageReportID", "FieldName", "OldValue", "NewValue", "ChangedBy")
+         VALUES ($1, 'Images', $2, $3, $4)`,
+        [id, beforeValue, afterValue, updatedBy]
+      );
+    }
+
+    return id;
+  }
+
   async updateAfterImages(id: number, afterImages: string[] | null, updatedBy: string): Promise<number> {
+    const currentResult = await pool.query(
+      `SELECT "AfterImages" FROM "DamageReport" WHERE "ID" = $1`,
+      [id]
+    );
+    
+    if (currentResult.rows.length === 0) {
+      throw new Error('Báo cáo không tồn tại');
+    }
+
+    const currentAfterImages = currentResult.rows[0].AfterImages;
+
     await pool.query(
       `UPDATE "DamageReport" SET "AfterImages" = $1, "UpdatedBy" = $2, "UpdatedAt" = CURRENT_TIMESTAMP WHERE "ID" = $3`,
       [afterImages ? JSON.stringify(afterImages) : null, updatedBy, id]
     );
+
+    // Track history
+    const beforeValue = currentAfterImages ? (typeof currentAfterImages === 'string' ? currentAfterImages : JSON.stringify(currentAfterImages)) : '[]';
+    const afterValue = afterImages ? JSON.stringify(afterImages) : '[]';
+
+    if (beforeValue !== afterValue) {
+      await pool.query(
+        `INSERT INTO "DamageReportHistory" ("DamageReportID", "FieldName", "OldValue", "NewValue", "ChangedBy")
+         VALUES ($1, 'AfterImages', $2, $3, $4)`,
+        [id, beforeValue, afterValue, updatedBy]
+      );
+    }
+
     return id;
   }
 
