@@ -456,7 +456,8 @@ export class DeviceService {
           dr."ReportDate" as "reportDate",
           dr."CompletedDate" as "completedDate",
           dr."Status" as "status",
-          dr."DamageContent" as "damageContent"
+          dr."DamageContent" as "damageContent",
+          dr."CreatedAt" as "createdAt"
         FROM "DamageReport" dr
         WHERE dr."DeviceID" = $1
         ORDER BY dr."ReportDate" DESC, dr."ID" DESC
@@ -478,7 +479,7 @@ export class DeviceService {
           ? DamageReportStatus.Pending
           : (statusNumber as DamageReportStatus);
 
-        const reportDateIso = this.toIsoString(row.reportDate ?? row.ReportDate ?? null);
+        const reportDateIso = this.toIsoString(row.createdAt ?? row.reportDate ?? row.ReportDate ?? null);
         const completedDateIso = this.toIsoString(row.completedDate ?? row.CompletedDate ?? null);
 
         reportMap.set(reportId, {
@@ -505,13 +506,14 @@ export class DeviceService {
           e."Status" as "status",
           e."EventDate" as "eventDate",
           e."EndDate" as "endDate",
-          e."CreatedAt" as "createdAt",
+          e."CreatedAt" as "eventCreatedAt",
           e."Description" as "description",
           e."RelatedReportID" as "relatedReportId",
           dr."ReportDate" as "reportDate",
           dr."CompletedDate" as "reportCompletedDate",
           dr."Status" as "reportStatus",
-          dr."DamageContent" as "reportDamageContent"
+          dr."DamageContent" as "reportDamageContent",
+          dr."CreatedAt" as "reportCreatedAt"
         FROM "Event" e
         LEFT JOIN "EventType" et ON e."EventTypeID" = et."ID"
         LEFT JOIN "DamageReport" dr ON e."RelatedReportID" = dr."ID"
@@ -527,7 +529,9 @@ export class DeviceService {
         const statusValue = this.normalizeEventStatus(row.status ?? row.Status ?? EventStatus.Completed);
         const eventDateIso = this.toIsoString(row.eventDate ?? row.EventDate ?? null);
         const reportedAtIso =
-          this.toIsoString(row.reportDate ?? row.ReportDate ?? null) || eventDateIso;
+          this.toIsoString(row.reportCreatedAt ?? row.reportDate ?? row.ReportDate ?? null) || 
+          this.toIsoString(row.eventCreatedAt) || 
+          eventDateIso;
         const completedAtIso =
           this.toIsoString(row.reportCompletedDate ?? row.reportcompleteddate ?? null) ||
           this.toIsoString(row.endDate ?? row.EndDate ?? null) ||
@@ -681,4 +685,3 @@ export class DeviceService {
     return date.toISOString();
   }
 }
-

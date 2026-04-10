@@ -178,6 +178,71 @@ export class EventService {
     };
   }
 
+  async getByRelatedReportId(reportId: number): Promise<Event | null> {
+    const result = await pool.query(
+      `SELECT 
+        "ID" as id,
+        "Title" as title,
+        "DeviceID" as "deviceId",
+        "EventTypeID" as "eventTypeId",
+        "Description" as description,
+        "Notes" as notes,
+        "Status" as status,
+        "EventDate" as "eventDate",
+        "StartDate" as "startDate",
+        "EndDate" as "endDate",
+        "StaffID" as "staffId",
+        "RelatedReportID" as "relatedReportId",
+        "Metadata" as metadata,
+        "CreatedBy" as "createdBy",
+        "CreatedAt" as "createdAt",
+        "UpdatedBy" as "updatedBy",
+        "UpdatedAt" as "updatedAt"
+      FROM "Event" 
+      WHERE "RelatedReportID" = $1 
+      ORDER BY "ID" DESC LIMIT 1`,
+      [reportId]
+    );
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    const row = result.rows[0];
+    let metadata: Record<string, any> | null = null;
+    if (row.metadata) {
+      if (typeof row.metadata === 'string') {
+        try {
+          metadata = JSON.parse(row.metadata);
+        } catch (error) {
+          metadata = null;
+        }
+      } else {
+        metadata = row.metadata;
+      }
+    }
+
+    return {
+      id: row.id,
+      title: row.title,
+      deviceId: row.deviceId,
+      eventTypeId: row.eventTypeId,
+      description: row.description,
+      notes: row.notes,
+      status: (row.status ? String(row.status).toLowerCase() : EventStatus.Completed) as EventStatus,
+      eventDate: row.eventDate,
+      startDate: row.startDate,
+      endDate: row.endDate,
+      staffId: row.staffId,
+      relatedReportId: row.relatedReportId,
+      metadata,
+      createdBy: row.createdBy,
+      createdAt: row.createdAt,
+      updatedBy: row.updatedBy,
+      updatedAt: row.updatedAt,
+    };
+  }
+
   async create(event: Omit<Event, 'id'>): Promise<number> {
     await this.ensureEventSequence();
 

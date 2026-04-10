@@ -163,32 +163,70 @@ export async function PUT(
         eventTitle: trimmedTitle,
         eventDescription: trimmedDescription,
       });
-    } else if (nextStatus === DamageReportStatus.Completed && parsedEventTypeId && resolvedDeviceId) {
-      // For regular reports completion, create a single event
-      if (!completedAt) completedAt = new Date();
+    } else {
+      // For regular reports completion or status sync
+      const existingEvent = await eventService.getByRelatedReportId(id);
       
-      await eventService.create({
-        title: trimmedTitle || (report.deviceName ? `Hoàn thành xử lý - ${report.deviceName}` : `Hoàn thành xử lý báo cáo #${id}`),
-        deviceId: resolvedDeviceId || null,
-        eventTypeId: parsedEventTypeId,
-        description: trimmedDescription || report.damageContent || '',
-        notes: trimmedHandlerNotes || previousHandlerNotes || '',
-        status: EventStatus.Completed,
-        eventDate: completedAt,
-        startDate: report.handlingDate ? new Date(report.handlingDate) : completedAt,
-        endDate: completedAt,
-        staffId: report.handlerId || null,
-        relatedReportId: id,
-        metadata: {
-          source: 'damage-report-completion',
-          damageReportId: id,
-          previousStatus,
-        },
-        createdBy: user.userId,
-        createdAt: completedAt,
-        updatedBy: user.userId,
-        updatedAt: completedAt,
-      });
+      let mappedEventStatus = EventStatus.Planned;
+      if (nextStatus === DamageReportStatus.InProgress) mappedEventStatus = EventStatus.InProgress;
+      else if (nextStatus === DamageReportStatus.Completed) mappedEventStatus = EventStatus.Completed;
+      else if (nextStatus === DamageReportStatus.Cancelled || nextStatus === DamageReportStatus.Rejected) mappedEventStatus = EventStatus.Cancelled;
+
+      if (existingEvent) {
+        // Update existing event to stay in sync
+        const updateData: any = {
+          ...existingEvent,
+          status: mappedEventStatus,
+          updatedBy: user.userId,
+          updatedAt: new Date(),
+        };
+
+        // If completing, update completion details
+        if (nextStatus === DamageReportStatus.Completed && parsedEventTypeId) {
+          if (!completedAt) completedAt = new Date();
+          updateData.eventDate = completedAt;
+          updateData.endDate = completedAt;
+          updateData.eventTypeId = parsedEventTypeId;
+          
+          if (trimmedTitle) updateData.title = trimmedTitle;
+          if (trimmedDescription) updateData.description = trimmedDescription;
+          if (trimmedHandlerNotes !== undefined) updateData.notes = trimmedHandlerNotes;
+          if (resolvedDeviceId) updateData.deviceId = resolvedDeviceId;
+          
+          // Ensure startDate is preserved or set if missing
+          if (!updateData.startDate) {
+            updateData.startDate = report.handlingDate ? new Date(report.handlingDate) : completedAt;
+          }
+        }
+
+        await eventService.update(updateData);
+      } else if (nextStatus === DamageReportStatus.Completed && parsedEventTypeId && resolvedDeviceId) {
+        // For regular reports completion, create a single event (only if one doesn't exist)
+        if (!completedAt) completedAt = new Date();
+        
+        await eventService.create({
+          title: trimmedTitle || (report.deviceName ? `Hoàn thành xử lý - ${report.deviceName}` : `Hoàn thành xử lý báo cáo #${id}`),
+          deviceId: resolvedDeviceId || null,
+          eventTypeId: parsedEventTypeId,
+          description: trimmedDescription || report.damageContent || '',
+          notes: trimmedHandlerNotes || previousHandlerNotes || '',
+          status: EventStatus.Completed,
+          eventDate: completedAt,
+          startDate: report.handlingDate ? new Date(report.handlingDate) : completedAt,
+          endDate: completedAt,
+          staffId: report.handlerId || null,
+          relatedReportId: id,
+          metadata: {
+            source: 'damage-report-completion',
+            damageReportId: id,
+            previousStatus,
+          },
+          createdBy: user.userId,
+          createdAt: completedAt,
+          updatedBy: user.userId,
+          updatedAt: completedAt,
+        });
+      }
     }
 
     return NextResponse.json({

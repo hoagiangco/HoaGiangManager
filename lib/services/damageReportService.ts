@@ -989,7 +989,7 @@ export class DamageReportService {
     const startDateUpdate = [DamageReportStatus.InProgress, DamageReportStatus.Completed].includes(s) 
       ? `, "StartDate" = COALESCE("StartDate", CURRENT_TIMESTAMP)` : '';
     const endDateUpdate = [DamageReportStatus.Completed, DamageReportStatus.Cancelled, DamageReportStatus.Rejected].includes(s) 
-      ? `, "EndDate" = COALESCE("EndDate", CURRENT_TIMESTAMP)` : '';
+      ? `, "EndDate" = COALESCE("EndDate", CURRENT_TIMESTAMP)` : ', "EndDate" = NULL';
 
     const metadataFilter = `%"maintenanceBatchId":"${batchId}"%`;
 
@@ -997,7 +997,7 @@ export class DamageReportService {
     await pool.query(
       `UPDATE "Event" 
        SET "Status" = $1, "UpdatedAt" = CURRENT_TIMESTAMP ${startDateUpdate} ${endDateUpdate}
-       WHERE "RelatedReportID" = $2 AND "Status" != 'completed'`,
+       WHERE "RelatedReportID" = $2`,
       [mappedStatus, reportId]
     );
 
@@ -1015,7 +1015,6 @@ export class DamageReportService {
        SET "Status" = $1, "UpdatedAt" = CURRENT_TIMESTAMP ${startDateUpdate} ${endDateUpdate},
            "RelatedReportID" = $2
        WHERE ("Metadata"::text LIKE $3 OR ("Metadata"->>'maintenanceBatchId') = $4)
-         AND "Status" != 'completed'
          AND "RelatedReportID" IS NULL`,
       [mappedStatus, reportId, metadataFilter, batchId]
     );

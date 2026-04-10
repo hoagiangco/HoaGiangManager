@@ -292,7 +292,7 @@ export default function DamageReportsPage() {
     id: 0,
     deviceId: undefined as number | undefined,
     damageLocation: '',
-    deviceSelection: 'device' as 'device' | 'other' | 'maintenance', // 'device', 'other', or 'maintenance'
+    deviceSelection: 'other' as 'device' | 'other' | 'maintenance', // 'device', 'other', or 'maintenance'
     reporterId: 0,
     reportingDepartmentId: 0,
     handlerId: undefined as number | undefined,
@@ -819,7 +819,7 @@ export default function DamageReportsPage() {
       id: 0,
       deviceId: undefined,
       damageLocation: '',
-      deviceSelection: 'device',
+      deviceSelection: 'other',
       reporterId: currentUserStaffId || 0,
       reportingDepartmentId: currentStaff?.departmentId || 0,
       handlerId: undefined,

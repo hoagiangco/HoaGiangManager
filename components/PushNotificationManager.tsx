@@ -142,45 +142,41 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
     return (
         <div className="d-flex align-items-center" style={{ minWidth: '35px' }}>
             <div className="position-relative">
-                {/* Bell Icon (Push Toggle) */}
-                <button 
-                    onClick={isSubscribed ? unsubscribeFromPush : subscribeToPush}
-                    disabled={isLoading}
-                    className="btn btn-link p-0 border-0 shadow-none d-flex align-items-center justify-content-center"
+                {/* Notification Icon (Link to Pending Reports) */}
+                <Link 
+                    href="/dashboard/damage-reports?status=1"
+                    className="d-flex align-items-center justify-content-center"
                     style={{ 
-                        color: 'inherit', 
+                        color: '#6c757d', 
                         textDecoration: 'none',
                         width: '32px',
                         height: '32px',
-                        transition: 'all 0.2s ease'
+                        transition: 'all 0.2s ease',
+                        cursor: 'pointer'
                     }}
-                    title={isSubscribed ? 'Đang bật - Nhấn để Tắt thông báo đẩy' : 'Đang tắt - Nhấn để Bật thông báo đẩy'}
+                    title={`${pendingCount} báo cáo chờ - Nhấn để xem`}
                 >
-                    {isLoading ? (
-                        <div className="spinner-border spinner-border-sm text-primary" role="status" style={{ width: '1.2rem', height: '1.2rem' }}></div>
-                    ) : (
-                        <i className={`fas ${isSubscribed ? 'fa-bell text-warning' : 'fa-bell-slash text-muted opacity-50'} fs-5`}></i>
-                    )}
-                </button>
+                    <i className="fas fa-bell fs-5"></i>
+                </Link>
                 
-                {/* Badge for Pending Reports (Click to view) */}
+                {/* Badge for Pending Reports */}
                 {pendingCount > 0 && (
                     <Link 
                         href="/dashboard/damage-reports?status=1"
                         className="position-absolute badge rounded-pill bg-danger border border-white text-white d-flex align-items-center justify-content-center" 
                         style={{ 
-                            top: '-5px',
-                            right: '-8px',
-                            padding: '3px 6px', 
-                            fontSize: '11px', 
+                            top: '-4px',
+                            right: '-4px',
+                            padding: '2px 5px', 
+                            fontSize: '10px', 
                             textDecoration: 'none',
                             zIndex: 10,
                             minWidth: '18px',
                             height: '18px',
                             fontWeight: 'bold',
-                            boxShadow: '0 2px 4px rgba(220, 53, 69, 0.4)'
+                            boxShadow: '0 2px 4px rgba(220, 53, 69, 0.4)',
+                            pointerEvents: 'none' // Allow click to pass to the parent Link or just handle it separately
                         }}
-                        title={`${pendingCount} báo cáo chờ - Nhấn để xem`}
                     >
                         {pendingCount > 99 ? '99+' : pendingCount}
                     </Link>
