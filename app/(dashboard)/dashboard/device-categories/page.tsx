@@ -397,7 +397,7 @@ function DeviceCategoriesPageContent() {
             >
               <thead>
                 <tr>
-                  <th style={{ width: '50px' }}>
+                  <th style={{ width: '40px' }}>
                     <input
                       type="checkbox"
                       checked={selectedIds.length === currentCategories.length && currentCategories.length > 0 && selectedIds.length > 0}
@@ -405,11 +405,12 @@ function DeviceCategoriesPageContent() {
                     />
                   </th>
                   <th 
+                    className="col-stt"
                     style={{ cursor: 'pointer', userSelect: 'none' }}
                     onClick={() => handleSort('displayOrder')}
                   >
-                    <div className="d-flex align-items-center gap-2">
-                      <span>Thứ tự</span>
+                    <div className="d-flex align-items-center justify-content-center gap-1">
+                      <span>STT</span>
                       {getSortIcon('displayOrder')}
                     </div>
                   </th>
@@ -434,14 +435,14 @@ function DeviceCategoriesPageContent() {
                 ) : (
                   currentCategories.map((category) => (
                     <tr key={category.id}>
-                      <td>
+                      <td style={{ width: '40px' }}>
                         <input
                           type="checkbox"
                           checked={selectedIds.includes(category.id)}
                           onChange={() => handleCheckboxChange(category.id)}
                         />
                       </td>
-                      <td>
+                      <td className="col-stt">
                         {category.displayOrder !== undefined && category.displayOrder !== null 
                           ? category.displayOrder 
                           : <span className="text-muted">-</span>

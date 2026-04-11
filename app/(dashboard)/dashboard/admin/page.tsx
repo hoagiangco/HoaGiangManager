@@ -217,15 +217,32 @@ function AdminUsersPageContent() {
           </button>
         </div>
         <div className="card-body p-0">
-          <div className="table-responsive">
+          {/* Custom style for tiny buttons */}
+          <style dangerouslySetInnerHTML={{ __html: `
+            .btn-tiny {
+              padding: 0.15rem 0.35rem;
+              font-size: 0.7rem;
+              line-height: 1;
+              border-radius: 0.2rem;
+            }
+            .user-mobile-item {
+              transition: background-color 0.15s;
+            }
+            .user-mobile-item:active {
+              background-color: #f8f9fa;
+            }
+          `}} />
+
+          {/* Desktop Table View */}
+          <div className="table-responsive d-none d-md-block">
             <table className="table table-striped table-hover mb-0">
-              <thead>
+              <thead className="table-light">
                 <tr>
                   <th>Email</th>
                   <th>Quyền</th>
                   <th>Ngày tạo</th>
                   <th>Trạng thái</th>
-                  <th style={{ width: '220px' }}>Thao tác</th>
+                  <th style={{ width: '220px' }} className="text-center">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -237,12 +254,18 @@ function AdminUsersPageContent() {
                   <tr key={u.id}>
                     <td>{u.email}</td>
                     <td>
-                      {u.roles && u.roles.length > 0 ? u.roles.join(', ') : <span className="text-muted">(none)</span>}
+                      {u.roles && u.roles.length > 0 ? (
+                        <div className="d-flex flex-wrap gap-1">
+                          {u.roles.map(r => (
+                            <span key={r} className="badge bg-light text-dark border">{r}</span>
+                          ))}
+                        </div>
+                      ) : <span className="text-muted small">(none)</span>}
                     </td>
-                    <td>{formatDateTime(u.createdDate) || '-'}</td>
+                    <td><small>{formatDateTime(u.createdDate) || '-'}</small></td>
                     <td>{renderStatusBadge(u)}</td>
                     <td>
-                      <div className="d-flex gap-1 flex-wrap">
+                      <div className="d-flex gap-1 justify-content-center">
                         <button className="btn btn-sm btn-primary" onClick={() => openRolesModal(u)} title="Gán quyền">
                           <i className="fas fa-user-shield"></i>
                         </button>
@@ -272,27 +295,99 @@ function AdminUsersPageContent() {
               </tbody>
             </table>
           </div>
-          {users.length > 0 && (
-            <div className="d-flex justify-content-between align-items-center p-3">
-              <div className="text-muted small">
-                Hiển thị {paginatedUsers.length} trong tổng số {users.length} tài khoản
+
+          {/* Mobile Ultra-Compact View */}
+          <div className="d-md-none">
+            {users.length === 0 ? (
+              <div className="text-center py-4 text-muted border-top">Không có user</div>
+            ) : paginatedUsers.map(u => (
+              <div key={u.id} className="p-2 border-bottom user-mobile-item">
+                <div className="d-flex justify-content-between align-items-center mb-1">
+                  <div className="fw-bold text-primary text-truncate small" style={{ maxWidth: '70%', fontSize: '0.85rem' }}>
+                    {u.email}
+                  </div>
+                  <div style={{ transform: 'scale(0.85)', transformOrigin: 'right center' }}>
+                    {renderStatusBadge(u)}
+                  </div>
+                </div>
+                
+                <div className="d-flex justify-content-between align-items-center">
+                  <div className="d-flex flex-wrap gap-1 align-items-center">
+                    {u.roles && u.roles.length > 0 ? u.roles.map(r => (
+                      <span key={r} className="badge bg-light text-dark border p-1" style={{ fontSize: '0.65rem' }}>{r}</span>
+                    )) : <span className="text-muted" style={{ fontSize: '0.65rem' }}>Chưa gán quyền</span>}
+                  </div>
+
+                  <div className="d-flex gap-1 align-items-center ps-2 border-start ms-2">
+                    <button className="btn btn-primary btn-tiny" onClick={() => openRolesModal(u)} title="Gán quyền">
+                      <i className="fas fa-user-shield"></i>
+                    </button>
+                    <button className="btn btn-warning btn-tiny" onClick={() => openChangePasswordModal(u)} title="Đổi mật khẩu">
+                      <i className="fas fa-key"></i>
+                    </button>
+                    <button
+                      className={`btn ${u.isLocked ? 'btn-success' : 'btn-outline-secondary'} btn-tiny`}
+                      onClick={() => handleToggleLock(u)}
+                      title={u.isLocked ? 'Mở khóa' : 'Khóa'}
+                      disabled={currentUser?.id === u.id}
+                    >
+                      <i className={`fas ${u.isLocked ? 'fa-lock-open' : 'fa-lock'}`}></i>
+                    </button>
+                    <button
+                      className="btn btn-danger btn-tiny"
+                      onClick={() => handleDeleteUser(u)}
+                      disabled={currentUser?.id === u.id}
+                    >
+                      <i className="fas fa-trash"></i>
+                    </button>
+                  </div>
+                </div>
+                <div className="text-muted mt-1" style={{ fontSize: '0.65rem' }}>
+                  <i className="far fa-clock me-1"></i>
+                  {formatDateTime(u.createdDate) || 'N/A'}
+                </div>
               </div>
-              <nav>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          {users.length > 0 && (
+            <div className="d-flex flex-column flex-sm-row justify-content-between align-items-center p-2 gap-2 border-top bg-light-subtle">
+              <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+                <strong>{paginatedUsers.length}</strong> / <strong>{users.length}</strong> user
+              </div>
+              <nav aria-label="Page navigation">
                 <ul className="pagination pagination-sm mb-0">
                   <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
-                    <button className="page-link" onClick={() => handlePageChange(currentPage - 1)}>
+                    <button className="page-link" style={{ padding: '0.2rem 0.4rem' }} onClick={() => handlePageChange(currentPage - 1)}>
                       <i className="fas fa-angle-left"></i>
                     </button>
                   </li>
-                  {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
-                    <li key={page} className={`page-item ${currentPage === page ? 'active' : ''}`}>
-                      <button className="page-link" onClick={() => handlePageChange(page)}>
-                        {page}
-                      </button>
-                    </li>
-                  ))}
+                  
+                  {(() => {
+                    let pages = [];
+                    if (totalPages <= 5) {
+                      for (let i = 1; i <= totalPages; i++) pages.push(i);
+                    } else {
+                      if (currentPage <= 3) pages = [1, 2, 3, 4, totalPages];
+                      else if (currentPage >= totalPages - 2) pages = [1, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+                      else pages = [1, currentPage - 1, currentPage, currentPage + 1, totalPages];
+                    }
+                    
+                    return pages.map((page, index, array) => (
+                      <React.Fragment key={page}>
+                        {index > 0 && page - array[index-1] > 1 && (
+                          <li className="page-item disabled"><span className="page-link" style={{ padding: '0.2rem 0.4rem' }}>...</span></li>
+                        )}
+                        <li className={`page-item ${currentPage === page ? 'active' : ''}`}>
+                          <button className="page-link" style={{ padding: '0.2rem 0.4rem' }} onClick={() => handlePageChange(page)}>{page}</button>
+                        </li>
+                      </React.Fragment>
+                    ));
+                  })()}
+
                   <li className={`page-item ${currentPage === totalPages ? 'disabled' : ''}`}>
-                    <button className="page-link" onClick={() => handlePageChange(currentPage + 1)}>
+                    <button className="page-link" style={{ padding: '0.2rem 0.4rem' }} onClick={() => handlePageChange(currentPage + 1)}>
                       <i className="fas fa-angle-right"></i>
                     </button>
                   </li>

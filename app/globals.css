@@ -1071,11 +1071,9 @@ a {
   }
 
   .table-responsive table {
-    width: max-content !important;
-    min-width: max-content !important;
-    /* Force minimum width to ensure all columns are visible and trigger scroll */
-    min-width: 1200px !important;
-    /* Ensure all columns display */
+    width: 100% !important;
+    /* Removed min-width: 1200px which caused excessive spacing on simple tables */
+    min-width: 100% !important;
     table-layout: auto !important;
   }
 
@@ -1444,6 +1442,17 @@ a {
   .table tbody td {
     padding-left: 0.25rem !important;
     padding-right: 0.25rem !important;
+  }
+
+  /* Utility for compact STT columns on mobile */
+  .table th.col-stt,
+  .table td.col-stt {
+    width: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    text-align: center;
+    padding-left: 0.1rem !important;
+    padding-right: 0.1rem !important;
   }
 }
 

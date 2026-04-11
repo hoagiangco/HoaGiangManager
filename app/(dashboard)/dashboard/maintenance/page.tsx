@@ -3213,7 +3213,7 @@ function MaintenancePageContent() {
                             <table className="table table-sm table-hover mb-0">
                               <thead className="table-light">
                                 <tr>
-                                  <th>STT</th>
+                                  <th className="col-stt">STT</th>
                                   <th>Tên Thiết Bị</th>
                                   <th>Serial</th>
                                   <th>Loại Sự Kiện</th>
@@ -3237,7 +3237,7 @@ function MaintenancePageContent() {
 
                                     return (
                                       <tr key={event.id}>
-                                        <td>{index + 1}</td>
+                                        <td className="col-stt">{index + 1}</td>
                                         <td><strong>{event.deviceName || '-'}</strong></td>
                                         <td>{event.deviceSerial || '-'}</td>
                                         <td>{event.eventTypeName || '-'}</td>

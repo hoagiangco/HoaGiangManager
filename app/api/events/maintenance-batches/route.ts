@@ -274,10 +274,13 @@ export async function GET(request: NextRequest) {
     // Check for 'all' parameter to skip date filtering
     const showAll = request.nextUrl.searchParams.get('all') === 'true';
 
-    // Filter batches: if not showing all, only keep batches that have at least one active plan within date range
-    const finalResult = showAll
-      ? batches
-      : batches.filter((batch) => {
+    // Filter batches: 
+    // 1. Always hide batches with 0 total devices (ghost batches from deleted plans)
+    // 2. If not showing all, only keep batches that have at least one active plan within date range
+    const finalResult = batches
+      .filter((batch) => batch.totalDevices > 0)
+      .filter((batch) => {
+        if (showAll) return true;
         return plansInRangeMap.has(batch.batchId) && plansInRangeMap.get(batch.batchId)! > 0;
       });
 
