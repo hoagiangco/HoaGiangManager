@@ -287,6 +287,11 @@ export default function DamageReportsPage() {
   const [isDeviceDropdownOpen, setIsDeviceDropdownOpen] = useState(false);
   const deviceDropdownRef = useRef<HTMLDivElement | null>(null);
 
+  // Modal category filter state
+  const [modalCategorySearch, setModalCategorySearch] = useState('');
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const categoryDropdownRef = useRef<HTMLDivElement | null>(null);
+
   // Form state
   const [formData, setFormData] = useState({
     id: 0,
@@ -328,6 +333,12 @@ export default function DamageReportsPage() {
     };
   }, []);
 
+  const filteredModalCategories = useMemo(() => {
+    if (!modalCategorySearch.trim()) return deviceCategories;
+    const keyword = modalCategorySearch.trim().toLowerCase();
+    return deviceCategories.filter(cate => cate.name.toLowerCase().includes(keyword));
+  }, [deviceCategories, modalCategorySearch]);
+
   const filteredModalDevices = useMemo(() => {
     let list = devices;
 
@@ -338,7 +349,7 @@ export default function DamageReportsPage() {
     if (modalDeviceSearch.trim()) {
       const keyword = modalDeviceSearch.trim().toLowerCase();
       list = list.filter((device) => {
-        const source = `${device.name || ''} ${device.serial || ''} ${device.deviceCategoryName || ''}`.toLowerCase();
+        const source = `${device.name || ''} ${device.serial || ''} ${device.deviceCategoryName || ''} ${device.locationName || ''}`.toLowerCase();
         return source.includes(keyword);
       });
     }
@@ -367,16 +378,22 @@ export default function DamageReportsPage() {
     if (showModal) {
       setModalDeviceCategoryId(0);
       setModalDeviceSearch('');
+      setModalCategorySearch('');
       setIsDeviceDropdownOpen(false);
+      setIsCategoryDropdownOpen(false);
     }
   }, [showModal]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handleClickOutside = (event: MouseEvent) => {
-      if (!deviceDropdownRef.current) return;
-      if (!deviceDropdownRef.current.contains(event.target as Node)) {
+      // Handle device dropdown
+      if (deviceDropdownRef.current && !deviceDropdownRef.current.contains(event.target as Node)) {
         setIsDeviceDropdownOpen(false);
+      }
+      // Handle category dropdown
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
+        setIsCategoryDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -457,6 +474,28 @@ export default function DamageReportsPage() {
     .table-bordered td, .table-bordered th {
       padding: 0.3rem 0.4rem !important;
       vertical-align: middle !important;
+    }
+
+    /* MODERN CARD STYLES */
+    .modern-status-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important;
+      border-color: #3b82f6 !important;
+    }
+    
+    .scrollbar-thin::-webkit-scrollbar {
+      height: 4px;
+    }
+    .scrollbar-thin::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 10px;
+    }
+    .scrollbar-thin::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 10px;
+    }
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
     }
   `;
 
@@ -814,6 +853,7 @@ export default function DamageReportsPage() {
   const handleNew = async () => {
     // Get current user's staff info
     const currentStaff = currentUserStaffId ? staff.find(s => s.id === currentUserStaffId) : null;
+    const today = formatDateInput(new Date());
 
     setFormData({
       id: 0,
@@ -824,7 +864,7 @@ export default function DamageReportsPage() {
       reportingDepartmentId: currentStaff?.departmentId || 0,
       handlerId: undefined,
       assignedDate: '',
-      reportDate: formatDateInput(new Date()),
+      reportDate: today,
       handlingDate: '',
       completedDate: '',
       estimatedCompletionDate: '',
@@ -967,7 +1007,7 @@ export default function DamageReportsPage() {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (shouldOpenCompletion = false) => {
     // Validation
     if (formData.deviceSelection === 'device' && !formData.deviceId) {
       toast.error('Vui lòng chọn thiết bị');
@@ -1005,6 +1045,10 @@ export default function DamageReportsPage() {
       toast.error('Vui lòng chọn người báo cáo');
       return;
     }
+    if (!formData.handlerId) {
+      toast.error('Vui lòng chọn người xử lý');
+      return;
+    }
     // Auto-get department from reporter, but validate it exists
     const reporter = staff.find(s => s.id === formData.reporterId);
     if (!reporter?.departmentId) {
@@ -1021,13 +1065,13 @@ export default function DamageReportsPage() {
         handlerId: formData.handlerId || null,
         assignedDate: formData.assignedDate || null,
         reportDate: formData.reportDate,
-        handlingDate: formData.handlingDate || null,
-        completedDate: formData.completedDate || null,
+        handlingDate: shouldOpenCompletion ? formData.reportDate : (formData.handlingDate || null),
+        completedDate: shouldOpenCompletion ? formData.reportDate : (formData.completedDate || null),
         estimatedCompletionDate: formData.estimatedCompletionDate || null,
         damageContent: formData.damageContent.trim(),
         images: formData.images.length > 0 ? formData.images : null,
         afterImages: formData.afterImages.length > 0 ? formData.afterImages : null,
-        status: formData.status,
+        status: (shouldOpenCompletion && formData.deviceSelection === 'other') ? DamageReportStatus.Completed : formData.status,
         priority: formData.priority,
         notes: null, // Bỏ ghi chú chung
         handlerNotes: formData.handlerNotes || null,
@@ -1035,37 +1079,77 @@ export default function DamageReportsPage() {
         maintenanceBatchId: formData.maintenanceBatchId || null,
       };
 
+      // Date Consistency Logic
+      const status = Number(formData.status);
+      if (status === DamageReportStatus.Completed) {
+        if (!payload.completedDate) {
+          toast.error('Vui lòng chọn ngày hoàn thành khi báo cáo đã hoàn tất');
+          return;
+        }
+        // Auto-fix: Ensure Handling Date exists and is not after Completed Date
+        if (!payload.handlingDate) {
+          payload.handlingDate = payload.reportDate;
+        }
+        if (new Date(payload.handlingDate) > new Date(payload.completedDate)) {
+          payload.handlingDate = payload.completedDate;
+        }
+      }
+
+      // DB Constraint: Report Date <= Handling Date
+      if (payload.handlingDate && new Date(payload.reportDate) > new Date(payload.handlingDate)) {
+        toast.error('Ngày báo cáo không thể sau ngày xử lý');
+        return;
+      }
+      
+      // DB Constraint: Handling Date <= Completed Date
+      if (payload.handlingDate && payload.completedDate && new Date(payload.handlingDate) > new Date(payload.completedDate)) {
+        toast.error('Ngày xử lý không thể sau ngày hoàn thành');
+        return;
+      }
+
+      let savedReport: DamageReportVM;
       if (isEdit) {
-        await api.put(`/damage-reports/${formData.id}`, { ...payload, id: formData.id });
+        const response = await api.put(`/damage-reports/${formData.id}`, { ...payload, id: formData.id });
+        savedReport = response.data.data;
         toast.success('Cập nhật thành công');
       } else {
-        await api.post('/damage-reports', payload);
+        const response = await api.post('/damage-reports', payload);
+        savedReport = response.data.data;
         toast.success('Thêm mới thành công');
       }
 
       setShowModal(false);
       loadData();
+
+      // If requested, open completion modal for the saved report
+      if (shouldOpenCompletion && savedReport && formData.deviceSelection !== 'other') {
+        // Bổ sung thông tin hiển thị (deviceName, displayLocation) vì API trả về có thể thiếu các trường "join"
+        const currentDeviceId = savedReport.deviceId || formData.deviceId;
+        const device = devices.find(d => d.id === currentDeviceId);
+        
+        const enrichedReport: DamageReportVM = {
+          ...savedReport,
+          deviceId: currentDeviceId,
+          deviceName: savedReport.deviceName || device?.name,
+          displayLocation: savedReport.displayLocation || (device?.name || savedReport.damageLocation || formData.damageLocation),
+          damageContent: savedReport.damageContent || formData.damageContent,
+          handlerNotes: savedReport.handlerNotes || formData.handlerNotes,
+        };
+
+        // We need to wait a tiny bit to ensure the list is refreshed or use the returned data
+        setTimeout(() => {
+          openStatusUpdateModal(enrichedReport, DamageReportStatus.Completed);
+        }, 300);
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.error || (isEdit ? 'Lỗi khi cập nhật' : 'Lỗi khi thêm mới'));
     }
   };
 
   const handleImageSelect = (url: string) => {
-    let relativePath = url.trim();
-    if (url.includes('://') || url.startsWith('http')) {
-      try {
-        const urlObj = new URL(url);
-        relativePath = urlObj.pathname;
-      } catch {
-        relativePath = url.startsWith('/') ? url : `/${url}`;
-      }
-    } else {
-      relativePath = url.startsWith('/') ? url : `/${url}`;
-    }
-
     setFormData((prev) => ({
       ...prev,
-      images: [...prev.images, relativePath]
+      images: [...prev.images, url.trim()]
     }));
   };
 
@@ -1145,14 +1229,26 @@ export default function DamageReportsPage() {
 
   const getStatusStyle = (status: DamageReportStatus) => {
     const statusMap = {
-      [DamageReportStatus.Pending]: { color: '#ffffff', backgroundColor: '#6c757d', borderColor: '#6c757d' },
-      [DamageReportStatus.Assigned]: { color: '#ffffff', backgroundColor: '#0dcaf0', borderColor: '#0dcaf0' },
-      [DamageReportStatus.InProgress]: { color: '#ffffff', backgroundColor: '#0d6efd', borderColor: '#0d6efd' },
-      [DamageReportStatus.Completed]: { color: '#ffffff', backgroundColor: '#198754', borderColor: '#198754' },
-      [DamageReportStatus.Cancelled]: { color: '#ffffff', backgroundColor: '#212529', borderColor: '#212529' },
-      [DamageReportStatus.Rejected]: { color: '#ffffff', backgroundColor: '#dc3545', borderColor: '#dc3545' },
+      [DamageReportStatus.Pending]: { color: '#64748b', backgroundColor: '#f1f5f9', borderColor: '#cbd5e1', tint: '#f8fafc' },
+      [DamageReportStatus.Assigned]: { color: '#0369a1', backgroundColor: '#e0f2fe', borderColor: '#7dd3fc', tint: '#f0f9ff' },
+      [DamageReportStatus.InProgress]: { color: '#1d4ed8', backgroundColor: '#dbeafe', borderColor: '#93c5fd', tint: '#eff6ff' },
+      [DamageReportStatus.Completed]: { color: '#15803d', backgroundColor: '#dcfce7', borderColor: '#86efac', tint: '#f0fdf4' },
+      [DamageReportStatus.Cancelled]: { color: '#374151', backgroundColor: '#f3f4f6', borderColor: '#d1d5db', tint: '#f9fafb' },
+      [DamageReportStatus.Rejected]: { color: '#b91c1c', backgroundColor: '#fee2e2', borderColor: '#fca5a5', tint: '#fef2f2' },
     };
-    return statusMap[status] || { color: '#ffffff', backgroundColor: '#6c757d', borderColor: '#6c757d' };
+    return statusMap[status] || { color: '#64748b', backgroundColor: '#f1f5f9', borderColor: '#cbd5e1', tint: '#f8fafc' };
+  };
+
+  const getStatusLabel = (status: DamageReportStatus) => {
+    const labelMap = {
+      [DamageReportStatus.Pending]: 'Chờ xử lý',
+      [DamageReportStatus.Assigned]: 'Đã phân công',
+      [DamageReportStatus.InProgress]: 'Đang xử lý',
+      [DamageReportStatus.Completed]: 'Hoàn thành',
+      [DamageReportStatus.Cancelled]: 'Đã hủy',
+      [DamageReportStatus.Rejected]: 'Từ chối',
+    };
+    return labelMap[status] || 'N/A';
   };
 
   const getPriorityBadge = (priority: DamageReportPriority) => {
@@ -1168,12 +1264,12 @@ export default function DamageReportsPage() {
 
   const getPriorityStyle = (priority: DamageReportPriority) => {
     const priorityMap = {
-      [DamageReportPriority.Low]: { color: '#ffffff', backgroundColor: '#6c757d', borderColor: '#6c757d' },
-      [DamageReportPriority.Normal]: { color: '#ffffff', backgroundColor: '#0d6efd', borderColor: '#0d6efd' },
-      [DamageReportPriority.High]: { color: '#212529', backgroundColor: '#ffc107', borderColor: '#ffc107' },
-      [DamageReportPriority.Urgent]: { color: '#ffffff', backgroundColor: '#dc3545', borderColor: '#dc3545' },
+      [DamageReportPriority.Low]: { color: '#64748b', backgroundColor: '#f8fafc', borderColor: 'transparent' },
+      [DamageReportPriority.Normal]: { color: '#2563eb', backgroundColor: '#eff6ff', borderColor: 'transparent' },
+      [DamageReportPriority.High]: { color: '#a16207', backgroundColor: '#fefce8', borderColor: 'transparent' },
+      [DamageReportPriority.Urgent]: { color: '#be123c', backgroundColor: '#fff1f2', borderColor: 'transparent' },
     };
-    return priorityMap[priority] || { color: '#ffffff', backgroundColor: '#6c757d', borderColor: '#6c757d' };
+    return priorityMap[priority] || { color: '#64748b', backgroundColor: '#f8fafc', borderColor: 'transparent' };
   };
 
   const canUpdateStatusForReport = (report?: DamageReportVM | null): boolean => {
@@ -1247,7 +1343,7 @@ export default function DamageReportsPage() {
         : targetStatus === DamageReportStatus.Cancelled
           ? `Hủy báo cáo - ${report.deviceName || 'Mô tả chung'}`
           : `Từ chối báo cáo - ${report.deviceName || 'Mô tả chung'}`,
-      eventDescription: report.damageContent || '',
+      eventDescription: report.handlerNotes || report.damageContent || '',
       handlerNotes: report.handlerNotes || '',
       deviceId: report.deviceId,
       afterImages: report.afterImages || [],
@@ -2168,227 +2264,189 @@ export default function DamageReportsPage() {
                   currentReports.map((report) => (
                   <div key={report.id} className="col-12 col-md-6 col-lg-4">
                     <div
-                      className="card h-100 damage-report-card"
+                      key={report.id}
+                      className="card border-0 mb-4 modern-status-card"
                       style={{
-                        border: '1px solid rgba(0,0,0,0.1)',
-                        borderTop: `4px solid ${getPriorityStyle(report.priority).borderColor || '#dee2e6'}`,
-                        borderLeft: `1px solid rgba(0,0,0,0.05)`,
-                        cursor: 'default',
                         borderRadius: '12px',
                         overflow: 'hidden',
                         backgroundColor: '#ffffff',
-                        boxShadow: '0 8px 20px rgba(0,0,0,0.08)',
-                        transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+                        border: '1px solid #e2e8f0',
+                        transition: 'all 0.3s ease',
+                        borderLeft: `6px solid ${getStatusStyle(report.status).color}`
                       }}
                     >
-                      {/* Card Header */}
+                      {/* Card Header - Branded Midnight Blue (#2c3e50) */}
                       <div
-                        className="card-header p-3"
+                        className="p-3"
                         style={{
-                          backgroundColor: `${getStatusStyle(report.status).backgroundColor}22` || '#f8f9fa',
-                          borderBottom: '1px solid rgba(0,0,0,0.05)',
-                          borderLeft: `5px solid ${getStatusStyle(report.status).backgroundColor}`,
+                          backgroundColor: '#2c3e50',
                           display: 'flex',
                           justifyContent: 'space-between',
-                          alignItems: 'flex-start',
-                          gap: '0.75rem',
+                          alignItems: 'center',
+                          gap: '1rem',
                           cursor: 'pointer'
                         }}
                         onClick={() => handleCheckboxChange(report.id)}
                       >
                         <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                          <h6 className="mb-1 d-flex align-items-start gap-2" style={{
-                            fontSize: '1rem',
-                            fontWeight: '800',
-                            color: '#1a1d20',
-                            lineHeight: '1.4',
-                            wordBreak: 'break-word'
-                          }}>
-                            <i className="fas fa-map-marker-alt text-primary mt-1" style={{ fontSize: '0.85rem' }}></i>
-                            <span>{report.displayLocation || 'Không xác định'}</span>
-                            {report.isOverdue && (
-                              <i className="fas fa-exclamation-triangle text-danger ms-1" title="Quá hạn"></i>
-                            )}
-                          </h6>
+                          <div className="d-flex align-items-center gap-2 mb-1">
+                            <span 
+                              className="badge rounded-pill" 
+                              style={{ 
+                                backgroundColor: getStatusStyle(report.status).color, 
+                                color: '#ffffff', 
+                                fontSize: '0.7rem',
+                                fontWeight: '901',
+                                padding: '5px 10px',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                              }}
+                            >
+                              #{report.id}
+                            </span>
+                            <h6 className="mb-0 text-truncate text-white" style={{
+                              fontSize: '0.9rem',
+                              fontWeight: '700',
+                              lineHeight: '1.2'
+                            }}>
+                              {report.displayLocation || 'Không xác định'}
+                            </h6>
+                          </div>
                           <div className="d-flex align-items-center gap-2 flex-wrap">
-                            <small className="text-muted" style={{ fontSize: '0.75rem' }}>
-                              <i className="fas fa-calendar-alt me-1"></i>
-                              {report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}
-                            </small>
-                            {report.daysSinceReport !== undefined && (
-                              <small className="badge bg-light text-dark" style={{ fontSize: '0.7rem' }}>
-                                {report.daysSinceReport} ngày
-                              </small>
-                            )}
+                              {report.deviceLocationName && (
+                                <span className="text-white text-truncate" style={{ fontSize: '0.75rem', fontWeight: '600', opacity: 0.9 }}>
+                                  {report.deviceLocationName}
+                                </span>
+                              )}
+                              {report.isOverdue && (
+                                <span className="badge bg-danger text-white border-0 py-1" style={{ fontSize: '0.6rem', fontWeight: '800' }}>
+                                  <i className="fas fa-clock me-1"></i> TRỄ
+                                </span>
+                              )}
                           </div>
                         </div>
-                        <div className="d-flex align-items-center gap-3" style={{ flexShrink: 0, marginRight: '0.5rem' }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.includes(report.id)}
-                            onChange={() => handleCheckboxChange(report.id)}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              marginTop: '0.25rem',
-                              cursor: 'pointer',
-                              transform: 'scale(1.7)',
-                              transformOrigin: 'left center'
-                            }}
-                          />
+                        <div className="d-flex align-items-center gap-2" style={{ flexShrink: 0 }}>
                           <button
                             type="button"
-                            className="btn btn-link text-primary p-0 border-0 shadow-none"
-                            title="Xem nhanh"
-                            onClick={(e) => { e.stopPropagation(); openQuickView(report.id); }}
-                            style={{
-                              lineHeight: 1,
-                              marginTop: '0.25rem',
-                              fontSize: '1.3rem',
-                              minWidth: 'auto',
-                              width: 'auto',
-                              height: 'auto',
-                              textDecoration: 'none'
+                            className="btn btn-icon-only rounded-circle border-0"
+                            style={{ 
+                              backgroundColor: 'rgba(255,255,255,0.1)',
+                              color: '#ffffff',
+                              width: '32px',
+                              height: '32px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
                             }}
+                            onClick={(e) => { e.stopPropagation(); openQuickView(report.id); }}
                           >
-                            <i className="fas fa-eye"></i>
+                            <i className="fas fa-expand-alt fa-sm"></i>
                           </button>
+                          <div className="form-check m-0 p-0" style={{ minHeight: 'auto' }}>
+                            <input
+                              type="checkbox"
+                              className="form-check-input ms-0"
+                              checked={selectedIds.includes(report.id)}
+                              onChange={() => handleCheckboxChange(report.id)}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                cursor: 'pointer',
+                                width: '1.3rem',
+                                height: '1.3rem',
+                                borderRadius: '4px',
+                                border: '1px solid rgba(255,255,255,0.3)',
+                                backgroundColor: selectedIds.includes(report.id) ? '#3498db' : 'transparent'
+                              }}
+                            />
+                          </div>
                         </div>
                       </div>
 
                       {/* Card Body */}
-                      <div className="card-body p-3" style={{ backgroundColor: '#ffffff' }}>
-                        {/* Status and Priority Row */}
+                      <div className="card-body p-3">
+                        {/* Status Selectors - Row */}
                         <div className="row g-2 mb-3">
                           <div className="col-6">
-                            <label className="small text-muted d-block mb-1" style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6c757d' }}>
-                              Trạng thái
-                            </label>
-                            <select
-                              className="form-control form-control-sm damage-report-status-select"
-                              value={report.status}
-                              onChange={(e) => handleStatusChange(report.id, Number(e.target.value) as DamageReportStatus)}
-                              disabled={!canUpdateStatusForReport(report)}
-                              style={{
-                                width: '100%',
-                                fontSize: '0.75rem',
-                                fontWeight: '600',
-                                padding: '0.1rem 0.5rem',
-                                height: '1.8rem',
-                                lineHeight: '1.2',
-                                border: 'none',
-                                borderRadius: '20px',
-                                cursor: 'pointer',
-                                textAlign: 'center',
-                                appearance: 'none',
-                                WebkitAppearance: 'none',
-                                ...getStatusStyle(report.status)
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {isAdmin(currentUser?.roles) ? (
-                                <>
-                                  <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.75rem' }}>Chờ xử lý</option>
-                                  <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.75rem' }}>Đang xử lý</option>
-                                  <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.75rem' }}>Hoàn thành</option>
-                                  <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>Đã hủy</option>
-                                  <option value={DamageReportStatus.Rejected} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.75rem' }}>Từ chối</option>
-                                </>
-                              ) : (
-                                <>
-                                  {report.status === DamageReportStatus.Pending && (
-                                    <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.75rem' }}>Chờ xử lý</option>
-                                  )}
-                                  {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.InProgress) && (
-                                    <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.75rem' }}>Đang xử lý</option>
-                                  )}
-                                  <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.75rem' }}>Hoàn thành</option>
-                                  {report.status === DamageReportStatus.Cancelled && (
-                                    <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.75rem' }}>Đã hủy</option>
-                                  )}
-                                  <option value={DamageReportStatus.Rejected} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.75rem' }}>Từ chối</option>
-                                </>
-                              )}
-                            </select>
-                          </div>
-                          <div className="col-6">
-                            <label className="small text-muted d-block mb-1" style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6c757d' }}>
-                              Ưu tiên
-                            </label>
-                            <select
-                              className="form-control form-control-sm damage-report-priority-select"
-                              value={report.priority}
-                              onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
-                              disabled={!userPermissions.canEdit || report.status === DamageReportStatus.Completed}
-                              style={{
-                                width: '100%',
-                                fontSize: '0.75rem',
-                                fontWeight: '600',
-                                padding: '0.1rem 0.5rem',
-                                height: '1.8rem',
-                                lineHeight: '1.2',
-                                border: 'none',
-                                borderRadius: '20px',
-                                cursor: 'pointer',
-                                textAlign: 'center',
-                                appearance: 'none',
-                                WebkitAppearance: 'none',
-                                ...getPriorityStyle(report.priority)
-                              }}
-                            >
-                              <option value={DamageReportPriority.Low} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.75rem' }}>Thấp</option>
-                              <option value={DamageReportPriority.Normal} style={{ backgroundColor: '#cfe2ff', color: '#0a58ca', fontSize: '0.75rem' }}>Bình thường</option>
-                              <option value={DamageReportPriority.High} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.75rem' }}>Cao</option>
-                              <option value={DamageReportPriority.Urgent} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.75rem' }}>Khẩn cấp</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        {/* People Info Row */}
-                        <div className="row g-2 mb-3">
-                          <div className="col-6">
-                            <div className="d-flex align-items-center gap-1 mb-1">
-                              <i className="fas fa-user text-muted" style={{ fontSize: '0.7rem' }}></i>
-                              <label className="small text-muted mb-0" style={{ fontSize: '0.7rem', fontWeight: '500' }}>
-                                Người báo cáo
-                              </label>
-                            </div>
-                            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#1a1d20', lineHeight: '1.3' }}>
-                              {report.reporterName || 'N/A'}
+                            <label className="d-block text-muted mb-1 fw-bold" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Trạng thái</label>
+                            <div className="position-relative">
+                              <select
+                                className="form-select form-select-sm fw-bold border"
+                                value={report.status}
+                                onChange={(e) => handleStatusChange(report.id, Number(e.target.value) as DamageReportStatus)}
+                                disabled={!canUpdateStatusForReport(report)}
+                                style={{
+                                  fontSize: '0.75rem',
+                                  borderRadius: '6px',
+                                  height: '34px',
+                                  borderColor: '#e2e8f0',
+                                  color: '#2c3e50',
+                                  backgroundColor: '#f8fafc'
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {isAdmin(currentUser?.roles) ? (
+                                  <>
+                                    <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
+                                    <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
+                                    <option value={DamageReportStatus.Completed}>Hoàn thành</option>
+                                    <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
+                                    <option value={DamageReportStatus.Rejected}>Từ chối</option>
+                                  </>
+                                ) : (
+                                  <>
+                                    <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
+                                    <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
+                                    <option value={DamageReportStatus.Completed}>Hoàn thành</option>
+                                    <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
+                                    <option value={DamageReportStatus.Rejected}>Từ chối</option>
+                                  </>
+                                )}
+                              </select>
                             </div>
                           </div>
                           <div className="col-6">
-                            <div className="d-flex align-items-center gap-1 mb-1">
-                              <i className="fas fa-user-cog text-muted" style={{ fontSize: '0.7rem' }}></i>
-                              <label className="small text-muted mb-0" style={{ fontSize: '0.7rem', fontWeight: '500' }}>
-                                Người xử lý
-                              </label>
-                            </div>
-                            <div style={{ fontSize: '0.85rem', fontWeight: '600', color: report.handlerName ? '#1a1d20' : '#868e96', lineHeight: '1.3', fontStyle: report.handlerName ? 'normal' : 'italic' }}>
-                              {report.handlerName || 'Chưa phân công'}
+                            <label className="d-block text-muted mb-1 fw-bold" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ưu tiên</label>
+                            <div className="position-relative">
+                              <select
+                                className="form-select form-select-sm fw-bold border"
+                                value={report.priority}
+                                onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
+                                disabled={!userPermissions.canEdit || report.status === DamageReportStatus.Completed}
+                                style={{
+                                  fontSize: '0.75rem',
+                                  borderRadius: '6px',
+                                  height: '34px',
+                                  borderColor: '#e2e8f0',
+                                  color: getPriorityStyle(report.priority).color,
+                                  backgroundColor: '#f8fafc'
+                                }}
+                              >
+                                <option value={DamageReportPriority.Low}>Thấp</option>
+                                <option value={DamageReportPriority.Normal}>Bình thường</option>
+                                <option value={DamageReportPriority.High}>Cao</option>
+                                <option value={DamageReportPriority.Urgent}>Khẩn cấp</option>
+                              </select>
                             </div>
                           </div>
                         </div>
 
-                        {/* Damage Content */}
-                        <div className="mb-3">
-                          <div className="d-flex align-items-center gap-1 mb-1">
-                            <i className="fas fa-file-alt text-muted" style={{ fontSize: '0.7rem' }}></i>
-                            <label className="small text-muted mb-0" style={{ fontSize: '0.7rem', fontWeight: '500' }}>
-                              Nội dung
+                        {/* Damage Content - Branded Boxed Style */}
+                        <div className="mb-3 p-3 rounded" style={{ backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0' }}>
+                          <div className="d-flex align-items-center gap-2 mb-2">
+                            <label className="fw-800 text-muted mb-0" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                              Nội dung sự việc
                             </label>
                           </div>
                           <div
+                            className="text-dark"
                             style={{
-                              fontSize: '0.85rem',
-                              color: '#212529',
-                              fontWeight: '500',
+                              fontSize: '0.9rem',
+                              fontWeight: '600',
                               lineHeight: '1.5',
-                              maxHeight: '80px',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
                               display: '-webkit-box',
                               WebkitLineClamp: 3,
                               WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
                               wordBreak: 'break-word'
                             }}
                           >
@@ -2396,34 +2454,84 @@ export default function DamageReportsPage() {
                           </div>
                         </div>
 
-                        {/* Handler Notes */}
-                        <div className="mb-3" onClick={(e) => e.stopPropagation()}>
-                          <div className="d-flex align-items-center gap-1 mb-1">
-                            <i className="fas fa-sticky-note text-muted" style={{ fontSize: '0.7rem' }}></i>
-                            <label className="small text-muted mb-0" style={{ fontSize: '0.7rem', fontWeight: '500' }}>
-                              Ghi chú người xử lý
-                            </label>
+                        {/* Staff Information */}
+                        <div className="row g-2 mb-3">
+                          <div className="col-6">
+                            <div className="p-2 border rounded" style={{ backgroundColor: '#ffffff', borderColor: '#f1f5f9' }}>
+                              <span className="text-muted fw-bold d-block" style={{ fontSize: '0.55rem', textTransform: 'uppercase' }}>Người báo cáo</span>
+                              <span className="fw-700 text-dark d-block text-truncate" style={{ fontSize: '0.8rem' }}>
+                                {report.reporterName || 'N/A'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="col-6">
+                            <div className="p-2 border rounded" style={{ backgroundColor: '#ffffff', borderColor: '#f1f5f9' }}>
+                              <span className="text-muted fw-bold d-block" style={{ fontSize: '0.55rem', textTransform: 'uppercase' }}>Người xử lý</span>
+                              <span className={`fw-700 d-block text-truncate ${report.handlerName ? 'text-primary' : 'text-muted italic'}`} style={{ fontSize: '0.8rem' }}>
+                                {report.handlerName || 'Chưa gán'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Timeline */}
+                        <div className="row g-1 mb-3 text-center">
+                          <div className="col-4">
+                            <div className="py-2 bg-light rounded" style={{ border: '1px solid #edf2f7' }}>
+                              <div style={{ fontSize: '0.5rem', color: '#718096', fontWeight: '800' }}>BÁO CÁO</div>
+                              <div style={{ fontSize: '0.7rem', fontWeight: '700', color: '#2d3748' }}>
+                                {report.reportDate ? formatDateDisplay(report.reportDate).split(' ')[0] : '--'}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="col-4">
+                            <div className="py-2 bg-light rounded" style={{ border: '1px solid #edf2f7' }}>
+                              <div style={{ fontSize: '0.5rem', color: '#718096', fontWeight: '800' }}>XỬ LÝ</div>
+                              <div style={{ fontSize: '0.7rem', fontWeight: '700', color: report.handlingDate ? '#2d3748' : '#cbd5e1' }}>
+                                {report.handlingDate ? formatDateDisplay(report.handlingDate).split(' ')[0] : '--'}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="col-4">
+                            <div className="py-2 bg-light rounded" style={{ border: '1px solid #edf2f7' }}>
+                              <div style={{ fontSize: '0.5rem', color: '#718096', fontWeight: '800' }}>XONG</div>
+                              <div style={{ fontSize: '0.7rem', fontWeight: '700', color: report.completedDate ? '#38a169' : '#cbd5e1' }}>
+                                {report.completedDate ? formatDateDisplay(report.completedDate).split(' ')[0] : '--'}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Handler Notes - Boxed Style */}
+                        {((report.handlerNotes && report.handlerNotes.trim() !== '') || 
+                          ((userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && 
+                           report.status !== DamageReportStatus.Completed && 
+                           report.status !== DamageReportStatus.Cancelled && 
+                           report.status !== DamageReportStatus.Rejected)) && (
+                        <div className="p-3 rounded mb-3" style={{ backgroundColor: '#f0fdf4', border: '1px solid #dcfce7' }} onClick={(e) => e.stopPropagation()}>
+                          <div className="d-flex align-items-center gap-2 mb-2">
+                            <span className="fw-800 text-success" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                              Kết quả / Ghi chú xử lý
+                            </span>
                           </div>
                           <HandlerNotesEditor
                             reportId={report.id}
                             value={report.handlerNotes || ''}
                             onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
                             isCard={true}
-                            canEdit={(userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && report.status !== DamageReportStatus.Completed}
+                            canEdit={(userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && 
+                                     report.status !== DamageReportStatus.Completed && 
+                                     report.status !== DamageReportStatus.Cancelled && 
+                                     report.status !== DamageReportStatus.Rejected}
                           />
                         </div>
+                        )}
 
-                        {/* Images */}
+                        {/* Images Section */}
                         {report.images && report.images.length > 0 && (
-                          <div>
-                            <div className="d-flex align-items-center gap-1 mb-2">
-                              <i className="fas fa-images text-muted" style={{ fontSize: '0.7rem' }}></i>
-                              <label className="small text-muted mb-0" style={{ fontSize: '0.7rem', fontWeight: '500' }}>
-                                Hình ảnh ({report.images.length})
-                              </label>
-                            </div>
-                            <div className="d-flex gap-1 flex-wrap">
-                              {report.images.slice(0, 4).map((img, idx) => (
+                          <div className="mt-3 pt-2 border-top">
+                            <div className="d-flex gap-2 overflow-auto pb-1 scrollbar-thin">
+                              {report.images.map((img, idx) => (
                                 <img
                                   key={idx}
                                   src={img}
@@ -2436,16 +2544,14 @@ export default function DamageReportsPage() {
                                     }
                                   }}
                                   style={{
-                                    width: '55px',
-                                    height: '55px',
+                                    width: '42px',
+                                    height: '42px',
                                     objectFit: 'cover',
                                     borderRadius: '6px',
-                                    border: '1px solid #dee2e6',
+                                    border: '1px solid #e2e8f0',
                                     cursor: 'pointer',
-                                    transition: 'transform 0.2s'
+                                    flexShrink: 0
                                   }}
-                                  onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                                  onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
                                 />
                               ))}
                               {report.images.length > 4 && (
@@ -2459,19 +2565,16 @@ export default function DamageReportsPage() {
                                     }
                                   }}
                                   style={{
-                                    width: '55px',
-                                    height: '55px',
-                                    backgroundColor: '#f8f9fa',
-                                    borderRadius: '6px',
-                                    border: '1px solid #dee2e6',
+                                    width: '48px',
+                                    height: '48px',
+                                    backgroundColor: '#f8fafc',
+                                    borderRadius: '8px',
+                                    border: '1px solid #e2e8f0',
                                     fontSize: '0.7rem',
-                                    color: '#6c757d',
-                                    fontWeight: '500',
-                                    cursor: 'pointer',
-                                    transition: 'transform 0.2s'
+                                    color: '#64748b',
+                                    fontWeight: '700',
+                                    cursor: 'pointer'
                                   }}
-                                  onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                                  onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
                                 >
                                   +{report.images.length - 4}
                                 </div>
@@ -2634,24 +2737,58 @@ export default function DamageReportsPage() {
                         <>
                           <div className="col-md-6">
                             <label className="form-label small fw-bold mb-1" style={{ fontSize: '0.75rem' }}>Danh mục thiết bị</label>
-                            <select
-                              className="form-select form-select-sm shadow-none"
-                              value={modalDeviceCategoryId}
-                              onChange={(e) => setModalDeviceCategoryId(Number(e.target.value) || 0)}
-                            >
-                              <option value={0}>Tất cả danh mục</option>
-                              {deviceCategories.map((cate) => (
-                                <option key={cate.id} value={cate.id}>{cate.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="col-md-6">
-                            <label className="form-label small fw-bold mb-1" style={{ fontSize: '0.75rem' }}>Thiết bị <span className="text-danger">*</span></label>
-                            <div ref={deviceDropdownRef} className="position-relative">
+                            <div ref={categoryDropdownRef} className="position-relative">
                               <button
                                 type="button"
                                 className="form-select form-select-sm text-start d-flex justify-content-between align-items-center shadow-none"
+                                onClick={() => setIsCategoryDropdownOpen((prev) => !prev)}
+                                style={{ minHeight: '31px' }}
+                              >
+                                <span className="text-truncate">
+                                  {modalDeviceCategoryId === 0 ? 'Tất cả danh mục' : deviceCategories.find(c => c.id === modalDeviceCategoryId)?.name || 'Chọn danh mục'}
+                                </span>
+                              </button>
+                              {isCategoryDropdownOpen && (
+                                <div className="border border-0 shadow mt-1" style={{ position: 'absolute', zIndex: 1081, backgroundColor: '#fff', width: '100%', borderRadius: '12px', padding: '4px' }}>
+                                  <div className="p-2 mb-1" style={{ backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+                                    <div className="input-group input-group-sm">
+                                      <span className="input-group-text bg-white border-end-0"><i className="fas fa-search text-muted" style={{ fontSize: '0.7rem' }}></i></span>
+                                      <input autoFocus type="text" className="form-control form-control-sm border-start-0 shadow-none" placeholder="Tìm danh mục..." value={modalCategorySearch} onChange={(e) => setModalCategorySearch(e.target.value)} />
+                                    </div>
+                                  </div>
+                                  <div style={{ maxHeight: '200px', overflowY: 'auto', padding: '0 4px' }}>
+                                    <button type="button" className={`dropdown-item py-2 fw-medium ${modalDeviceCategoryId === 0 ? 'active' : ''}`} onClick={() => { setModalDeviceCategoryId(0); setIsCategoryDropdownOpen(false); }}>-- Tất cả danh mục --</button>
+                                    {filteredModalCategories.map((cate) => (
+                                      <button key={cate.id} type="button" className={`dropdown-item py-2 ${modalDeviceCategoryId === cate.id ? 'active' : ''}`} onClick={() => { setModalDeviceCategoryId(cate.id); setIsCategoryDropdownOpen(false); }}>
+                                        <div className="small fw-bold">{cate.name}</div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="col-md-6">
+                            <div className="d-flex justify-content-between align-items-end mb-1">
+                              <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.75rem' }}>Thiết bị <span className="text-danger">*</span></label>
+                              {formData.deviceId && (
+                                <div className="d-flex align-items-center gap-1" style={{ fontSize: '0.7rem' }}>
+                                  <span className="text-muted italic">Vị trí:</span>
+                                  <span className="text-primary fw-bold">
+                                    {(() => {
+                                      const d = devices.find(dev => dev.id === formData.deviceId);
+                                      return d?.locationName || 'Chưa xác định';
+                                    })()}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            <div ref={deviceDropdownRef} className="position-relative">
+                              <button
+                                type="button"
+                                className="form-control form-select form-select-sm text-start d-flex justify-content-between align-items-center shadow-none"
                                 onClick={() => setIsDeviceDropdownOpen((prev) => !prev)}
+                                style={{ minHeight: '31px' }}
                               >
                                 <span className="text-truncate">
                                   {formData.deviceId 
@@ -2660,16 +2797,36 @@ export default function DamageReportsPage() {
                                 </span>
                               </button>
                               {isDeviceDropdownOpen && (
-                                <div className="border border-0 shadow mt-1 overflow-hidden" style={{ position: 'absolute', zIndex: 1080, backgroundColor: '#fff', width: '100%', borderRadius: '12px' }}>
-                                  <div className="p-2 bg-light"><input autoFocus type="text" className="form-control form-control-sm border-0 shadow-none" placeholder="Nhập tên, mã..." value={modalDeviceSearch} onChange={(e) => setModalDeviceSearch(e.target.value)} /></div>
-                                  <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                                    <button type="button" className="dropdown-item py-2" onClick={() => { setFormData({ ...formData, deviceId: undefined }); setIsDeviceDropdownOpen(false); }}>-- Bỏ chọn --</button>
-                                    {filteredModalDevices.map((d) => (
-                                      <button type="button" key={d.id} className={`dropdown-item py-2 ${formData.deviceId === d.id ? 'active' : ''}`} onClick={() => { setFormData({ ...formData, deviceId: d.id }); setIsDeviceDropdownOpen(false); }}>
-                                        <div className="fw-bold small">{d.name}</div>
-                                        <div className="small text-muted" style={{ fontSize: '0.65rem' }}>{d.serial || 'Không có serial'}</div>
-                                      </button>
-                                    ))}
+                                <div className="border border-0 shadow mt-1" style={{ position: 'absolute', zIndex: 1080, backgroundColor: '#fff', width: '100%', borderRadius: '12px', padding: '4px' }}>
+                                  <div className="p-2 mb-1" style={{ backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+                                    <div className="input-group input-group-sm">
+                                      <span className="input-group-text bg-white border-end-0"><i className="fas fa-search text-muted" style={{ fontSize: '0.7rem' }}></i></span>
+                                      <input autoFocus type="text" className="form-control form-control-sm border-start-0 shadow-none" placeholder="Tìm tên, mã, vị trí..." value={modalDeviceSearch} onChange={(e) => setModalDeviceSearch(e.target.value)} />
+                                    </div>
+                                  </div>
+                                  <div style={{ maxHeight: '250px', overflowY: 'auto', padding: '0 4px' }}>
+                                    <button type="button" className="dropdown-item py-2 text-primary fw-medium" onClick={() => { setFormData({ ...formData, deviceId: undefined }); setIsDeviceDropdownOpen(false); }}>-- Bỏ chọn --</button>
+                                    {filteredModalDevices.length === 0 ? (
+                                      <div className="p-3 text-center text-muted small">Không tìm thấy thiết bị phù hợp</div>
+                                    ) : (
+                                      filteredModalDevices.map((d) => (
+                                        <button type="button" key={d.id} className={`dropdown-item py-2 border-bottom border-light-subtle ${formData.deviceId === d.id ? 'active' : ''}`} onClick={() => { setFormData({ ...formData, deviceId: d.id }); setIsDeviceDropdownOpen(false); }}>
+                                          <div className="d-flex align-items-center justify-content-between">
+                                            <div>
+                                              <div className="fw-bold small" style={{ color: formData.deviceId === d.id ? '#fff' : '#2c3e50' }}>{d.name}</div>
+                                              <div className={formData.deviceId === d.id ? 'text-white-50' : 'text-muted'} style={{ fontSize: '0.65rem' }}>
+                                                <i className="fas fa-barcode me-1"></i> {d.serial || 'N/A'}
+                                              </div>
+                                            </div>
+                                            {d.locationName && (
+                                              <div className={`badge ${formData.deviceId === d.id ? 'bg-white text-primary' : 'bg-primary bg-opacity-10 text-primary'} ms-2`} style={{ fontSize: '0.6rem' }}>
+                                                <i className="fas fa-map-marker-alt me-1"></i> {d.locationName}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </button>
+                                      ))
+                                    )}
                                   </div>
                                 </div>
                               )}
@@ -2721,36 +2878,55 @@ export default function DamageReportsPage() {
                     </div>
                   </div>
 
-                  {/* Section 2: Status & Time */}
-                  <div className="row g-2 mb-3">
-                    <div className="col-md-3">
-                      <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.65rem' }}>Ngày báo cáo</label>
-                      <DateInput value={formData.reportDate} onChange={(v) => setFormData({ ...formData, reportDate: v })} required />
-                    </div>
-                    <div className="col-md-3">
-                      <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.65rem' }}>Hoàn thành</label>
-                      <DateInput value={formData.completedDate} onChange={(v) => setFormData({ ...formData, completedDate: v })} />
-                    </div>
-                    <div className="col-md-3">
-                      <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.65rem' }}>Mức ưu tiên</label>
-                      <select className="form-select form-select-sm shadow-none" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number(e.target.value) as DamageReportPriority })}>
-                        <option value={DamageReportPriority.Low}>Thấp</option>
-                        <option value={DamageReportPriority.Normal}>Bình thường</option>
-                        <option value={DamageReportPriority.High}>Cao</option>
-                        <option value={DamageReportPriority.Urgent}>Khẩn cấp</option>
-                      </select>
-                    </div>
-                    <div className="col-md-3">
-                      <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.65rem' }}>Trạng thái</label>
-                      <select className="form-select form-select-sm shadow-none fw-bold" value={formData.status} onChange={(e) => setFormData({ ...formData, status: Number(e.target.value) as DamageReportStatus })}>
-                        <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
-                        <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
-                        <option value={DamageReportStatus.Completed}>Hoàn thành</option>
-                        <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
-                        <option value={DamageReportStatus.Rejected}>Từ chối</option>
-                      </select>
-                    </div>
-                  </div>
+                   {/* Section 2: Status & Time */}
+                   <div className="bg-white p-2 border rounded-4 mb-3 shadow-sm border-light-subtle">
+                     <div className="row g-1 align-items-end">
+                       <div className="col-md-2">
+                         <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.6rem' }}>1. Báo cáo</label>
+                         <DateInput value={formData.reportDate} onChange={(v) => setFormData({ ...formData, reportDate: v })} required className="form-control form-control-sm shadow-none" />
+                       </div>
+                       <div className="col-md-2">
+                         <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.6rem' }}>2. Xử lý</label>
+                         <DateInput value={formData.handlingDate} onChange={(v) => setFormData({ ...formData, handlingDate: v })} className="form-control form-control-sm shadow-none" disabled={!isEdit} />
+                       </div>
+                       <div className="col-md-2">
+                         <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.6rem' }}>3. Hoàn thành</label>
+                         <DateInput value={formData.completedDate} onChange={(v) => setFormData({ ...formData, completedDate: v })} className="form-control form-control-sm shadow-none" disabled={!isEdit} />
+                       </div>
+                       <div className="col-md-2">
+                         <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.6rem' }}>Ưu tiên</label>
+                         <select className="form-select form-select-sm shadow-none" style={{ height: '31px' }} value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number(e.target.value) as DamageReportPriority })}>
+                            <option value={DamageReportPriority.Low}>Thấp</option>
+                            <option value={DamageReportPriority.Normal}>Bình thường</option>
+                            <option value={DamageReportPriority.High}>Cao</option>
+                            <option value={DamageReportPriority.Urgent}>Khẩn cấp</option>
+                         </select>
+                       </div>
+                       <div className="col-md-4">
+                         <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.6rem' }}>Trạng thái xử lý</label>
+                         <div className="input-group input-group-sm" style={{ height: '31px' }}>
+                            <span className="input-group-text bg-light border-end-0 py-0 px-2"><i className="fas fa-tasks text-muted" style={{ fontSize: '0.7rem' }}></i></span>
+                            <select className="form-select form-select-sm shadow-none border-start-0 fw-bold text-primary h-100" value={formData.status} disabled={!isEdit} onChange={(e) => {
+                              const newStatus = Number(e.target.value) as DamageReportStatus;
+                              let updates: any = { status: newStatus };
+                              if (newStatus === DamageReportStatus.InProgress && !formData.handlingDate) {
+                                updates.handlingDate = formatDateInput(new Date());
+                              } else if (newStatus === DamageReportStatus.Completed) {
+                                if (!formData.handlingDate) updates.handlingDate = formatDateInput(new Date());
+                                if (!formData.completedDate) updates.completedDate = formatDateInput(new Date());
+                              }
+                              setFormData({ ...formData, ...updates });
+                            }}>
+                              <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
+                              <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
+                              <option value={DamageReportStatus.Completed}>Hoàn thành</option>
+                              <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
+                              <option value={DamageReportStatus.Rejected}>Từ chối</option>
+                            </select>
+                         </div>
+                       </div>
+                     </div>
+                   </div>
 
                   {/* Section 3: Content */}
                   <div className="mb-3">
@@ -2828,7 +3004,12 @@ export default function DamageReportsPage() {
               
               <div className="modal-footer border-0 p-3 pt-0">
                 <button type="button" className="btn btn-light rounded-pill px-4 btn-sm" style={{ fontWeight: '600' }} onClick={() => setShowModal(false)}>Hủy bỏ</button>
-                <button type="button" className="btn btn-primary rounded-pill px-5 btn-sm shadow-sm" style={{ fontWeight: '700' }} onClick={handleSave}>
+                {!isEdit && (
+                  <button type="button" className="btn btn-success rounded-pill px-4 btn-sm shadow-sm" style={{ fontWeight: '700' }} onClick={() => handleSave(true)}>
+                    Hoàn thành trong ngày
+                  </button>
+                )}
+                <button type="button" className="btn btn-primary rounded-pill px-5 btn-sm shadow-sm" style={{ fontWeight: '700' }} onClick={() => handleSave(false)}>
                   Lưu báo cáo
                 </button>
               </div>

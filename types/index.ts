@@ -17,6 +17,12 @@ export interface Department {
   name: string;
 }
 
+// Location types
+export interface Location {
+  id: number;
+  name: string;
+}
+
 // DeviceCategory types
 export interface DeviceCategory {
   id: number;
@@ -43,12 +49,14 @@ export interface Device {
   useDate?: Date;
   endDate?: Date;
   departmentId: number;
+  locationId?: number;
   deviceCategoryId: number;
   status: DeviceStatus;
 }
 
 export interface DeviceVM extends Device {
   departmentName?: string;
+  locationName?: string;
   deviceCategoryName?: string;
   statusName?: string;
   lastReportStatus?: DamageReportStatus;
@@ -182,6 +190,7 @@ export interface DamageReportVM extends DamageReport {
   daysInProgress?: number;
   isOverdue?: boolean;
   displayLocation?: string;              // Hiển thị: DeviceName hoặc damageLocation
+  deviceLocationName?: string;           // Tên vị trí của thiết bị
   updatedByName?: string;                // Tên người cập nhật cuối
   afterImages?: string[];                // Mảng đường dẫn hình ảnh sau khi xử lý
 }

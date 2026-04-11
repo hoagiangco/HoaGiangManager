@@ -2,7 +2,7 @@ import pool from '../db';
 import { PoolClient } from 'pg';
 import { DamageReport, DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceStatus, EventStatus } from '@/types';
 import { EventService } from './eventService';
-import { sendPushNotification } from '../notifications/web-push';
+import { NotificationService, NotificationType, NotificationCategory } from './notificationService';
 
 export class DamageReportService {
   private async ensureHistorySequence(client?: PoolClient): Promise<void> {
@@ -92,6 +92,7 @@ export class DamageReportService {
         reporter_dept."Name" as "reporterDepartmentName",
         handler."Name" as "handlerName",
         handler_dept."Name" as "handlerDepartmentName",
+        loc."Name" as "deviceLocationName",
         updated_user."FullName" as "updatedByName",
         (SELECT drp."Title" 
          FROM "DeviceReminderPlan" drp 
@@ -109,6 +110,7 @@ export class DamageReportService {
       LEFT JOIN "Department" reporter_dept ON dr."ReportingDepartmentID" = reporter_dept."ID"
       LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
       LEFT JOIN "Department" handler_dept ON handler."DepartmentID" = handler_dept."ID"
+      LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
       LEFT JOIN "AspNetUsers" updated_user ON dr."UpdatedBy" = updated_user."Id"
       WHERE 1=1
     `;
@@ -330,6 +332,8 @@ export class DamageReportService {
           reporter_dept."Name" as "reporterDepartmentName",
           handler."Name" as "handlerName",
           handler_dept."Name" as "handlerDepartmentName",
+        loc."Name" as "deviceLocationName",
+          loc."Name" as "deviceLocationName",
           updated_user."FullName" as "updatedByName"
         FROM "DamageReport" dr
         LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
@@ -337,6 +341,8 @@ export class DamageReportService {
         LEFT JOIN "Department" reporter_dept ON dr."ReportingDepartmentID" = reporter_dept."ID"
         LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
         LEFT JOIN "Department" handler_dept ON handler."DepartmentID" = handler_dept."ID"
+      LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
+        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
         LEFT JOIN "AspNetUsers" updated_user ON dr."UpdatedBy" = updated_user."Id"
         ${whereClause}
         ORDER BY ${sortBy} ${order}, dr."ID" DESC
@@ -393,6 +399,7 @@ export class DamageReportService {
       daysInProgress,
       isOverdue,
       displayLocation: row.deviceName || row.maintenanceBatchTitle || row.damageLocation || 'Không xác định',
+      deviceLocationName: row.deviceLocationName || null,
     } as DamageReportVM;
   }
 
@@ -430,6 +437,7 @@ export class DamageReportService {
         reporter_dept."Name" as "reporterDepartmentName",
         handler."Name" as "handlerName",
         handler_dept."Name" as "handlerDepartmentName",
+        loc."Name" as "deviceLocationName",
         updated_user."FullName" as "updatedByName",
         (SELECT drp."Title" 
          FROM "DeviceReminderPlan" drp 
@@ -447,6 +455,7 @@ export class DamageReportService {
       LEFT JOIN "Department" reporter_dept ON dr."ReportingDepartmentID" = reporter_dept."ID"
       LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
       LEFT JOIN "Department" handler_dept ON handler."DepartmentID" = handler_dept."ID"
+      LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
       LEFT JOIN "AspNetUsers" updated_user ON dr."UpdatedBy" = updated_user."Id"
       WHERE dr."ID" = $1`,
       [id]
@@ -558,7 +567,7 @@ export class DamageReportService {
 
     // Await notification to ensure it finishes on serverless (Vercel)
     try {
-        await this.notifyNewReport(id, report.damageContent);
+        await this.notifyNewReport(id, report.damageContent, report.reporterId, report.createdBy);
     } catch (err) {
         console.error('Failed to send push notifications:', err);
     }
@@ -566,36 +575,24 @@ export class DamageReportService {
     return id;
   }
 
-  private async notifyNewReport(reportId: number, content: string) {
+  private async notifyNewReport(reportId: number, content: string, reporterId: number, createdBy?: string) {
     try {
-      const subsRes = await pool.query('SELECT "Endpoint", "P256dh", "Auth" FROM "PushSubscription"');
-      const payload = {
-        title: 'Báo cáo hư hỏng mới ⚠️',
-        body: content.length > 100 ? content.substring(0, 100) + '...' : content,
-        icon: '/icons/icon.svg',
-        data: {
-          url: `/dashboard/damage-reports`
-        },
-        tag: `report-${reportId}`,
-        vibrate: [200, 100, 200],
-        requireInteraction: true
-      };
+      const notificationService = new NotificationService();
+      
+      // Get reporter name
+      const reporterRes = await pool.query('SELECT "Name" FROM "Staff" WHERE "ID" = $1', [reporterId]);
+      const reporterName = reporterRes.rows[0]?.Name || 'Một nhân viên';
 
-      for (const row of subsRes.rows) {
-          const sub = {
-              endpoint: row.Endpoint,
-              keys: {
-                  p256dh: row.P256dh,
-                  auth: row.Auth
-              }
-          };
-          await sendPushNotification(sub as any, payload);
-          // Optional: log success per subscription in dev
-          // console.log(`Push sent to ${sub.endpoint}`);
-      }
+      await notificationService.createNotification({
+        title: 'Báo cáo hư hỏng mới ⚠️',
+        content: `${reporterName}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
+        type: NotificationType.Report,
+        category: NotificationCategory.New,
+        targetUrl: `/dashboard/damage-reports`, // You could improve this to point to specific ID if needed
+        createdBy: createdBy
+      });
     } catch (error) {
-      console.error('Error fetching subscriptions for notify:', error);
-      throw error; // Rethrow to catch in create method
+      console.error('Error in notifyNewReport:', error);
     }
   }
 
@@ -721,7 +718,11 @@ export class DamageReportService {
 
       // Get current info
       const currentRes = await client.query(
-        `SELECT "Status" as status, "DeviceID" as device_id FROM "DamageReport" WHERE "ID" = $1`,
+        `SELECT dr."Status" as status, dr."DeviceID" as device_id, dr."HandlerID" as handler_id, 
+                dr."DamageContent" as damage_content, s."Name" as handler_name
+         FROM "DamageReport" dr
+         LEFT JOIN "Staff" s ON dr."HandlerID" = s."ID"
+         WHERE dr."ID" = $1`,
         [id]
       );
       
@@ -732,6 +733,8 @@ export class DamageReportService {
       const row = currentRes.rows[0];
       const currentStatusStr = String(row.status || '');
       const deviceId = row.device_id;
+      const damageContent = row.damage_content || '';
+      const handlerName = row.handler_name || 'Nhân viên';
 
       // Update report status
       await client.query(
@@ -760,6 +763,31 @@ export class DamageReportService {
       }
 
       await client.query('COMMIT');
+
+      // Send notifications AFTER commit
+      if (currentStatusStr !== status.toString()) {
+        const notificationService = new NotificationService();
+        if (status === DamageReportStatus.InProgress) {
+          await notificationService.createNotification({
+            title: 'Báo cáo đang được xử lý 🛠️',
+            content: `${handlerName} đang xử lý báo cáo: ${damageContent.substring(0, 50)}...`,
+            type: NotificationType.Report,
+            category: NotificationCategory.InProgress,
+            targetUrl: `/dashboard/damage-reports`,
+            createdBy: updatedBy
+          });
+        } else if (status === DamageReportStatus.Completed) {
+          await notificationService.createNotification({
+            title: 'Báo cáo đã hoàn thành ✅',
+            content: `Báo cáo: ${damageContent.substring(0, 50)}... đã được hoàn thành.`,
+            type: NotificationType.Report,
+            category: NotificationCategory.Completed,
+            targetUrl: `/dashboard/damage-reports`,
+            createdBy: updatedBy
+          });
+        }
+      }
+
       return id;
     } catch (error) {
       await client.query('ROLLBACK');
@@ -1120,6 +1148,25 @@ export class DamageReportService {
 
       await Promise.all(planUpdatePromises);
       console.log(`Successfully bumped ${plans.length} plans for batch ${batchId}`);
+
+      // Notify about maintenance completion
+      try {
+        const handlerRes = await pool.query('SELECT "Name" FROM "Staff" WHERE "ID" = $1', [report.HandlerID]);
+        const handlerName = handlerRes.rows[0]?.Name || 'Nhân viên';
+        const batchTitle = plans[0]?.title || 'Đợt bảo trì';
+
+        const notificationService = new NotificationService();
+        await notificationService.createNotification({
+          title: 'Bảo trì đã thực hiện 🔧',
+          content: `${handlerName} đã hoàn thành bảo trì: ${batchTitle}`,
+          type: NotificationType.Maintenance,
+          category: NotificationCategory.Completed,
+          targetUrl: `/dashboard/maintenance`,
+          createdBy: userId || undefined
+        });
+      } catch (err) {
+        console.error('Error sending maintenance completion notification:', err);
+      }
     }
   }
 

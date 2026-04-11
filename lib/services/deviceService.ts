@@ -26,6 +26,8 @@ export class DeviceService {
           d."EndDate" as "endDate",
           d."DepartmentID" as "departmentId",
           dep."Name" as "departmentName",
+          d."LocationID" as "locationId",
+          loc."Name" as "locationName",
           d."DeviceCategoryID" as "deviceCategoryId",
           dc."Name" as "deviceCategoryName",
           CAST(d."Status"::text AS INTEGER) as status,
@@ -35,6 +37,7 @@ export class DeviceService {
         FROM "Device" d
         INNER JOIN "DeviceCategory" dc ON d."DeviceCategoryID" = dc."ID"
         INNER JOIN "Department" dep ON d."DepartmentID" = dep."ID"
+        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
         LEFT JOIN LATERAL (
           SELECT 
             CAST(dr."Status"::text AS INTEGER) as "lastReportStatus",
@@ -78,6 +81,7 @@ export class DeviceService {
     limit: number;
     categoryId?: number;
     departmentId?: number;
+    locationId?: number;
     status?: number;
     search?: string;
     sortField?: string;
@@ -88,6 +92,7 @@ export class DeviceService {
       limit = 10, 
       categoryId = 0, 
       departmentId = 0, 
+      locationId = 0,
       status = 0, 
       search = '', 
       sortField = 'Name', 
@@ -108,6 +113,11 @@ export class DeviceService {
       whereClause += ` AND d."DepartmentID" = $${params.length}`;
     }
 
+    if (locationId > 0) {
+      params.push(locationId);
+      whereClause += ` AND d."LocationID" = $${params.length}`;
+    }
+
     if (status > 0) {
       params.push(status.toString());
       whereClause += ` AND d."Status"::text = $${params.length}`;
@@ -115,7 +125,7 @@ export class DeviceService {
 
     if (search && search.trim()) {
       params.push(`%${search.trim().toLowerCase()}%`);
-      whereClause += ` AND (LOWER(d."Name") LIKE $${params.length} OR LOWER(d."Serial") LIKE $${params.length} OR LOWER(d."Description") LIKE $${params.length})`;
+      whereClause += ` AND (LOWER(d."Name") LIKE $${params.length} OR LOWER(d."Serial") LIKE $${params.length} OR LOWER(d."Description") LIKE $${params.length} OR LOWER(loc."Name") LIKE $${params.length})`;
     }
 
     // Mapping sort fields to DB columns
@@ -139,6 +149,7 @@ export class DeviceService {
         FROM "Device" d
         LEFT JOIN "DeviceCategory" dc ON d."DeviceCategoryID" = dc."ID"
         LEFT JOIN "Department" dep ON d."DepartmentID" = dep."ID"
+        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
         ${whereClause}
       `;
       const countResult = await pool.query(countQuery, params);
@@ -157,6 +168,8 @@ export class DeviceService {
           d."EndDate" as "endDate",
           d."DepartmentID" as "departmentId",
           dep."Name" as "departmentName",
+          d."LocationID" as "locationId",
+          loc."Name" as "locationName",
           d."DeviceCategoryID" as "deviceCategoryId",
           dc."Name" as "deviceCategoryName",
           CAST(d."Status"::text AS INTEGER) as status,
@@ -166,6 +179,7 @@ export class DeviceService {
         FROM "Device" d
         INNER JOIN "DeviceCategory" dc ON d."DeviceCategoryID" = dc."ID"
         INNER JOIN "Department" dep ON d."DepartmentID" = dep."ID"
+        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
         LEFT JOIN LATERAL (
           SELECT 
             CAST(dr."Status"::text AS INTEGER) as "lastReportStatus",
@@ -215,6 +229,8 @@ export class DeviceService {
           d."EndDate" as "endDate",
           d."DepartmentID" as "departmentId",
           dep."Name" as "departmentName",
+          d."LocationID" as "locationId",
+          loc."Name" as "locationName",
           d."DeviceCategoryID" as "deviceCategoryId",
           dc."Name" as "deviceCategoryName",
           CAST(d."Status"::text AS INTEGER) as status,
@@ -224,6 +240,7 @@ export class DeviceService {
         FROM "Device" d
         INNER JOIN "DeviceCategory" dc ON d."DeviceCategoryID" = dc."ID"
         INNER JOIN "Department" dep ON d."DepartmentID" = dep."ID"
+        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
         LEFT JOIN LATERAL (
           SELECT 
             CAST(dr."Status"::text AS INTEGER) as "lastReportStatus",
@@ -273,6 +290,8 @@ export class DeviceService {
           d."EndDate" as "endDate",
           d."DepartmentID" as "departmentId",
           dep."Name" as "departmentName",
+          d."LocationID" as "locationId",
+          loc."Name" as "locationName",
           d."DeviceCategoryID" as "deviceCategoryId",
           dc."Name" as "deviceCategoryName",
           CAST(d."Status"::text AS INTEGER) as status,
@@ -282,6 +301,7 @@ export class DeviceService {
         FROM "Device" d
         INNER JOIN "DeviceCategory" dc ON d."DeviceCategoryID" = dc."ID"
         INNER JOIN "Department" dep ON d."DepartmentID" = dep."ID"
+        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
         LEFT JOIN LATERAL (
           SELECT 
             CAST(dr."Status"::text AS INTEGER) as "lastReportStatus",
@@ -334,6 +354,7 @@ export class DeviceService {
       useDate: row.UseDate,
       endDate: row.EndDate,
       departmentId: row.DepartmentID,
+      locationId: row.LocationID ?? undefined,
       deviceCategoryId: row.DeviceCategoryID,
       status: row.Status ? (typeof row.Status === 'string' ? parseInt(row.Status) : row.Status) as DeviceStatus : DeviceStatus.DangSuDung
     };
@@ -370,9 +391,9 @@ export class DeviceService {
     const result = await pool.query(
       `INSERT INTO "Device" (
         "Name", "Serial", "Description", "Img", "WarrantyDate", 
-        "UseDate", "EndDate", "DepartmentID", "DeviceCategoryID", "Status"
+        "UseDate", "EndDate", "DepartmentID", "LocationID", "DeviceCategoryID", "Status"
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING "ID"`,
       [
         device.name,
@@ -383,6 +404,7 @@ export class DeviceService {
         device.useDate || null,
         device.endDate || null,
         device.departmentId,
+        device.locationId || null,
         device.deviceCategoryId,
         (device.status ?? DeviceStatus.DangSuDung).toString()
       ]
@@ -404,9 +426,10 @@ export class DeviceService {
         "UseDate" = $6,
         "EndDate" = $7,
         "DepartmentID" = $8,
-        "DeviceCategoryID" = $9,
-        "Status" = $10
-      WHERE "ID" = $11`,
+        "LocationID" = $9,
+        "DeviceCategoryID" = $10,
+        "Status" = $11
+      WHERE "ID" = $12`,
       [
         device.name,
         device.serial || null,
@@ -416,6 +439,7 @@ export class DeviceService {
         device.useDate || null,
         device.endDate || null,
         device.departmentId,
+        device.locationId || null,
         device.deviceCategoryId,
         (device.status ?? DeviceStatus.DangSuDung).toString(),
         device.id

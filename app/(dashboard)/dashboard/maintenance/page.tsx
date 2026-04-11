@@ -233,7 +233,7 @@ function MaintenancePageContent() {
     selectionType: 'category',
     categoryId: 0,
     deviceIds: [],
-    eventTypeId: 0,
+    eventTypeId: 1, // Mặc định là Bảo trì
     title: '',
     description: '',
     intervalValue: 6,
@@ -266,7 +266,20 @@ function MaintenancePageContent() {
 
   useEffect(() => {
     if (catData?.status) setCategories(catData.data || []);
-    if (eventTypeData?.status) setEventTypes(eventTypeData.data || []);
+    if (eventTypeData?.status) {
+      const types = eventTypeData.data || [];
+      setEventTypes(types);
+      
+      // Tự động tìm ID Bảo trì nếu chưa có hoặc đang là 0
+      const maintenanceType = types.find((t: any) => 
+        t.name.toLowerCase().includes('bảo trì') || 
+        t.name.toLowerCase() === 'maintenance'
+      );
+      
+      if (maintenanceType) {
+        setFormData(prev => ({ ...prev, eventTypeId: maintenanceType.id }));
+      }
+    }
   }, [catData, eventTypeData]);
 
   // Main polling data
@@ -1320,7 +1333,19 @@ function MaintenancePageContent() {
     setEditBatchMaintenanceType(firstPlan.metadata?.maintenanceType || 'internal');
     setEditBatchProvider(firstPlan.metadata?.maintenanceProvider || '');
     setEditBatchCost(firstPlan.metadata?.cost || 0);
-    setEditBatchEventTypeId(firstPlan.eventTypeId || 0);
+
+    // Mặc định sử dụng eventTypeId của bản ghi cũ, nếu không có thì tìm ID Bảo trì
+    let eventTypeId = firstPlan.eventTypeId || 0;
+    if (eventTypeId === 0) {
+      const maintenanceType = eventTypes.find((t: any) => 
+        t.name.toLowerCase().includes('bảo trì') || 
+        t.name.toLowerCase() === 'maintenance'
+      );
+      if (maintenanceType) {
+        eventTypeId = maintenanceType.id;
+      }
+    }
+    setEditBatchEventTypeId(eventTypeId);
     
     setShowEditIntervalModal(true);
   };
@@ -2091,8 +2116,8 @@ function MaintenancePageContent() {
                   </>
                 )}
 
-                {/* Event Type */}
-                <div className="row mb-3">
+                {/* Loại sự kiện - Ẩn theo yêu cầu người dùng چون mặc định là Bảo trì */}
+                <div className="row mb-3 d-none">
                   <div className="col-md-12">
                     <label className="form-label">Loại sự kiện <span className="text-danger">*</span></label>
                     <select

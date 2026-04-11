@@ -6,13 +6,14 @@ import api from '@/lib/utils/api';
 import useSWR from 'swr';
 import { fetcher } from '@/lib/utils/swr-fetcher';
 import { toast } from 'react-toastify';
-import { DeviceVM, DeviceStatus, DeviceCategory, Department, DeviceHistorySummary, EventStatus, DamageReportStatus } from '@/types';
+import { DeviceVM, DeviceStatus, DeviceCategory, Department, Location, DeviceHistorySummary, EventStatus, DamageReportStatus } from '@/types';
 import { formatDateDisplay, formatDateInput, formatDateTime } from '@/lib/utils/dateFormat';
 import DateInput from '@/components/DateInput';
 import dynamic from 'next/dynamic';
 import FileManager from '@/components/FileManager';
 import AdminRoute from '@/components/AdminRoute';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
+import SearchableSelect from '@/components/SearchableSelect';
 import * as XLSX from 'xlsx';
 
 // Dynamically import ReactQuill to avoid SSR issues
@@ -27,10 +28,15 @@ function DevicesPageContent() {
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState(0);
   const [selectedDepartment, setSelectedDepartment] = useState(0);
+  const [selectedLocation, setSelectedLocation] = useState(0);
   const [selectedStatus, setSelectedStatus] = useState<DeviceStatus | 0>(0);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+
+  // Quick Add Location modal state
+  const [showQuickAddLocation, setShowQuickAddLocation] = useState(false);
+  const [quickAddLocationName, setQuickAddLocationName] = useState('');
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -156,6 +162,7 @@ function DevicesPageContent() {
     useDate: '',
     endDate: '',
     departmentId: 0,
+    locationId: 0,
     deviceCategoryId: 0,
     status: DeviceStatus.DangSuDung,
   });
@@ -173,18 +180,8 @@ function DevicesPageContent() {
       
       console.log('Processing pending image URL:', url);
       
-      // Remove domain if present, keep only relative path
+      // Do not strip absolute url
       let relativePath = url.trim();
-      try {
-        if (url.includes('://') || url.startsWith('http')) {
-          const urlObj = new URL(url);
-          relativePath = urlObj.pathname;
-        } else {
-          relativePath = url.startsWith('/') ? url : `/${url}`;
-        }
-      } catch (e) {
-        relativePath = url.startsWith('/') ? url : `/${url}`;
-      }
       
       console.log('Setting img from pending URL to:', relativePath);
       setFormData((prev) => {
@@ -201,14 +198,17 @@ function DevicesPageContent() {
   // SWR hooks for data fetching
   const { data: categoriesData } = useSWR<{ status: boolean; data: DeviceCategory[] }>('/device-categories', fetcher);
   const { data: departmentsData } = useSWR<{ status: boolean; data: Department[] }>('/departments', fetcher);
+  const { data: locationsData, mutate: mutateLocations } = useSWR<{ status: boolean; data: Location[] }>('/locations', fetcher);
 
   const categories = (categoriesData?.data || []) as DeviceCategory[];
   const departments = (departmentsData?.data || []) as Department[];
+  const locations = (locationsData?.data || []) as Location[];
 
   const currentParams = useMemo(() => {
     return new URLSearchParams({
       cateId: selectedCategory.toString(),
       departmentId: selectedDepartment.toString(),
+      locationId: selectedLocation.toString(),
       status: selectedStatus.toString(),
       search: searchKeyword,
       page: currentPage.toString(),
@@ -216,7 +216,7 @@ function DevicesPageContent() {
       sortField: sortField,
       sortOrder: sortOrder
     }).toString();
-  }, [selectedCategory, selectedDepartment, selectedStatus, searchKeyword, currentPage, itemsPerPage, sortField, sortOrder]);
+  }, [selectedCategory, selectedDepartment, selectedLocation, selectedStatus, searchKeyword, currentPage, itemsPerPage, sortField, sortOrder]);
 
   const { data: response, isLoading: reportsLoading, mutate } = useSWR(
     `/devices?${currentParams}`, 
@@ -253,6 +253,7 @@ function DevicesPageContent() {
       useDate: '',
       endDate: '',
       departmentId: departments[0]?.id || 0,
+      locationId: 0,
       deviceCategoryId: categories[0]?.id || 0,
       status: DeviceStatus.DangSuDung,
     });
@@ -274,20 +275,8 @@ function DevicesPageContent() {
     const device = devices.find((d) => d.id === selectedIds[0]);
     if (device) {
       setIsEdit(true);
-      // Normalize image path to relative URL for consistent preview and storage
-      let normalizedImg = device.img || '';
-      try {
-        if (normalizedImg) {
-          if (normalizedImg.includes('://') || normalizedImg.startsWith('http')) {
-            const u = new URL(normalizedImg);
-            normalizedImg = u.pathname || '';
-          } else {
-            normalizedImg = normalizedImg.startsWith('/') ? normalizedImg : `/${normalizedImg}`;
-          }
-        }
-      } catch {
-        normalizedImg = normalizedImg.startsWith('/') ? normalizedImg : (normalizedImg ? `/${normalizedImg}` : '');
-      }
+      // Giữ nguyên đường dẫn ảnh từ device (không chuẩn hóa để tương thích với thẻ src img của absolute URL)
+      let normalizedImg = device.img ? device.img.trim() : '';
 
       setFormData({
         id: device.id,
@@ -299,6 +288,7 @@ function DevicesPageContent() {
         useDate: formatDateInput(device.useDate),
         endDate: formatDateInput(device.endDate),
         departmentId: device.departmentId,
+        locationId: device.locationId || 0,
         deviceCategoryId: device.deviceCategoryId,
         status: device.status,
       });
@@ -547,6 +537,7 @@ function DevicesPageContent() {
         useDate: formData.useDate || null,
         endDate: formData.endDate || null,
         departmentId: formData.departmentId,
+        locationId: formData.locationId || null,
         deviceCategoryId: formData.deviceCategoryId,
         status: formData.status,
       };
@@ -563,6 +554,28 @@ function DevicesPageContent() {
       loadData();
     } catch (error) {
       toast.error(isEdit ? 'Lỗi khi cập nhật' : 'Lỗi khi thêm mới');
+    }
+  };
+
+  const handleQuickAddLocation = async () => {
+    if (!quickAddLocationName.trim()) {
+      toast.error('Vui lòng nhập tên vị trí');
+      return;
+    }
+    try {
+      const res = await api.post('/locations', { name: quickAddLocationName.trim() });
+      if (res.data.status) {
+        toast.success(`Đã thêm vị trí "${quickAddLocationName.trim()}"`);
+        await mutateLocations(); // Refresh locations list
+        setFormData(prev => ({ ...prev, locationId: res.data.data.id }));
+        setQuickAddLocationName('');
+        setShowQuickAddLocation(false);
+      } else {
+        toast.error(res.data.error || 'Lỗi khi thêm vị trí');
+      }
+    } catch (error: any) {
+      const msg = error.response?.data?.error;
+      toast.error(msg || 'Lỗi khi thêm vị trí');
     }
   };
 
@@ -797,6 +810,7 @@ function DevicesPageContent() {
                 onClick={() => {
                   setSelectedCategory(0);
                   setSelectedDepartment(0);
+                  setSelectedLocation(0);
                   setSelectedStatus(0);
                   setSearchKeyword('');
                   setCurrentPage(1);
@@ -859,6 +873,26 @@ function DevicesPageContent() {
                   </div>
                 </div>
 
+                {/* Location Filter */}
+                <div className="col-12 col-md-auto order-last order-md-first">
+                  <div className="d-flex align-items-center gap-2">
+                    <div style={{ width: '85px' }}>
+                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Vị trí:</span>
+                    </div>
+                    <select
+                      className="form-select form-select-sm flex-grow-1"
+                      value={selectedLocation}
+                      onChange={(e) => setSelectedLocation(Number(e.target.value))}
+                      style={{ borderRadius: '6px', width: '100%', minWidth: '120px' }}
+                    >
+                      <option value="0">Tất cả</option>
+                      {locations.map((loc) => (
+                        <option key={loc.id} value={loc.id}>{loc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 {/* Status Filter */}
                 <div className="col-12 col-md-auto order-last order-md-first">
                   <div className="d-flex align-items-center gap-2">
@@ -890,7 +924,7 @@ function DevicesPageContent() {
                     <input
                       type="text"
                       className="form-control border-start-0"
-                      placeholder="Tìm kiếm tên, serial, mô tả..."
+                      placeholder="Tìm kiếm theo tên, serial, mô tả, vị trí..."
                       value={searchKeyword}
                       onChange={(e) => setSearchKeyword(e.target.value)}
                     />
@@ -900,6 +934,7 @@ function DevicesPageContent() {
                       onClick={() => {
                         setSelectedCategory(0);
                         setSelectedDepartment(0);
+                        setSelectedLocation(0);
                         setSelectedStatus(0);
                         setSearchKeyword('');
                       }}
@@ -1039,6 +1074,7 @@ function DevicesPageContent() {
                       {getSortIcon('department')}
                     </div>
                   </th>
+                  <th style={{ minWidth: '120px' }}>Vị trí</th>
                   <th 
                     style={{ minWidth: '150px', cursor: 'pointer', userSelect: 'none' }}
                     onClick={() => handleSort('status')}
@@ -1089,6 +1125,11 @@ function DevicesPageContent() {
                       </td>
                       <td>{device.deviceCategoryName}</td>
                       <td>{device.departmentName}</td>
+                      <td>
+                        {device.locationName 
+                          ? <><i className="fas fa-map-marker-alt text-muted me-1" style={{ fontSize: '0.75rem' }}></i>{device.locationName}</>
+                          : <span className="text-muted">-</span>}
+                      </td>
                       <td style={{ whiteSpace: 'nowrap' }}>{getStatusBadge(device.status)}</td>
                       <td>
                         {device.lastReportId ? (
@@ -1273,7 +1314,7 @@ function DevicesPageContent() {
                       </select>
                     </div>
                     <div className="form-group mb-3">
-                      <label>Phòng ban</label>
+                      <label>Phòng ban <span className="text-muted small">(Đơn vị quản lý)</span></label>
                       <select
                         className="form-control"
                         value={formData.departmentId}
@@ -1287,6 +1328,28 @@ function DevicesPageContent() {
                           </option>
                         ))}
                       </select>
+                    </div>
+                    <div className="form-group mb-3">
+                      <label>Vị trí <span className="text-muted small">(Nơi đặt thiết bị)</span></label>
+                      <div className="input-group">
+                        <SearchableSelect
+                          className="form-control"
+                          options={locations}
+                          value={formData.locationId || 0}
+                          onChange={(val: number) =>
+                            setFormData({ ...formData, locationId: val })
+                          }
+                          placeholder="— Chưa xác định —"
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-outline-success"
+                          title="Thêm nhanh vị trí mới"
+                          onClick={() => { setQuickAddLocationName(''); setShowQuickAddLocation(true); }}
+                        >
+                          <i className="fas fa-plus"></i>
+                        </button>
+                      </div>
                     </div>
                     <div className="form-group mb-3">
                       <label>Tên thiết bị *</label>
@@ -1353,36 +1416,12 @@ function DevicesPageContent() {
                             setFileManagerCallback((url: string) => {
                               if (!url) return;
                               
-                              // Lấy relative path từ URL
-                              let relativePath = url.trim();
-                              if (url.includes('://') || url.startsWith('http')) {
-                                try {
-                                  const urlObj = new URL(url);
-                                  relativePath = urlObj.pathname;
-                                } catch {
-                                  relativePath = url.startsWith('/') ? url : `/${url}`;
-                                }
-                              } else {
-                                relativePath = url.startsWith('/') ? url : `/${url}`;
-                              }
-                              
-                              // Đơn giản: chỉ cần set vào formData.img
-                              setFormData((prev) => ({ ...prev, img: relativePath }));
+                              // Giữ nguyên URL (hỗ trợ Vercel Blob và absolute URLs)
+                              setFormData((prev) => ({ ...prev, img: url.trim() }));
                             });
                             fileManagerCallbackRef.current = (url: string) => {
                               if (!url) return;
-                              let relativePath = url.trim();
-                              if (url.includes('://') || url.startsWith('http')) {
-                                try {
-                                  const urlObj = new URL(url);
-                                  relativePath = urlObj.pathname;
-                                } catch {
-                                  relativePath = url.startsWith('/') ? url : `/${url}`;
-                                }
-                              } else {
-                                relativePath = url.startsWith('/') ? url : `/${url}`;
-                              }
-                              setFormData((prev) => ({ ...prev, img: relativePath }));
+                              setFormData((prev) => ({ ...prev, img: url.trim() }));
                             };
                             setShowFileManager(true);
                           }}
@@ -1519,6 +1558,42 @@ function DevicesPageContent() {
                   onClick={handleSave}
                 >
                   Lưu
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Add Location Modal */}
+      {showQuickAddLocation && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1060 }} tabIndex={-1}>
+          <div className="modal-dialog modal-sm">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h6 className="modal-title">
+                  <i className="fas fa-plus-circle me-2 text-success"></i>Thêm nhanh Vị trí
+                </h6>
+                <button type="button" className="btn-close" onClick={() => setShowQuickAddLocation(false)}></button>
+              </div>
+              <div className="modal-body">
+                <div className="mb-2">
+                  <label className="form-label small">Tên vị trí / Khu vực <span className="text-danger">*</span></label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={quickAddLocationName}
+                    onChange={e => setQuickAddLocationName(e.target.value)}
+                    placeholder="Ví dụ: Bếp, Sảnh, Kho..."
+                    autoFocus
+                    onKeyDown={e => { if (e.key === 'Enter') handleQuickAddLocation(); }}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer d-flex justify-content-end gap-2">
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowQuickAddLocation(false)}>Hủy</button>
+                <button type="button" className="btn btn-success btn-sm" onClick={handleQuickAddLocation}>
+                  <i className="fas fa-save me-1"></i>Lưu & Chọn
                 </button>
               </div>
             </div>

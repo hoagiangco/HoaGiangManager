@@ -1,6 +1,6 @@
-import { Event, EventVM, EventStatus } from '@/types';
 import pool from '../db';
 import { PoolClient } from 'pg';
+import { NotificationService, NotificationType, NotificationCategory } from './notificationService';
 
 export class EventService {
   private async ensureEventSequence(client?: PoolClient): Promise<void> {
@@ -282,6 +282,10 @@ export class EventService {
   async update(event: Event): Promise<number> {
     await this.ensureEventSequence();
 
+    // Get current status to detect change
+    const currentRes = await pool.query('SELECT "Status" FROM "Event" WHERE "ID" = $1', [event.id]);
+    const oldStatus = currentRes.rows[0]?.Status;
+
     await pool.query(
       `UPDATE "Event" SET
         "Title" = $1,
@@ -305,7 +309,7 @@ export class EventService {
         event.eventTypeId,
         event.description || null,
         event.notes || '', // Notes column is NOT NULL, so use empty string instead of null
-        event.status || EventStatus.Completed,
+        event.status || 'completed',
         event.eventDate || null,
         event.startDate || null,
         event.endDate || null,
@@ -316,6 +320,26 @@ export class EventService {
         event.id
       ]
     );
+
+    // Notification on completion
+    if (oldStatus !== event.status && event.status === 'completed') {
+      try {
+        const staffRes = await pool.query('SELECT "Name" FROM "Staff" WHERE "ID" = $1', [event.staffId]);
+        const staffName = staffRes.rows[0]?.Name || 'Nhân viên';
+        
+        const ns = new NotificationService();
+        await ns.createNotification({
+          title: 'Sự kiện hoàn thành ✅',
+          content: `${staffName} đã hoàn thành: ${event.title || 'Một sự kiện'}`,
+          type: NotificationType.System,
+          category: NotificationCategory.Completed,
+          targetUrl: `/dashboard/events`,
+          createdBy: event.updatedBy || undefined
+        });
+      } catch (err) {
+        console.error('Error sending event completion notification:', err);
+      }
+    }
 
     return event.id;
   }

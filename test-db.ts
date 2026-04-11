@@ -1,0 +1,1 @@
+import dotenv from 'dotenv'; dotenv.config({ path: '.env.local' }); import { Client } from 'pg'; const client = new Client({ connectionString: process.env.DATABASE_URL }); client.connect().then(() => client.query('SELECT * FROM "Location" LIMIT 1')).then(res => console.log(res.rows)).catch(err => console.error(err)).finally(() => client.end());

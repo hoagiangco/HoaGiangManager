@@ -1,9 +1,10 @@
-import pool from '../lib/db/index';
+import pool from '../lib/db';
 import dotenv from 'dotenv';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-dotenv.config();
+dotenv.config(); // Load default .env
+dotenv.config({ path: '.env.local', override: true }); // Load .env.local as override
 
 async function runMigration(migrationFileName: string) {
   const client = await pool.connect();

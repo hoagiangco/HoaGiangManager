@@ -127,6 +127,7 @@ export default function DashboardLayout({
         items: [
           { href: '/dashboard/devices', label: 'Thiết bị', icon: 'fas fa-laptop' },
           { href: '/dashboard/device-categories', label: 'Danh mục thiết bị', icon: 'fas fa-box' },
+          { href: '/dashboard/locations', label: 'Vị trí / Khu vực', icon: 'fas fa-map-marker-alt' },
           { href: '/dashboard/departments', label: 'Phòng ban', icon: 'fas fa-building' }
         ]
       },
