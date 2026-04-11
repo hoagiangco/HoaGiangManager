@@ -1,6 +1,7 @@
 import pool from '../db';
 import { PoolClient } from 'pg';
 import { NotificationService, NotificationType, NotificationCategory } from './notificationService';
+import { Event, EventVM, EventStatus } from '@/types';
 
 export class EventService {
   private async ensureEventSequence(client?: PoolClient): Promise<void> {

@@ -3,7 +3,7 @@ import { authenticate } from '@/lib/auth/middleware';
 import { DamageReportService } from '@/lib/services/damageReportService';
 import { StaffService } from '@/lib/services/staffService';
 import { EventService } from '@/lib/services/eventService';
-import { DamageReportStatus, EventStatus } from '@/types';
+import { DamageReportStatus, EventStatus, Event } from '@/types';
 import pool from '@/lib/db';
 
 export async function PUT(
