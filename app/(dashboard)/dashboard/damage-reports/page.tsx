@@ -2243,14 +2243,14 @@ export default function DamageReportsPage() {
           {/* Card View */}
           {viewMode === 'card' && (
             <div 
-              className="flex-grow-1 p-3" 
+              className="flex-grow-1 p-2" 
               style={{ 
                 overflowY: 'auto', 
                 WebkitOverflowScrolling: 'touch',
                 backgroundColor: '#f8f9fa'
               }}
             >
-              <div className="row g-3">
+              <div className="row g-2">
                 {loading ? (
                   <div className="col-12 text-center py-5">
                     <div className="spinner-border text-primary me-2" role="status"></div>
@@ -2278,13 +2278,13 @@ export default function DamageReportsPage() {
                     >
                       {/* Card Header - Branded Midnight Blue (#2c3e50) */}
                       <div
-                        className="p-3"
+                        className="px-2 py-2"
                         style={{
                           backgroundColor: '#2c3e50',
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'center',
-                          gap: '1rem',
+                          gap: '0.75rem',
                           cursor: 'pointer'
                         }}
                         onClick={() => handleCheckboxChange(report.id)}
@@ -2363,7 +2363,7 @@ export default function DamageReportsPage() {
                       </div>
 
                       {/* Card Body */}
-                      <div className="card-body p-3">
+                      <div className="card-body px-2 py-3">
                         {/* Status Selectors - Row */}
                         <div className="row g-2 mb-3">
                           <div className="col-6">
@@ -2431,7 +2431,7 @@ export default function DamageReportsPage() {
                         </div>
 
                         {/* Damage Content - Branded Boxed Style */}
-                        <div className="mb-3 p-3 rounded" style={{ backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0' }}>
+                        <div className="mb-3 p-2 rounded" style={{ backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0' }}>
                           <div className="d-flex align-items-center gap-2 mb-2">
                             <label className="fw-800 text-muted mb-0" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                               Nội dung sự việc
@@ -2477,7 +2477,7 @@ export default function DamageReportsPage() {
                         {/* Timeline */}
                         <div className="row g-1 mb-3 text-center">
                           <div className="col-4">
-                            <div className="py-2 bg-light rounded" style={{ border: '1px solid #edf2f7' }}>
+                            <div className="py-1 bg-light rounded" style={{ border: '1px solid #edf2f7' }}>
                               <div style={{ fontSize: '0.5rem', color: '#718096', fontWeight: '800' }}>BÁO CÁO</div>
                               <div style={{ fontSize: '0.7rem', fontWeight: '700', color: '#2d3748' }}>
                                 {report.reportDate ? formatDateDisplay(report.reportDate).split(' ')[0] : '--'}
@@ -2485,7 +2485,7 @@ export default function DamageReportsPage() {
                             </div>
                           </div>
                           <div className="col-4">
-                            <div className="py-2 bg-light rounded" style={{ border: '1px solid #edf2f7' }}>
+                            <div className="py-1 bg-light rounded" style={{ border: '1px solid #edf2f7' }}>
                               <div style={{ fontSize: '0.5rem', color: '#718096', fontWeight: '800' }}>XỬ LÝ</div>
                               <div style={{ fontSize: '0.7rem', fontWeight: '700', color: report.handlingDate ? '#2d3748' : '#cbd5e1' }}>
                                 {report.handlingDate ? formatDateDisplay(report.handlingDate).split(' ')[0] : '--'}
@@ -2493,7 +2493,7 @@ export default function DamageReportsPage() {
                             </div>
                           </div>
                           <div className="col-4">
-                            <div className="py-2 bg-light rounded" style={{ border: '1px solid #edf2f7' }}>
+                            <div className="py-1 bg-light rounded" style={{ border: '1px solid #edf2f7' }}>
                               <div style={{ fontSize: '0.5rem', color: '#718096', fontWeight: '800' }}>XONG</div>
                               <div style={{ fontSize: '0.7rem', fontWeight: '700', color: report.completedDate ? '#38a169' : '#cbd5e1' }}>
                                 {report.completedDate ? formatDateDisplay(report.completedDate).split(' ')[0] : '--'}
@@ -2508,7 +2508,7 @@ export default function DamageReportsPage() {
                            report.status !== DamageReportStatus.Completed && 
                            report.status !== DamageReportStatus.Cancelled && 
                            report.status !== DamageReportStatus.Rejected)) && (
-                        <div className="p-3 rounded mb-3" style={{ backgroundColor: '#f0fdf4', border: '1px solid #dcfce7' }} onClick={(e) => e.stopPropagation()}>
+                        <div className="p-2 rounded mb-3" style={{ backgroundColor: '#f0fdf4', border: '1px solid #dcfce7' }} onClick={(e) => e.stopPropagation()}>
                           <div className="d-flex align-items-center gap-2 mb-2">
                             <span className="fw-800 text-success" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                               Kết quả / Ghi chú xử lý
