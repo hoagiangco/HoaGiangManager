@@ -22,6 +22,7 @@ interface DateInputProps {
   max?: string | Date;
   placeholder?: string;
   required?: boolean;
+  style?: React.CSSProperties;
 }
 
 export default function DateInput({
@@ -33,6 +34,7 @@ export default function DateInput({
   max,
   placeholder = 'dd/MM/yyyy',
   required = false,
+  style,
 }: DateInputProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [DatePickerComponent, setDatePickerComponent] = useState<any>(null);
@@ -119,6 +121,7 @@ export default function DateInput({
         placeholder={placeholder}
         disabled={disabled}
         required={required}
+        style={style}
         readOnly
       />
     );
@@ -142,6 +145,12 @@ export default function DateInput({
       dropdownMode="select"
       locale="vi"
       wrapperClassName="w-100"
+      customInput={
+        <input 
+          style={style} 
+          className={className}
+        />
+      }
     />
   );
 }
