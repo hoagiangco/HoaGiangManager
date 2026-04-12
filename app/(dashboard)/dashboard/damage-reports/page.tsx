@@ -2851,7 +2851,15 @@ export default function DamageReportsPage() {
                             </div>
                           </div>
                           <div className="col-md-6 col-6 mb-1">
-                            <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Thiết bị <span className="text-danger">*</span></label>
+                            <div className="d-flex justify-content-between align-items-center mb-0">
+                              <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Thiết bị <span className="text-danger">*</span></label>
+                              {formData.deviceId && (
+                                <div className="text-primary fw-bold" style={{ fontSize: '0.6rem' }}>
+                                  <i className="fas fa-map-marker-alt me-1"></i>
+                                  {devices.find(dev => dev.id === formData.deviceId)?.locationName || ''}
+                                </div>
+                              )}
+                            </div>
                             <div ref={deviceDropdownRef} className="position-relative">
                               <button
                                 type="button"
@@ -2878,32 +2886,33 @@ export default function DamageReportsPage() {
                                     {filteredModalDevices.length === 0 ? (
                                       <div className="p-2 text-center text-muted" style={{ fontSize: '0.7rem' }}>Không tìm thấy</div>
                                     ) : (
-                                      filteredModalDevices.map((d) => (
-                                        <button type="button" key={d.id} className={`dropdown-item py-1 px-2 border-bottom border-light-subtle ${formData.deviceId === d.id ? 'active' : ''}`} onClick={() => { setFormData({ ...formData, deviceId: d.id }); setIsDeviceDropdownOpen(false); }}>
-                                          <div className="d-flex align-items-center justify-content-between">
-                                            <div className="text-truncate">
-                                              <div className="fw-bold" style={{ fontSize: '0.75rem', color: formData.deviceId === d.id ? '#fff' : '#2c3e50' }}>{d.name}</div>
-                                              <div className={formData.deviceId === d.id ? 'text-white-50' : 'text-muted'} style={{ fontSize: '0.6rem' }}>{d.serial || 'N/A'}</div>
+                                      filteredModalDevices.map((d) => {
+                                        const isActive = formData.deviceId !== undefined && Number(formData.deviceId) === Number(d.id);
+                                        return (
+                                          <button 
+                                            type="button" 
+                                            key={d.id} 
+                                            className={`dropdown-item py-1 px-2 border-bottom border-light-subtle ${isActive ? 'active bg-primary' : ''}`} 
+                                            onClick={() => { setFormData({ ...formData, deviceId: Number(d.id) }); setIsDeviceDropdownOpen(false); }}
+                                            style={isActive ? { backgroundColor: '#0d6efd', color: '#fff' } : {}}
+                                          >
+                                            <div className="d-flex align-items-center justify-content-between">
+                                              <div className="text-truncate">
+                                                <div className="fw-bold" style={{ fontSize: '0.75rem', color: isActive ? '#fff' : '#2c3e50' }}>{d.name || `Thiết bị #${d.id}`}</div>
+                                                <div className={isActive ? 'text-white-50' : 'text-muted'} style={{ fontSize: '0.6rem' }}>{d.serial || 'N/A'}</div>
+                                              </div>
+                                              {d.locationName && (
+                                                <div className={`badge ${isActive ? 'bg-white text-primary' : 'bg-primary bg-opacity-10 text-primary'} ms-1 px-1`} style={{ fontSize: '0.55rem' }}>{d.locationName}</div>
+                                              )}
                                             </div>
-                                            {d.locationName && (
-                                              <div className={`badge ${formData.deviceId === d.id ? 'bg-white text-primary' : 'bg-primary bg-opacity-10 text-primary'} ms-1 px-1`} style={{ fontSize: '0.55rem' }}>{d.locationName}</div>
-                                            )}
-                                          </div>
-                                        </button>
-                                      ))
+                                          </button>
+                                        );
+                                      })
                                     )}
                                   </div>
                                 </div>
                               )}
                             </div>
-                            {formData.deviceId && (
-                              <div className="d-flex align-items-center gap-1 mt-0" style={{ fontSize: '0.6rem', lineHeight: 1 }}>
-                                <span className="text-primary fw-bold">
-                                  <i className="fas fa-map-marker-alt me-1"></i>
-                                  {devices.find(dev => dev.id === formData.deviceId)?.locationName || 'Chưa xác định'}
-                                </span>
-                              </div>
-                            )}
                           </div>
                         </>
                       ) : formData.deviceSelection === 'maintenance' ? (
