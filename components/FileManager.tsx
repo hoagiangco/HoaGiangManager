@@ -53,6 +53,7 @@ export default function FileManager({
   const [totalFiles, setTotalFiles] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const loadFiles = async (page = 1) => {
     setLoading(true);
@@ -277,6 +278,9 @@ export default function FileManager({
       setUploading(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
+      }
+      if (cameraInputRef.current) {
+        cameraInputRef.current.value = '';
       }
     }
   };
@@ -524,6 +528,17 @@ export default function FileManager({
               </button>
               <button
                 type="button"
+                className="btn btn-info btn-sm rounded-pill d-flex align-items-center px-2 py-1 shadow-sm text-white"
+                onClick={() => cameraInputRef.current?.click()}
+                disabled={uploading}
+                style={{ fontSize: '0.8rem', backgroundColor: '#0dcaf0', borderColor: '#0dcaf0' }}
+                title="Chụp ảnh trực tiếp"
+              >
+                <i className="fas fa-camera"></i> 
+                <span className="d-none d-sm-inline ms-1">Chụp ảnh</span>
+              </button>
+              <button
+                type="button"
                 className="btn btn-primary btn-sm rounded-pill d-flex align-items-center px-2 py-1 shadow-sm"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
@@ -612,6 +627,14 @@ export default function FileManager({
               onChange={handleFileUpload}
               accept={accept}
               multiple
+              style={{ display: 'none' }}
+            />
+            <input
+              type="file"
+              ref={cameraInputRef}
+              onChange={handleFileUpload}
+              accept="image/*"
+              capture="environment"
               style={{ display: 'none' }}
             />
 
