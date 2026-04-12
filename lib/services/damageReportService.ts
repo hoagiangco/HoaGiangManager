@@ -565,14 +565,36 @@ export class DamageReportService {
       await this.syncDeviceStatus(report.deviceId);
     }
 
-    // Await notification to ensure it finishes on serverless (Vercel)
+    // Await notifications to ensure they finish on serverless
     try {
         await this.notifyNewReport(id, report.damageContent, report.reporterId, report.createdBy);
+        
+        // Notify handler specifically if assigned
+        if (report.handlerId) {
+            await this.notifyHandlerAssigned(id, report.handlerId, report.damageContent, report.createdBy);
+        }
     } catch (err) {
         console.error('Failed to send push notifications:', err);
     }
 
     return id;
+  }
+
+  private async notifyHandlerAssigned(reportId: number, handlerId: number, content: string, createdBy?: string) {
+    try {
+      const notificationService = new NotificationService();
+      await notificationService.createNotification({
+        title: 'Công việc mới được giao 📋',
+        content: `Bạn được giao xử lý báo cáo: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
+        type: NotificationType.Report,
+        category: NotificationCategory.New,
+        targetUrl: `/dashboard/damage-reports`,
+        staffId: handlerId,
+        createdBy: createdBy
+      });
+    } catch (error) {
+      console.error('Error in notifyHandlerAssigned:', error);
+    }
   }
 
   private async notifyNewReport(reportId: number, content: string, reporterId: number, createdBy?: string) {
@@ -604,12 +626,14 @@ export class DamageReportService {
 
     // Get current values to track changes
     const currentResult = await pool.query(
-      `SELECT "Status", "Priority", "DeviceID" FROM "DamageReport" WHERE "ID" = $1`,
+      `SELECT "Status", "Priority", "DeviceID", "HandlerID", "DamageContent" FROM "DamageReport" WHERE "ID" = $1`,
       [report.id]
     );
     
     const currentStatus = currentResult.rows[0]?.Status;
     const currentPriority = currentResult.rows[0]?.Priority;
+    const currentHandlerId = currentResult.rows[0]?.HandlerID;
+    const currentContent = currentResult.rows[0]?.DamageContent;
     const oldDeviceId = currentResult.rows[0]?.DeviceID;
 
     await pool.query(
@@ -708,6 +732,15 @@ export class DamageReportService {
       }
     }
 
+    // Notify handler if assigned or changed
+    if (report.handlerId && report.handlerId !== currentHandlerId) {
+      try {
+        await this.notifyHandlerAssigned(report.id, report.handlerId, report.damageContent || currentContent, report.updatedBy);
+      } catch (err) {
+        console.error('Failed to notify new handler:', err);
+      }
+    }
+
     return report.id;
   }
 
@@ -767,13 +800,24 @@ export class DamageReportService {
       // Send notifications AFTER commit
       if (currentStatusStr !== status.toString()) {
         const notificationService = new NotificationService();
-        if (status === DamageReportStatus.InProgress) {
+        if (status === DamageReportStatus.Assigned && row.handler_id) {
+          await notificationService.createNotification({
+            title: 'Công việc mới được giao 📋',
+            content: `Bạn được giao xử lý báo cáo: ${damageContent.substring(0, 50)}...`,
+            type: NotificationType.Report,
+            category: NotificationCategory.New,
+            targetUrl: `/dashboard/damage-reports`,
+            staffId: row.handler_id,
+            createdBy: updatedBy
+          });
+        } else if (status === DamageReportStatus.InProgress) {
           await notificationService.createNotification({
             title: 'Báo cáo đang được xử lý 🛠️',
             content: `${handlerName} đang xử lý báo cáo: ${damageContent.substring(0, 50)}...`,
             type: NotificationType.Report,
             category: NotificationCategory.InProgress,
             targetUrl: `/dashboard/damage-reports`,
+            staffId: row.handler_id, // Targeted notification for the person working on it
             createdBy: updatedBy
           });
         } else if (status === DamageReportStatus.Completed) {
@@ -783,6 +827,7 @@ export class DamageReportService {
             type: NotificationType.Report,
             category: NotificationCategory.Completed,
             targetUrl: `/dashboard/damage-reports`,
+            staffId: row.handler_id, // Notify the handler that their work is officially completed
             createdBy: updatedBy
           });
         }

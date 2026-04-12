@@ -2954,7 +2954,13 @@ export default function DamageReportsPage() {
                       </div>
                       <div className="col-6 mb-1">
                         <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Người xử lý</label>
-                        <select className="form-select form-select-sm shadow-none" value={formData.handlerId || 0} onChange={(e) => setFormData({ ...formData, handlerId: Number(e.target.value) || undefined })} style={{ minHeight: '28px', fontSize: '0.75rem' }}>
+                        <select 
+                          className="form-select form-select-sm shadow-none" 
+                          value={formData.handlerId || 0} 
+                          onChange={(e) => setFormData({ ...formData, handlerId: Number(e.target.value) || undefined })} 
+                          disabled={isEdit && !isAdmin(currentUser?.roles)}
+                          style={{ minHeight: '28px', fontSize: '0.75rem' }}
+                        >
                           <option value={0}>-- Phân công --</option>
                           {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
