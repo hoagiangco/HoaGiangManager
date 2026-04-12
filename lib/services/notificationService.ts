@@ -61,21 +61,29 @@ export class NotificationService {
 
   private async sendPushToRelevantUsers(data: any) {
     try {
-      let subsQuery = 'SELECT "Endpoint", "P256dh", "Auth" FROM "PushSubscription"';
+      let subsQuery = '';
       const params: any[] = [];
 
       if (data.staffId) {
-        // Targeted push: Only users linked to this StaffId
+        // Targeted push: Only users linked to this StaffId (Task assigned to staff)
         subsQuery = `
           SELECT ps."Endpoint", ps."P256dh", ps."Auth" 
           FROM "PushSubscription" ps
-          JOIN "AspNetUsers" u ON ps."Endpoint" IS NOT NULL -- This is a simplification
-          -- Real logic would involve joining with a table mapping subscriptions to UserIds
-          -- Since the current schema doesn't seem to have a userId in PushSubscription, 
-          -- we'll just broadcast for now or skip targeted push if we can't link them easily.
+          JOIN "Staff" s ON ps."UserId" = s."UserId"
+          WHERE s."ID" = $1
         `;
-        // NOTE: The current PushSubscription table doesn't have a UserId field.
-        // It seems to be a generic broadcast table for now.
+        params.push(data.staffId);
+        console.log(`[Push] Targeting staff ID: ${data.staffId}`);
+      } else {
+        // Broadcast to all Admins (e.g., new report created)
+        subsQuery = `
+          SELECT ps."Endpoint", ps."P256dh", ps."Auth" 
+          FROM "PushSubscription" ps
+          JOIN "AspNetUserRoles" ur ON ps."UserId" = ur."UserId"
+          JOIN "AspNetRoles" r ON ur."RoleId" = r."Id"
+          WHERE r."Name" = 'Admin'
+        `;
+        console.log('[Push] Broadcasting to all Admins');
       }
 
       const subsRes = await pool.query(subsQuery, params);
@@ -83,10 +91,14 @@ export class NotificationService {
         title: data.title,
         body: data.content || '',
         icon: '/icons/icon.svg',
+        badge: '/icons/icon.svg',
         data: {
           url: data.targetUrl || '/dashboard'
-        }
+        },
+        vibrate: [100, 50, 100],
       };
+
+      console.log(`[Push] Sending to ${subsRes.rows.length} subscribers`);
 
       for (const row of subsRes.rows) {
         const sub = {
@@ -96,7 +108,10 @@ export class NotificationService {
             auth: row.Auth
           }
         };
-        await sendPushNotification(sub as any, payload);
+        // Background send to not block the main flow
+        sendPushNotification(sub as any, payload).catch(err => {
+          console.error('[Push] Single send failed:', err);
+        });
       }
     } catch (error) {
       console.error('Error sending push notifications:', error);

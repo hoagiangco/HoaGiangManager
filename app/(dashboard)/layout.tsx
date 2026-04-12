@@ -250,11 +250,9 @@ export default function DashboardLayout({
               </span>
             </div>
             <div className="top-navbar-right ms-auto d-flex align-items-center gap-3">
-              {isAdmin && (
-                <div className="notification-wrapper d-flex align-items-center">
-                  <PushNotificationManager pendingCount={pendingCount} />
-                </div>
-              )}
+              <div className="notification-wrapper d-flex align-items-center">
+                <PushNotificationManager pendingCount={pendingCount} />
+              </div>
               <button 
                 className="btn btn-outline-primary btn-sm" 
                 onClick={handleLogout}
