@@ -40,13 +40,25 @@ export async function GET(request: NextRequest) {
 
     // Get all reports with filters
     const damageReportService = new DamageReportService();
+    const departmentService = new DepartmentService();
+    
+    const selectedDeptId = departmentId ? parseInt(departmentId) : 0;
+    let selectedDeptName = 'Tất cả';
+    
+    if (selectedDeptId > 0) {
+      const dept = await departmentService.getById(selectedDeptId);
+      if (dept) {
+        selectedDeptName = dept.name;
+      }
+    }
+
     const filters: any = {
       currentUserId: user.userId,
       isAdmin: true
     };
     
-    if (departmentId && parseInt(departmentId) > 0) {
-      filters.departmentId = parseInt(departmentId);
+    if (selectedDeptId > 0) {
+      filters.departmentId = selectedDeptId;
     }
     if (status && parseInt(status) > 0) {
       filters.status = parseInt(status);
@@ -104,7 +116,6 @@ export async function GET(request: NextRequest) {
 
     // Get staff, departments, and devices for mapping
     const staffService = new StaffService();
-    const departmentService = new DepartmentService();
     const deviceService = new DeviceService();
 
     const [allStaff, allDepartments, allDevices] = await Promise.all([

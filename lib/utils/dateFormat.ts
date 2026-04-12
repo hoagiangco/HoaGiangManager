@@ -59,9 +59,10 @@ export const formatDateFilename = (value?: string | Date | null): string => {
 /**
  * Format date range: dd/MM/yyyy đến dd/MM/yyyy
  */
-export const formatDateRange = (fromDate: Date | string, toDate: Date | string): string => {
-  const from = formatDateDisplay(fromDate);
-  const to = formatDateDisplay(toDate);
+export const formatDateRange = (fromDate?: Date | string | null, toDate?: Date | string | null): string => {
+  if (!fromDate && !toDate) return 'tất cả thời gian';
+  const from = formatDateDisplay(fromDate) || '...';
+  const to = formatDateDisplay(toDate) || '...';
   return `${from} đến ${to}`;
 };
 

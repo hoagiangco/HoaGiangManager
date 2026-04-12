@@ -114,8 +114,9 @@ export async function GET(
     }
 
     const fileName = `Lịch_sử_bảo_trì_${batchId}_${new Date().toISOString().split('T')[0]}.xlsx`;
-    const headers = Object.keys(exportData[0]);
-    const rows = exportData.map(item => Object.values(item));
+    const firstItem = exportData[0] as Record<string, any>;
+    const headers = Object.keys(firstItem);
+    const rows = exportData.map(item => Object.values(item as Record<string, any>));
 
     const excelBuffer = await generateExcelFile({
       title: `LỊCH SỬ BẢO TRÌ - ${batchId}`,

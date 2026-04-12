@@ -2849,7 +2849,6 @@ function MaintenancePageContent() {
                     <i className="fas fa-layer-group me-2"></i>
                     Chi Tiết Batch: {getShortTitle(selectedBatchTitle || selectedBatchId || '')}
                   </h5>
-                  </h5>
                   <div className="d-flex align-items-center gap-2">
                     <button
                       className="btn btn-outline-success btn-sm d-flex align-items-center gap-2"
