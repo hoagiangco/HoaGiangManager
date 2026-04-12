@@ -310,8 +310,3 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
         </div>
     );
 }
-ght: 10px; width: auto; } }
-            `}</style>
-        </div>
-    );
-}
