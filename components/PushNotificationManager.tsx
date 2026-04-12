@@ -42,6 +42,7 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
     const [isSupported, setIsSupported] = useState(false);
     const [showDropdown, setShowDropdown] = useState(false);
     const [isSubscribing, setIsSubscribing] = useState(false);
+    const [isSubscribed, setIsSubscribed] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
     const prevUnreadCount = useRef(0);
@@ -66,7 +67,7 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
         try {
             const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
             audio.volume = 0.5;
-            audio.play().catch(e => console.log('[Push] Audio play blocked or failed:', e));
+            audio.play().catch(e => console.log('[Push] Audio play blocked:', e));
         } catch (e) {}
     };
 
@@ -81,9 +82,7 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
                 
                 ensureServiceWorkerRegistered()
                     .then(() => {
-                        if (Notification.permission === 'granted') {
-                            checkAndSubscribeSilently();
-                        }
+                        checkSubscriptionState();
                     })
                     .catch(err => {
                         console.error('[Push] SW Registration failed:', err);
@@ -100,31 +99,28 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    const checkSubscriptionState = async () => {
+        try {
+            const registration = await navigator.serviceWorker.getRegistration();
+            if (registration) {
+                const sub = await registration.pushManager.getSubscription();
+                setIsSubscribed(!!sub);
+                return !!sub;
+            }
+        } catch (e) {}
+        return false;
+    };
+
     const ensureServiceWorkerRegistered = async () => {
         try {
             let registration = await navigator.serviceWorker.getRegistration();
             if (!registration) {
                 registration = await navigator.serviceWorker.register('/sw.js');
-                console.log('[Push] SW registered manually:', registration.scope);
             }
             return registration;
         } catch (error) {
             console.error('[Push] Failed to register SW:', error);
             throw error;
-        }
-    };
-
-    const checkAndSubscribeSilently = async () => {
-        try {
-            const registration = await navigator.serviceWorker.getRegistration();
-            if (registration && Notification.permission === 'granted') {
-                const existingSubscription = await registration.pushManager.getSubscription();
-                if (!existingSubscription) {
-                    await subscribeToPush(registration, true);
-                }
-            }
-        } catch (error) {
-            console.error('[Push] Silent subscription error:', error);
         }
     };
 
@@ -138,11 +134,11 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
             });
 
             await api.post('/notifications/subscribe', subscription);
-            console.log('[Push] Successfully subscribed');
-            if (!silent) toast.success('Đã kích hoạt thông báo thành công!');
+            setIsSubscribed(true);
+            if (!silent) toast.success('Đã kích hoạt thông báo thành công! 🔔');
         } catch (error) {
             console.error('[Push] Subscribe error:', error);
-            if (!silent) toast.error('Lỗi khi đăng ký thông báo: ' + (error instanceof Error ? error.message : 'Unknown error'));
+            if (!silent) toast.error('Lỗi khi đăng ký thông báo: Hãy kiểm tra quyền trình duyệt.');
         } finally {
             setIsSubscribing(false);
         }
@@ -153,44 +149,41 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
         setShowDropdown(nextState);
 
         if (nextState && isSupported) {
-            // Early permission request
+            // Immediate check/request
             if (Notification.permission === 'default') {
                 try {
                     const permission = await Notification.requestPermission();
                     if (permission === 'denied') return;
-                } catch (e) {
-                    console.error('[Push] Permission error:', e);
-                }
+                } catch (e) {}
             }
 
             try {
+                // We do everything fast to keep User Gesture context
                 const registration = await ensureServiceWorkerRegistered();
                 
-                // Wait for SW to be active if it's new
+                // Wait briefly for activation if needed
                 if (!registration.active) {
                     await new Promise((resolve) => {
+                        let count = 0;
                         const interval = setInterval(() => {
-                            if (registration.active) {
+                            if (registration.active || count++ > 10) {
                                 clearInterval(interval);
                                 resolve(true);
                             }
-                        }, 500);
-                        setTimeout(() => { clearInterval(interval); resolve(false); }, 5000);
+                        }, 200);
                     });
                 }
 
-                const existingSubscription = await registration.pushManager.getSubscription();
-                
-                if (!existingSubscription) {
-                    if (Notification.permission === 'granted') {
-                        await subscribeToPush(registration);
-                    }
+                const sub = await registration.pushManager.getSubscription();
+                if (!sub) {
+                    await subscribeToPush(registration);
                 } else {
-                    await api.post('/notifications/subscribe', existingSubscription);
+                    // Refresh heartbeat
+                    api.post('/notifications/subscribe', sub).catch(() => {});
+                    setIsSubscribed(true);
                 }
             } catch (err) {
-                console.error('[Push] Bell error:', err);
-                toast.error('Lỗi: Service Worker chưa sẵn sàng. Hãy thử reset trình duyệt.');
+                console.error('[Push] Interaction error:', err);
             }
         }
     };
@@ -202,7 +195,6 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
             setShowDropdown(false);
             if (notification.targetUrl) router.push(notification.targetUrl);
         } catch (error) {
-            console.error('Notification error:', error);
             if (notification.targetUrl) router.push(notification.targetUrl);
         }
     };
@@ -262,11 +254,19 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
 
                 {showDropdown && (
                     <div className="notification-dropdown">
-                        <div className="notification-header d-flex justify-content-between align-items-center p-3 text-dark border-bottom bg-light">
-                            <h6 className="m-0 fw-bold">Thông báo ({unreadCount})</h6>
-                            <button className="btn btn-link btn-sm p-0 text-decoration-none" onClick={markAllAsRead}>
-                                Đọc tất cả
-                            </button>
+                        <div className="notification-header p-3 border-bottom bg-light">
+                            <div className="d-flex justify-content-between align-items-center mb-1">
+                                <h6 className="m-0 fw-bold">Thông báo ({unreadCount})</h6>
+                                <button className="btn btn-link btn-sm p-0 text-decoration-none" onClick={markAllAsRead}>
+                                    Đọc tất cả
+                                </button>
+                            </div>
+                            <div className="status-indicator d-flex align-items-center gap-1" style={{ fontSize: '11px' }}>
+                                <span className={`dot ${isSubscribed ? 'bg-success' : 'bg-secondary'}`} style={{ width: '8px', height: '8px', borderRadius: '50%' }}></span>
+                                <span className={isSubscribed ? 'text-success' : 'text-muted'}>
+                                    {isSubscribed ? 'Thông báo: Đang hoạt động' : 'Thông báo: Chưa kích hoạt'}
+                                </span>
+                            </div>
                         </div>
                         
                         <div className="notification-list custom-scrollbar" style={{ maxHeight: '350px', overflowY: 'auto' }}>
@@ -301,6 +301,7 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
                     background: #ffffff; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.15);
                     z-index: 2000; overflow: hidden; animation: dropdownFadeIn 0.2s ease-out;
                 }
+                .dot { display: inline-block; }
                 .notification-item { cursor: pointer; transition: background 0.2s; }
                 .notification-item:hover { background: #f8f9fa; }
                 .x-small { font-size: 0.75rem; }
