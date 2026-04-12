@@ -11,6 +11,7 @@ import FileManager from '@/components/FileManager';
 import DateInput from '@/components/DateInput';
 import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
+import ExportModal from '@/components/ExportModal';
 
 // Handler Notes Editor Component
 const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false, canEdit = true }: {
@@ -233,6 +234,7 @@ export default function DamageReportsPage() {
   const skipPageResetOnMyWorkToggle = useRef(false);
   const skipPageResetOnMyReportToggle = useRef(false);
   const [showModal, setShowModal] = useState(false);
+  const [showDoneConfirm, setShowDoneConfirm] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
   // View mode state: 'table' or 'card', default to 'card' on mobile
@@ -377,6 +379,11 @@ export default function DamageReportsPage() {
       return true;
     });
   }, [devices, modalDeviceCategoryId, modalDeviceSearch, formData.deviceId]);
+
+  const canFinishImmediately = useMemo(() => {
+    if (isAdmin(currentUser?.roles)) return true;
+    return formData.reporterId === formData.handlerId;
+  }, [currentUser, formData.reporterId, formData.handlerId]);
 
   useEffect(() => {
     if (showModal) {
@@ -3077,9 +3084,15 @@ export default function DamageReportsPage() {
                   <button type="button" className="btn btn-light rounded-pill btn-sm flex-fill" style={{ fontWeight: '600' }} onClick={() => setShowModal(false)}>
                     <i className="fas fa-times me-1"></i>Hủy
                   </button>
-                  {!isEdit && (
-                    <button type="button" className="btn btn-success rounded-pill btn-sm shadow-sm flex-fill" style={{ fontWeight: '700' }} onClick={() => handleSave(true)}>
-                      <i className="fas fa-check me-1"></i>Xong
+                  {canFinishImmediately && !isEdit && (
+                    <button 
+                      type="button" 
+                      className="btn btn-success rounded-pill btn-sm shadow-sm flex-fill d-flex align-items-center justify-content-center gap-1" 
+                      style={{ fontWeight: '700' }} 
+                      onClick={() => setShowDoneConfirm(true)}
+                    >
+                      <i className="fas fa-check"></i>
+                      <span>Xong</span>
                     </button>
                   )}
                   <button type="button" className="btn btn-primary rounded-pill btn-sm shadow-sm flex-fill" style={{ fontWeight: '700' }} onClick={() => handleSave(false)}>
@@ -3461,56 +3474,72 @@ export default function DamageReportsPage() {
       )}
 
       {/* Export Excel Modal */}
-      {showExportModal && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+      <ExportModal
+        show={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        title="Xuất Excel - Báo cáo hư hỏng"
+        apiEndpoint="/damage-reports/export"
+        params={{
+          departmentId: exportDepartment,
+          fromDate: exportFromDate,
+          toDate: exportToDate,
+          status: selectedStatus,
+          priority: selectedPriority,
+          deviceId: selectedDevice,
+          keyword: searchKeyword
+        }}
+        filterOptions={{
+          statuses: [
+            { id: 1, name: 'Chờ xử lý' },
+            { id: 2, name: 'Đã phân công' },
+            { id: 3, name: 'Đang xử lý' },
+            { id: 4, name: 'Hoàn thành' },
+            { id: 5, name: 'Đã hủy' },
+            { id: 6, name: 'Từ chối' },
+          ],
+          priorities: [
+            { id: 1, name: 'Thấp' },
+            { id: 2, name: 'Bình thường' },
+            { id: 3, name: 'Cao' },
+            { id: 4, name: 'Khẩn cấp' },
+          ],
+          departments: departments.map(d => ({ id: d.id, name: d.name }))
+        }}
+        defaultFileName="Bao_cao_hu_hong"
+      />
+
+      {/* Done Confirmation Modal */}
+      {showDoneConfirm && (
+        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1100 }}>
           <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Xuất Excel - Báo cáo</h5>
-                <button type="button" className="btn-close" onClick={() => setShowExportModal(false)}></button>
+            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '16px' }}>
+              <div className="modal-header border-0 pb-0">
+                <h5 className="modal-title fw-bold text-success d-flex align-items-center gap-2">
+                  <i className="fas fa-check-circle"></i> Xác nhận hoàn thành
+                </h5>
+                <button type="button" className="btn-close shadow-none" onClick={() => setShowDoneConfirm(false)}></button>
               </div>
-              <div className="modal-body">
-                <div className="row g-3">
-                  <div className="col-12">
-                    <label className="form-label">Bộ phận báo cáo <span className="text-danger">*</span></label>
-                    <select
-                      className="form-control"
-                      value={exportDepartment}
-                      onChange={(e) => setExportDepartment(Number(e.target.value))}
-                    >
-                      <option value={0}>Tất cả bộ phận</option>
-                      {departments.map(dept => (
-                        <option key={dept.id} value={dept.id}>{dept.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="col-12 col-md-6">
-                    <label className="form-label">Từ ngày <span className="text-danger">*</span></label>
-                    <DateInput
-                      value={exportFromDate}
-                      onChange={(value) => setExportFromDate(value)}
-                      max={exportToDate}
-                      required
-                    />
-                  </div>
-                  <div className="col-12 col-md-6">
-                    <label className="form-label">Đến ngày <span className="text-danger">*</span></label>
-                    <DateInput
-                      value={exportToDate}
-                      onChange={(value) => setExportToDate(value)}
-                      min={exportFromDate}
-                      max={new Date()}
-                      required
-                    />
-                  </div>
+              <div className="modal-body py-4">
+                <div className="alert bg-success bg-opacity-10 border-0 mb-3" style={{ borderRadius: '12px' }}>
+                   <div className="small text-muted mb-1 text-uppercase fw-bold" style={{ fontSize: '0.65rem' }}>Tên công việc</div>
+                   <div className="fw-bold text-dark" style={{ fontSize: '0.95rem' }}>{formData.damageContent || 'Báo cáo mới'}</div>
                 </div>
+                <p className="mb-0 text-center fw-medium" style={{ fontSize: '0.9rem', color: '#4b5563' }}>
+                  Bạn có chắc công việc này <span className="text-success fw-bold">Hoàn thành</span> sau khi được tạo hay không?
+                </p>
               </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowExportModal(false)}>
-                  Hủy
-                </button>
-                <button type="button" className="btn btn-success" onClick={handleExportExcel}>
-                  <i className="fas fa-file-excel me-2"></i>Xuất Excel
+              <div className="modal-footer border-0 pt-0">
+                <button type="button" className="btn btn-light rounded-pill px-4" onClick={() => setShowDoneConfirm(false)} style={{ fontWeight: '600' }}>Hủy</button>
+                <button 
+                  type="button" 
+                  className="btn btn-success rounded-pill px-4 shadow-sm" 
+                  style={{ fontWeight: '700' }} 
+                  onClick={() => {
+                    setShowDoneConfirm(false);
+                    handleSave(true);
+                  }}
+                >
+                  Xác nhận
                 </button>
               </div>
             </div>

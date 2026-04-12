@@ -32,27 +32,13 @@ export async function GET(request: NextRequest) {
     const departmentId = searchParams.get('departmentId');
     const fromDate = searchParams.get('fromDate');
     const toDate = searchParams.get('toDate');
+    const status = searchParams.get('status');
+    const priority = searchParams.get('priority');
+    const deviceId = searchParams.get('deviceId');
+    const keyword = searchParams.get('keyword');
+    const isPreview = searchParams.get('preview') === 'true';
 
-    if (!fromDate || !toDate) {
-      return NextResponse.json(
-        { status: false, error: 'Vui lòng chọn khoảng thời gian' },
-        { status: 400 }
-      );
-    }
-
-    const from = new Date(fromDate);
-    from.setHours(0, 0, 0, 0);
-    const to = new Date(toDate);
-    to.setHours(23, 59, 59, 999);
-
-    if (from > to) {
-      return NextResponse.json(
-        { status: false, error: 'Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc' },
-        { status: 400 }
-      );
-    }
-
-    // Get all reports
+    // Get all reports with filters
     const damageReportService = new DamageReportService();
     const filters: any = {
       currentUserId: user.userId,
@@ -62,33 +48,47 @@ export async function GET(request: NextRequest) {
     if (departmentId && parseInt(departmentId) > 0) {
       filters.departmentId = parseInt(departmentId);
     }
-
-    // Get department name for error message
-    const selectedDeptId = departmentId ? parseInt(departmentId) : 0;
-    let selectedDeptName = 'Tất cả';
-    if (selectedDeptId > 0) {
-      const departmentService = new DepartmentService();
-      const department = await departmentService.getById(selectedDeptId);
-      selectedDeptName = department?.name || 'N/A';
+    if (status && parseInt(status) > 0) {
+      filters.status = parseInt(status);
+    }
+    if (priority && parseInt(priority) > 0) {
+      filters.priority = parseInt(priority);
+    }
+    if (deviceId && parseInt(deviceId) > 0) {
+      filters.deviceId = parseInt(deviceId);
+    }
+    if (keyword) {
+      filters.keyword = keyword;
     }
 
-    const allReports = await damageReportService.getAll(filters);
+    let allReports = await damageReportService.getAll(filters);
 
-    // Log for debugging
-    console.log('Export filter:', {
-      departmentId: departmentId || 'Tất cả',
-      fromDate,
-      toDate,
-      totalReports: allReports.length
-    });
+    // Filter by date range if provided
+    let from: Date | null = null;
+    let to: Date | null = null;
 
-    // Filter by date range
-    const filteredReports = allReports.filter(report => {
-      if (!report.reportDate) return false;
-      const reportDate = new Date(report.reportDate);
-      reportDate.setHours(0, 0, 0, 0); // Reset time to start of day for comparison
-      return reportDate >= from && reportDate <= to;
-    });
+    if (fromDate && toDate) {
+      from = new Date(fromDate);
+      from.setHours(0, 0, 0, 0);
+      to = new Date(toDate);
+      to.setHours(23, 59, 59, 999);
+
+      if (from > to) {
+        return NextResponse.json(
+          { status: false, error: 'Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc' },
+          { status: 400 }
+        );
+      }
+
+      allReports = allReports.filter(report => {
+        if (!report.reportDate) return false;
+        const reportDate = new Date(report.reportDate);
+        reportDate.setHours(0, 0, 0, 0);
+        return reportDate >= (from as Date) && reportDate <= (to as Date);
+      });
+    }
+
+    const filteredReports = allReports;
 
     if (filteredReports.length === 0) {
       const deptName = selectedDeptId > 0 ? `bộ phận "${selectedDeptName}"` : 'tất cả bộ phận';
@@ -164,6 +164,15 @@ export async function GET(request: NextRequest) {
         'Người cập nhật': report.updatedByName || '',
       };
     });
+
+    // If preview mode, return JSON data instead of Excel file
+    if (isPreview) {
+      return NextResponse.json({
+        status: true,
+        data: excelData,
+        recordCount: filteredReports.length
+      });
+    }
 
     // Generate filename
     const deptNameForFile = selectedDeptId > 0 

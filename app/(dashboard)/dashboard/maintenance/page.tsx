@@ -11,6 +11,7 @@ import AdminRoute from '@/components/AdminRoute';
 import { DeviceCategory, EventType, DeviceVM, DamageReportVM } from '@/types';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
 import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
+import ExportModal from '@/components/ExportModal';
 
 interface UpcomingPlan {
   id: number;
@@ -134,6 +135,9 @@ function MaintenancePageContent() {
   const [planEvents, setPlanEvents] = useState<Record<number, BatchEvent>>({}); // Map planId -> latest event
   const [maintenanceReports, setMaintenanceReports] = useState<DamageReportVM[]>([]); // All damage reports for matching
   const [loading, setLoading] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportParams, setExportParams] = useState<Record<string, any>>({});
+  const [exportTitle, setExportTitle] = useState('');
 
   // Modals
   const [showBatchModal, setShowBatchModal] = useState(false);
@@ -2845,15 +2849,30 @@ function MaintenancePageContent() {
                     <i className="fas fa-layer-group me-2"></i>
                     Chi Tiết Batch: {getShortTitle(selectedBatchTitle || selectedBatchId || '')}
                   </h5>
-                  <button
-                    type="button"
-                    className="btn-close"
-                    onClick={() => {
-                      setShowBatchModal(false);
-                      setSelectedBatchId(null);
-                      setBatchEvents([]);
-                    }}
-                  ></button>
+                  </h5>
+                  <div className="d-flex align-items-center gap-2">
+                    <button
+                      className="btn btn-outline-success btn-sm d-flex align-items-center gap-2"
+                      onClick={() => {
+                        setExportTitle(`Xuất lịch sử bảo trì: ${getShortTitle(selectedBatchTitle || selectedBatchId || '')}`);
+                        setExportParams({ batchId: selectedBatchId });
+                        setShowExportModal(true);
+                      }}
+                      title="Xuất lịch sử bảo trì của kế hoạch này"
+                    >
+                      <i className="fas fa-file-excel"></i>
+                      <span className="d-none d-sm-inline">Xuất lịch sử</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      onClick={() => {
+                        setShowBatchModal(false);
+                        setSelectedBatchId(null);
+                        setBatchEvents([]);
+                      }}
+                    ></button>
+                  </div>
                 </div>
                 <div className="modal-body">
                   {/* Tabs */}
@@ -4847,6 +4866,15 @@ function MaintenancePageContent() {
             </div>
           </div>
         )}
+
+        <ExportModal
+          show={showExportModal}
+          onClose={() => setShowExportModal(false)}
+          title={exportTitle}
+          apiEndpoint={exportParams.batchId ? `/maintenance-plans/${exportParams.batchId}/export` : ''}
+          params={exportParams}
+          defaultFileName="Lich_su_bao_tri"
+        />
 
         <QuickViewReportModal
           isOpen={showQuickView}
