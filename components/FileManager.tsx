@@ -749,12 +749,12 @@ export default function FileManager({
                           <div className="position-absolute top-0 start-0 w-100 h-100" style={{ backgroundColor: 'rgba(13, 110, 253, 0.1)', pointerEvents: 'none', zIndex: 1 }}></div>
                         )}
 
-                        {/* Centered Hover controls */}
+                        {/* Left-aligned Hover controls */}
                         {canManage && !isRenaming && (
-                          <div className="file-actions position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center gap-2 opacity-0" style={{ transition: 'all 0.25s ease', zIndex: 15 }}>
+                          <div className="file-actions position-absolute top-0 start-0 d-flex flex-column gap-1 opacity-0" style={{ transition: 'all 0.25s ease', zIndex: 15, marginTop: isSelected ? '28px' : '4px', marginLeft: '4px' }}>
                             <button
-                              className="btn btn-light shadow-lg rounded-circle d-flex align-items-center justify-content-center border"
-                              style={{ width: '32px', height: '32px', padding: 0 }}
+                              className="btn btn-light shadow-sm rounded-circle d-flex align-items-center justify-content-center border"
+                              style={{ width: '24px', height: '24px', padding: 0 }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (isDeleting) return;
@@ -764,11 +764,11 @@ export default function FileManager({
                               title="Đổi tên"
                               disabled={isDeleting}
                             >
-                              <i className="fas fa-edit text-primary"></i>
+                              <i className="fas fa-edit text-primary" style={{ fontSize: '11px' }}></i>
                             </button>
                             <button
-                              className="btn btn-light shadow-lg rounded-circle d-flex align-items-center justify-content-center border"
-                              style={{ width: '32px', height: '32px', padding: 0 }}
+                              className="btn btn-light shadow-sm rounded-circle d-flex align-items-center justify-content-center border"
+                              style={{ width: '24px', height: '24px', padding: 0 }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (isDeleting) return;
@@ -777,7 +777,7 @@ export default function FileManager({
                               title="Xóa"
                               disabled={isDeleting}
                             >
-                              <i className="fas fa-trash text-danger"></i>
+                              <i className="fas fa-trash text-danger" style={{ fontSize: '11px' }}></i>
                             </button>
                           </div>
                         )}

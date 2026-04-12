@@ -292,6 +292,10 @@ export default function DamageReportsPage() {
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const categoryDropdownRef = useRef<HTMLDivElement | null>(null);
 
+  // Overflow menu state
+  const [isOverflowMenuOpen, setIsOverflowMenuOpen] = useState(false);
+  const overflowMenuRef = useRef<HTMLDivElement | null>(null);
+
   // Form state
   const [formData, setFormData] = useState({
     id: 0,
@@ -394,6 +398,10 @@ export default function DamageReportsPage() {
       // Handle category dropdown
       if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
         setIsCategoryDropdownOpen(false);
+      }
+      // Handle overflow menu
+      if (overflowMenuRef.current && !overflowMenuRef.current.contains(event.target as Node)) {
+        setIsOverflowMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -1122,8 +1130,8 @@ export default function DamageReportsPage() {
       loadData();
 
       // If requested, open completion modal for the saved report
-      if (shouldOpenCompletion && savedReport && formData.deviceSelection !== 'other') {
-        // Bổ sung thông tin hiển thị (deviceName, displayLocation) vì API trả về có thể thiếu các trường "join"
+      if (shouldOpenCompletion && savedReport) {
+        // Enriched report details for completion modals
         const currentDeviceId = savedReport.deviceId || formData.deviceId;
         const device = devices.find(d => d.id === currentDeviceId);
         
@@ -1136,10 +1144,15 @@ export default function DamageReportsPage() {
           handlerNotes: savedReport.handlerNotes || formData.handlerNotes,
         };
 
-        // We need to wait a tiny bit to ensure the list is refreshed or use the returned data
-        setTimeout(() => {
-          openStatusUpdateModal(enrichedReport, DamageReportStatus.Completed);
-        }, 300);
+        if (formData.deviceSelection === 'maintenance') {
+          // Streamlined maintenance completion (per user request)
+          executeMaintenanceBatchCompletion(enrichedReport);
+        } else if (formData.deviceSelection !== 'other') {
+          // Standard device-style completion modal
+          setTimeout(() => {
+            openStatusUpdateModal(enrichedReport, DamageReportStatus.Completed);
+          }, 300);
+        }
       }
     } catch (error: any) {
       toast.error(error.response?.data?.error || (isEdit ? 'Lỗi khi cập nhật' : 'Lỗi khi thêm mới'));
@@ -1421,8 +1434,8 @@ export default function DamageReportsPage() {
     }));
   };
 
-  const handleMaintenanceCompletion = async () => {
-    if (!pendingMaintenanceReport || !pendingMaintenanceReport.maintenanceBatchId) {
+  const executeMaintenanceBatchCompletion = async (report: DamageReportVM) => {
+    if (!report || !report.maintenanceBatchId) {
       return;
     }
 
@@ -1437,49 +1450,52 @@ export default function DamageReportsPage() {
 
       if (!maintenanceEventType) {
         toast.error('Không tìm thấy loại sự kiện bảo trì. Vui lòng liên hệ quản trị viên.');
-        setShowMaintenanceConfirmModal(false);
-        setPendingMaintenanceReport(null);
         return;
       }
 
-      // Get deviceId from maintenance batch plans
-      // We need to get the batch details to find devices
+      // Get maintenance batch details to find context
       const batchResponse = await api.get(`/events/maintenance-batches?all=true`);
       if (!batchResponse.data.status) {
         throw new Error('Không thể tải thông tin đợt bảo trì');
       }
 
       const batch = batchResponse.data.data.find(
-        (b: any) => b.batchId === pendingMaintenanceReport.maintenanceBatchId
+        (b: any) => b.batchId === report.maintenanceBatchId
       );
 
-      if (!batch) {
-        throw new Error('Không tìm thấy đợt bảo trì');
-      }
-
       // Complete the damage report with maintenance event type
-      // Note: For maintenance reports, deviceId may be null, but we still create the event
       const payload: any = {
         status: DamageReportStatus.Completed,
         eventTypeId: maintenanceEventType.id,
-        eventTitle: `Bảo trì định kỳ - ${batch.title || pendingMaintenanceReport.maintenanceBatchId}`,
-        eventDescription: pendingMaintenanceReport.damageContent || '',
-        eventDeviceId: pendingMaintenanceReport.deviceId || null, // May be null for maintenance reports
+        eventTitle: `Bảo trì định kỳ - ${batch?.title || report.maintenanceBatchId}`,
+        eventDescription: report.handlerNotes || report.damageContent || '',
+        eventDeviceId: report.deviceId || null,
+        afterImages: report.afterImages?.length ? report.afterImages : (formData.afterImages?.length ? formData.afterImages : null),
+        handlerNotes: report.handlerNotes || formData.handlerNotes || null,
       };
 
-      const response = await api.put(`/damage-reports/${pendingMaintenanceReport.id}/status`, payload);
+      const response = await api.put(`/damage-reports/${report.id}/status`, payload);
 
       if (response.data.status) {
         toast.success('Đã hoàn thành bảo trì và đồng bộ lên hệ thống');
-        setShowMaintenanceConfirmModal(false);
-        setPendingMaintenanceReport(null);
         loadData();
+        return true;
       } else {
         throw new Error(response.data.error || 'Lỗi khi hoàn thành bảo trì');
       }
     } catch (error: any) {
-      console.error('Error completing maintenance:', error);
+      console.error('Error executing maintenance completion:', error);
       toast.error(error.response?.data?.error || error.message || 'Lỗi khi hoàn thành bảo trì');
+      return false;
+    }
+  };
+
+  const handleMaintenanceCompletion = async () => {
+    if (!pendingMaintenanceReport) return;
+    const success = await executeMaintenanceBatchCompletion(pendingMaintenanceReport);
+    if (success) {
+      setShowMaintenanceConfirmModal(false);
+      setPendingMaintenanceReport(null);
     }
   };
 
@@ -1757,16 +1773,46 @@ export default function DamageReportsPage() {
           <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap" style={{ gap: '0.5rem' }}>
             <h4 className="mb-0" style={{ fontSize: 'clamp(1rem, 4vw, 1.5rem)', whiteSpace: 'nowrap' }}>CÔNG VIỆC</h4>
             <div className="d-flex gap-1 align-items-center flex-wrap" style={{ justifyContent: 'flex-end' }}>
+              {/* Reload - đầu tiên */}
+              <button
+                className="btn btn-outline-secondary btn-sm d-flex align-items-center justify-content-center"
+                onClick={() => {
+                  setSearchKeyword('');
+                  setSearchInputValue('');
+                  setSelectedStatus(0);
+                  setSelectedPriority(0);
+                  setSelectedDepartment(0);
+                  setSelectedDevice(0);
+                  if (!isAdmin(currentUser?.roles)) {
+                    setMyWorkFilter(true);
+                    setMyReportFilter(false);
+                  } else {
+                    setMyWorkFilter(false);
+                    setMyReportFilter(false);
+                  }
+                  setCurrentPage(1);
+                  loadData();
+                  toast.success('Đã tải lại dữ liệu và xóa bộ lọc');
+                }}
+                title="Tải lại dữ liệu"
+                style={{ width: '36px', height: '36px', borderRadius: '8px', padding: 0 }}
+              >
+                <i className="fas fa-sync-alt" style={{ fontSize: '0.8rem' }}></i>
+              </button>
+
+              {/* Filter toggle - mobile only */}
               <button
                 type="button"
                 className="btn btn-outline-secondary btn-sm d-md-none d-flex align-items-center justify-content-center"
                 onClick={() => setFiltersOpen((s) => !s)}
                 aria-pressed={!filtersOpen}
                 title={filtersOpen ? 'Ẩn bộ lọc' : 'Hiện bộ lọc'}
-                style={{ width: '24px', height: '24px', padding: 0 }}
+                style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
               >
-                <i className={`fas ${filtersOpen ? 'fa-chevron-up' : 'fa-filter'}`} style={{ fontSize: '0.7rem' }}></i>
+                <i className={`fas ${filtersOpen ? 'fa-chevron-up' : 'fa-filter'}`} style={{ fontSize: '0.8rem' }}></i>
               </button>
+
+              {/* My Work / My Report toggles */}
               {currentUserStaffId !== null && (
                 <>
                   <button
@@ -1777,10 +1823,9 @@ export default function DamageReportsPage() {
                       if (!myWorkFilter) setMyReportFilter(false);
                     }}
                     title="Lọc công việc của tôi"
-                    style={{ width: myWorkFilter ? 'auto' : '24px', minWidth: '24px', height: '24px', padding: myWorkFilter ? '0 4px' : '0' }}
+                    style={{ width: '36px', height: '36px', borderRadius: '8px', padding: 0 }}
                   >
-                    <i className="fas fa-user-tie" style={{ fontSize: '0.7rem' }}></i>
-                    <span className="d-none d-md-inline ms-1" style={{ fontSize: '0.65rem' }}>{myWorkFilter ? 'All' : ''}</span>
+                    <i className="fas fa-user-tie" style={{ fontSize: '0.8rem' }}></i>
                   </button>
                   <button
                     className={`btn btn-sm d-flex align-items-center justify-content-center ${myReportFilter ? 'btn-success' : 'btn-outline-success'}`}
@@ -1790,76 +1835,117 @@ export default function DamageReportsPage() {
                       if (!myReportFilter) setMyWorkFilter(false);
                     }}
                     title="Lọc báo cáo của tôi"
-                    style={{ width: myReportFilter ? 'auto' : '24px', minWidth: '24px', height: '24px', padding: myReportFilter ? '0 4px' : '0' }}
+                    style={{ width: '36px', height: '36px', borderRadius: '8px', padding: 0 }}
                   >
-                    <i className="fas fa-file-alt" style={{ fontSize: '0.7rem' }}></i>
-                    <span className="d-none d-md-inline ms-1" style={{ fontSize: '0.65rem' }}>{myReportFilter ? 'All' : ''}</span>
+                    <i className="fas fa-file-alt" style={{ fontSize: '0.8rem' }}></i>
                   </button>
                 </>
               )}
+
               <div className="ms-md-1 d-flex gap-1 align-items-center">
-                {isAdmin(currentUser?.roles) && (
-                  <button
-                    className="btn btn-success btn-sm d-flex align-items-center justify-content-center"
-                    onClick={handleOpenExportModal}
-                    title="Xuất Excel"
-                    style={{ width: '24px', height: '24px', padding: 0 }}
-                  >
-                    <i className="fas fa-file-excel" style={{ fontSize: '0.75rem' }}></i>
-                  </button>
+                {/* Secondary actions */}
+                {(isAdmin(currentUser?.roles) || userPermissions.canEdit || userPermissions.canDelete) && (
+                  <div ref={overflowMenuRef} style={{ position: 'relative' }}>
+                    {/* Desktop: nút inline riêng lẻ */}
+                    <div className="d-none d-md-flex gap-1 align-items-center">
+                      {isAdmin(currentUser?.roles) && (
+                        <button
+                          className="btn btn-success btn-sm d-flex align-items-center justify-content-center"
+                          onClick={handleOpenExportModal}
+                          title="Xuất Excel"
+                          style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
+                        >
+                          <i className="fas fa-file-excel" style={{ fontSize: '0.8rem' }}></i>
+                        </button>
+                      )}
+                      {userPermissions.canEdit && (
+                        <button
+                          className="btn btn-outline-secondary btn-sm d-flex align-items-center justify-content-center"
+                          onClick={handleEdit}
+                          title="Sửa"
+                          style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
+                        >
+                          <i className="fas fa-edit" style={{ fontSize: '0.8rem' }}></i>
+                        </button>
+                      )}
+                      {userPermissions.canDelete && (
+                        <button
+                          className="btn btn-outline-danger btn-sm d-flex align-items-center justify-content-center"
+                          onClick={handleDelete}
+                          title="Xóa"
+                          style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
+                        >
+                          <i className="fas fa-trash" style={{ fontSize: '0.8rem' }}></i>
+                        </button>
+                      )}
+                    </div>
+                    {/* Mobile: dropdown ⋮ */}
+                    <div className="d-md-none">
+                      <button
+                        className="btn btn-outline-secondary btn-sm d-flex align-items-center justify-content-center"
+                        onClick={() => setIsOverflowMenuOpen(prev => !prev)}
+                        title="Thêm hành động"
+                        style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
+                      >
+                        <i className="fas fa-ellipsis-v" style={{ fontSize: '0.85rem' }}></i>
+                      </button>
+                      {isOverflowMenuOpen && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '42px',
+                          right: 0,
+                          zIndex: 1050,
+                          backgroundColor: '#fff',
+                          borderRadius: '10px',
+                          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                          border: '1px solid #e2e8f0',
+                          minWidth: '170px',
+                          overflow: 'hidden'
+                        }}>
+                          {isAdmin(currentUser?.roles) && (
+                            <button
+                              className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start py-3 px-3"
+                              style={{ fontSize: '0.85rem', cursor: 'pointer' }}
+                              onClick={() => { handleOpenExportModal(); setIsOverflowMenuOpen(false); }}
+                            >
+                              <i className="fas fa-file-excel text-success" style={{ width: '16px' }}></i>
+                              Xuất Excel
+                            </button>
+                          )}
+                          {userPermissions.canEdit && (
+                            <button
+                              className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start py-3 px-3"
+                              style={{ fontSize: '0.85rem', cursor: 'pointer' }}
+                              onClick={() => { handleEdit(); setIsOverflowMenuOpen(false); }}
+                            >
+                              <i className="fas fa-edit text-primary" style={{ width: '16px' }}></i>
+                              Sửa báo cáo
+                            </button>
+                          )}
+                          {userPermissions.canDelete && (
+                            <button
+                              className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start py-3 px-3"
+                              style={{ fontSize: '0.85rem', cursor: 'pointer', color: '#dc3545' }}
+                              onClick={() => { handleDelete(); setIsOverflowMenuOpen(false); }}
+                            >
+                              <i className="fas fa-trash" style={{ width: '16px' }}></i>
+                              Xóa báo cáo
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )}
+
+                {/* 3. Thêm mới - luôn cuối cùng */}
                 <button
                   className="btn btn-primary btn-sm d-flex align-items-center justify-content-center"
                   onClick={handleNew}
                   title="Thêm mới"
-                  style={{ width: '24px', height: '24px', padding: 0 }}
+                  style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
                 >
-                  <i className="fas fa-plus" style={{ fontSize: '0.75rem' }}></i>
-                </button>
-                {userPermissions.canEdit && (
-                  <button
-                    className="btn btn-success btn-sm d-flex align-items-center justify-content-center"
-                    onClick={handleEdit}
-                    title="Sửa"
-                    style={{ width: '24px', height: '24px', padding: 0 }}
-                  >
-                    <i className="fas fa-edit" style={{ fontSize: '0.75rem' }}></i>
-                  </button>
-                )}
-                {userPermissions.canDelete && (
-                  <button
-                    className="btn btn-danger btn-sm d-flex align-items-center justify-content-center"
-                    onClick={handleDelete}
-                    title="Xóa"
-                    style={{ width: '24px', height: '24px', padding: 0 }}
-                  >
-                    <i className="fas fa-trash" style={{ fontSize: '0.75rem' }}></i>
-                  </button>
-                )}
-                <button
-                  className="btn btn-white btn-sm border d-flex align-items-center justify-content-center"
-                  onClick={() => {
-                    setSearchKeyword('');
-                    setSearchInputValue('');
-                    setSelectedStatus(0);
-                    setSelectedPriority(0);
-                    setSelectedDepartment(0);
-                    setSelectedDevice(0);
-                    if (!isAdmin(currentUser?.roles)) {
-                      setMyWorkFilter(true);
-                      setMyReportFilter(false);
-                    } else {
-                      setMyWorkFilter(false);
-                      setMyReportFilter(false);
-                    }
-                    setCurrentPage(1);
-                    loadData();
-                    toast.success('Đã tải lại dữ liệu và xóa bộ lọc');
-                  }}
-                  title="Tải lại dữ liệu"
-                  style={{ width: '24px', height: '24px', padding: 0, backgroundColor: '#fff' }}
-                >
-                  <i className="fas fa-sync-alt" style={{ fontSize: '0.75rem', color: '#1a1d20' }}></i>
+                  <i className="fas fa-plus" style={{ fontSize: '0.85rem' }}></i>
                 </button>
               </div>
             </div>
@@ -2681,26 +2767,23 @@ export default function DamageReportsPage() {
         <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 1050 }}>
           <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" style={{ maxWidth: '850px' }}>
             <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '16px' }}>
-              <div className="modal-header border-0 bg-light py-3 px-4" style={{ borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
-                <div className="d-flex align-items-center gap-3">
-                  <div className="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style={{ width: '36px', height: '36px' }}>
-                    <i className={`fas ${isEdit ? 'fa-edit' : 'fa-plus-circle'} fa-sm`}></i>
+              <div className="modal-header border-0 bg-light py-2 px-3" style={{ borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
+                <div className="d-flex align-items-center gap-2">
+                  <div className="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style={{ width: '28px', height: '28px' }}>
+                    <i className={`fas ${isEdit ? 'fa-edit' : 'fa-plus-circle'} fa-xs`}></i>
                   </div>
-                  <h5 className="modal-title fw-bold mb-0" style={{ color: '#2c3e50', fontSize: '1.15rem' }}>
+                  <h5 className="modal-title fw-bold mb-0" style={{ color: '#2c3e50', fontSize: '1rem' }}>
                     {isEdit ? 'Cập nhật báo cáo' : 'Lập báo cáo mới'}
                   </h5>
                 </div>
-                <button type="button" className="btn-close shadow-none" onClick={() => setShowModal(false)}></button>
+                <button type="button" className="btn-close shadow-none scale-75" onClick={() => setShowModal(false)} style={{ transform: 'scale(0.8)' }}></button>
               </div>
               
-              <div className="modal-body p-3 pt-1">
+              <div className="modal-body p-2 pt-0">
                 <form className="needs-validation">
-                  {/* Job Type Selector - Segmented Style */}
-                  <div className="mb-3">
-                    <label className="form-label fw-bold small text-uppercase text-muted mb-2" style={{ letterSpacing: '0.05rem', fontSize: '0.7rem' }}>
-                      <i className="fas fa-tasks me-1"></i>Loại công việc <span className="text-danger">*</span>
-                    </label>
-                    <div className="row g-2">
+                  {/* Job Type Selector - Ultra Compact */}
+                  <div className="mb-1">
+                    <div className="row g-1">
                       {[
                         { id: 'device', label: 'Theo thiết bị', icon: 'fa-microchip', color: '#0d6efd' },
                         { id: 'other', label: 'Báo cáo chung', icon: 'fa-globe', color: '#6610f2' },
@@ -2708,7 +2791,7 @@ export default function DamageReportsPage() {
                       ].map((type) => (
                         <div key={type.id} className="col-4">
                           <div 
-                            className={`p-1 py-2 text-center rounded-3 border h-100 d-flex flex-column align-items-center justify-content-center transition-all ${formData.deviceSelection === type.id ? 'border-primary bg-primary bg-opacity-10 shadow-sm' : 'bg-white border-light-subtle'}`}
+                            className={`p-1 py-1 text-center rounded-3 border h-100 d-flex align-items-center justify-content-center transition-all ${formData.deviceSelection === type.id ? 'border-primary bg-primary bg-opacity-10 shadow-sm' : 'bg-white border-light-subtle'}`}
                             style={{ cursor: 'pointer', transition: 'all 0.2s', border: formData.deviceSelection === type.id ? '2px solid !important' : '1px solid' }}
                             onClick={() => {
                               if (type.id === 'maintenance') {
@@ -2721,31 +2804,30 @@ export default function DamageReportsPage() {
                               }
                             }}
                           >
-                            <i className={`fas ${type.icon} mb-1 fa-md`} style={{ color: formData.deviceSelection === type.id ? type.color : '#adb5bd' }}></i>
-                            <span className="small fw-bold" style={{ color: formData.deviceSelection === type.id ? '#212529' : '#6c757d', fontSize: '0.7rem' }}>{type.label}</span>
+                            <i className={`fas ${type.icon} me-2 fa-sm`} style={{ color: formData.deviceSelection === type.id ? type.color : '#adb5bd' }}></i>
+                            <span className="small fw-bold" style={{ color: formData.deviceSelection === type.id ? '#212529' : '#6c757d', fontSize: '0.65rem' }}>{type.label}</span>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  {/* Section 1: Device/Location Info */}
-                  <div className="bg-light bg-opacity-50 p-2 py-3 rounded-4 mb-3 border-start border-primary border-4">
-                    <h6 className="fw-bold mb-2 small text-primary" style={{ fontSize: '0.75rem' }}><i className="fas fa-info-circle me-1"></i>THÔNG TIN CƠ BẢN</h6>
-                    <div className="row g-2">
+                  {/* Section 1: Device/Location Info - Ultra Compact */}
+                  <div className="bg-light bg-opacity-50 p-1 px-2 rounded-4 mb-1 border-start border-primary border-4">
+                    <div className="row g-1">
                       {formData.deviceSelection === 'device' ? (
                         <>
-                          <div className="col-md-6">
-                            <label className="form-label small fw-bold mb-1" style={{ fontSize: '0.75rem' }}>Danh mục thiết bị</label>
+                          <div className="col-md-6 col-6 mb-1">
+                            <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Danh mục</label>
                             <div ref={categoryDropdownRef} className="position-relative">
                               <button
                                 type="button"
-                                className="form-select form-select-sm text-start d-flex justify-content-between align-items-center shadow-none"
+                                className="form-select form-select-sm text-start d-flex justify-content-between align-items-center shadow-none px-2"
                                 onClick={() => setIsCategoryDropdownOpen((prev) => !prev)}
-                                style={{ minHeight: '31px' }}
+                                style={{ minHeight: '28px', fontSize: '0.75rem' }}
                               >
                                 <span className="text-truncate">
-                                  {modalDeviceCategoryId === 0 ? 'Tất cả danh mục' : deviceCategories.find(c => c.id === modalDeviceCategoryId)?.name || 'Chọn danh mục'}
+                                  {modalDeviceCategoryId === 0 ? 'Tất cả' : deviceCategories.find(c => c.id === modalDeviceCategoryId)?.name || 'Chọn'}
                                 </span>
                               </button>
                               {isCategoryDropdownOpen && (
@@ -2768,27 +2850,14 @@ export default function DamageReportsPage() {
                               )}
                             </div>
                           </div>
-                          <div className="col-md-6">
-                            <div className="d-flex justify-content-between align-items-end mb-1">
-                              <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.75rem' }}>Thiết bị <span className="text-danger">*</span></label>
-                              {formData.deviceId && (
-                                <div className="d-flex align-items-center gap-1" style={{ fontSize: '0.7rem' }}>
-                                  <span className="text-muted italic">Vị trí:</span>
-                                  <span className="text-primary fw-bold">
-                                    {(() => {
-                                      const d = devices.find(dev => dev.id === formData.deviceId);
-                                      return d?.locationName || 'Chưa xác định';
-                                    })()}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
+                          <div className="col-md-6 col-6 mb-1">
+                            <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Thiết bị <span className="text-danger">*</span></label>
                             <div ref={deviceDropdownRef} className="position-relative">
                               <button
                                 type="button"
-                                className="form-control form-select form-select-sm text-start d-flex justify-content-between align-items-center shadow-none"
+                                className="form-control form-select form-select-sm text-start d-flex justify-content-between align-items-center shadow-none px-2 text-primary fw-bold"
                                 onClick={() => setIsDeviceDropdownOpen((prev) => !prev)}
-                                style={{ minHeight: '31px' }}
+                                style={{ minHeight: '28px', fontSize: '0.75rem' }}
                               >
                                 <span className="text-truncate">
                                   {formData.deviceId 
@@ -2798,30 +2867,26 @@ export default function DamageReportsPage() {
                               </button>
                               {isDeviceDropdownOpen && (
                                 <div className="border border-0 shadow mt-1" style={{ position: 'absolute', zIndex: 1080, backgroundColor: '#fff', width: '100%', borderRadius: '12px', padding: '4px' }}>
-                                  <div className="p-2 mb-1" style={{ backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+                                  <div className="p-1 mb-1" style={{ backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
                                     <div className="input-group input-group-sm">
-                                      <span className="input-group-text bg-white border-end-0"><i className="fas fa-search text-muted" style={{ fontSize: '0.7rem' }}></i></span>
-                                      <input autoFocus type="text" className="form-control form-control-sm border-start-0 shadow-none" placeholder="Tìm tên, mã, vị trí..." value={modalDeviceSearch} onChange={(e) => setModalDeviceSearch(e.target.value)} />
+                                      <span className="input-group-text bg-white border-end-0 py-0"><i className="fas fa-search text-muted" style={{ fontSize: '0.65rem' }}></i></span>
+                                      <input autoFocus type="text" className="form-control form-control-sm border-start-0 shadow-none" style={{ fontSize: '0.75rem' }} placeholder="Tìm..." value={modalDeviceSearch} onChange={(e) => setModalDeviceSearch(e.target.value)} />
                                     </div>
                                   </div>
-                                  <div style={{ maxHeight: '250px', overflowY: 'auto', padding: '0 4px' }}>
-                                    <button type="button" className="dropdown-item py-2 text-primary fw-medium" onClick={() => { setFormData({ ...formData, deviceId: undefined }); setIsDeviceDropdownOpen(false); }}>-- Bỏ chọn --</button>
+                                  <div style={{ maxHeight: '200px', overflowY: 'auto', padding: '0 2px' }}>
+                                    <button type="button" className="dropdown-item py-1 fw-medium small text-primary" onClick={() => { setFormData({ ...formData, deviceId: undefined }); setIsDeviceDropdownOpen(false); }}>-- Bỏ chọn --</button>
                                     {filteredModalDevices.length === 0 ? (
-                                      <div className="p-3 text-center text-muted small">Không tìm thấy thiết bị phù hợp</div>
+                                      <div className="p-2 text-center text-muted" style={{ fontSize: '0.7rem' }}>Không tìm thấy</div>
                                     ) : (
                                       filteredModalDevices.map((d) => (
-                                        <button type="button" key={d.id} className={`dropdown-item py-2 border-bottom border-light-subtle ${formData.deviceId === d.id ? 'active' : ''}`} onClick={() => { setFormData({ ...formData, deviceId: d.id }); setIsDeviceDropdownOpen(false); }}>
+                                        <button type="button" key={d.id} className={`dropdown-item py-1 px-2 border-bottom border-light-subtle ${formData.deviceId === d.id ? 'active' : ''}`} onClick={() => { setFormData({ ...formData, deviceId: d.id }); setIsDeviceDropdownOpen(false); }}>
                                           <div className="d-flex align-items-center justify-content-between">
-                                            <div>
-                                              <div className="fw-bold small" style={{ color: formData.deviceId === d.id ? '#fff' : '#2c3e50' }}>{d.name}</div>
-                                              <div className={formData.deviceId === d.id ? 'text-white-50' : 'text-muted'} style={{ fontSize: '0.65rem' }}>
-                                                <i className="fas fa-barcode me-1"></i> {d.serial || 'N/A'}
-                                              </div>
+                                            <div className="text-truncate">
+                                              <div className="fw-bold" style={{ fontSize: '0.75rem', color: formData.deviceId === d.id ? '#fff' : '#2c3e50' }}>{d.name}</div>
+                                              <div className={formData.deviceId === d.id ? 'text-white-50' : 'text-muted'} style={{ fontSize: '0.6rem' }}>{d.serial || 'N/A'}</div>
                                             </div>
                                             {d.locationName && (
-                                              <div className={`badge ${formData.deviceId === d.id ? 'bg-white text-primary' : 'bg-primary bg-opacity-10 text-primary'} ms-2`} style={{ fontSize: '0.6rem' }}>
-                                                <i className="fas fa-map-marker-alt me-1"></i> {d.locationName}
-                                              </div>
+                                              <div className={`badge ${formData.deviceId === d.id ? 'bg-white text-primary' : 'bg-primary bg-opacity-10 text-primary'} ms-1 px-1`} style={{ fontSize: '0.55rem' }}>{d.locationName}</div>
                                             )}
                                           </div>
                                         </button>
@@ -2831,16 +2896,25 @@ export default function DamageReportsPage() {
                                 </div>
                               )}
                             </div>
+                            {formData.deviceId && (
+                              <div className="d-flex align-items-center gap-1 mt-0" style={{ fontSize: '0.6rem', lineHeight: 1 }}>
+                                <span className="text-primary fw-bold">
+                                  <i className="fas fa-map-marker-alt me-1"></i>
+                                  {devices.find(dev => dev.id === formData.deviceId)?.locationName || 'Chưa xác định'}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </>
                       ) : formData.deviceSelection === 'maintenance' ? (
-                        <div className="col-12">
-                          <label className="form-label small fw-bold mb-1" style={{ fontSize: '0.75rem' }}>Đợt bảo trì <span className="text-danger">*</span></label>
+                        <div className="col-12 mb-1">
+                          <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Đợt bảo trì <span className="text-danger">*</span></label>
                           <select
                             className="form-select form-select-sm shadow-none"
                             value={formData.maintenanceBatchId || ''}
                             onChange={(e) => setFormData({ ...formData, maintenanceBatchId: e.target.value || undefined })}
                             disabled={loadingBatches}
+                            style={{ minHeight: '28px', fontSize: '0.75rem' }}
                           >
                             <option value="">-- Chọn đợt bảo trì --</option>
                             {maintenanceBatches.filter(b => !b.isCancelled).map((batch) => (
@@ -2849,151 +2923,138 @@ export default function DamageReportsPage() {
                           </select>
                         </div>
                       ) : (
-                        <div className="col-12">
-                          <label className="form-label small fw-bold mb-1" style={{ fontSize: '0.75rem' }}>Vị trí/Mô tả chung <span className="text-danger">*</span></label>
-                          <input type="text" className="form-control form-control-sm shadow-none" value={formData.damageLocation || ''} onChange={(e) => setFormData({ ...formData, damageLocation: e.target.value })} placeholder="Ví dụ: Tường hành lang, Hệ thống điện phòng C..." />
+                        <div className="col-12 mb-1">
+                          <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Vị trí/Mô tả chung <span className="text-danger">*</span></label>
+                          <input type="text" className="form-control form-control-sm shadow-none" value={formData.damageLocation || ''} onChange={(e) => setFormData({ ...formData, damageLocation: e.target.value })} placeholder="Ví dụ: Tường hành lang, Hệ thống điện..." style={{ minHeight: '28px', fontSize: '0.75rem' }} />
                         </div>
                       )}
 
-                      <div className="col-md-6">
-                        <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.75rem' }}>Người báo cáo <span className="text-danger">*</span></label>
-                        <select className="form-select form-select-sm shadow-none" value={formData.reporterId} onChange={(e) => setFormData({ ...formData, reporterId: Number(e.target.value) })} disabled={currentUserStaffId !== null}>
-                          <option value={0}>-- Chọn người báo cáo --</option>
+                      <div className="col-6 mb-1">
+                        <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Người báo cáo <span className="text-danger">*</span></label>
+                        <select className="form-select form-select-sm shadow-none" value={formData.reporterId} onChange={(e) => setFormData({ ...formData, reporterId: Number(e.target.value) })} disabled={currentUserStaffId !== null} style={{ minHeight: '28px', fontSize: '0.75rem' }}>
+                          <option value={0}>-- Người báo --</option>
                           {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
-                        <div className="small text-muted mt-0 px-1" style={{ fontSize: '0.65rem' }}>
-                          <i className="fas fa-building me-1"></i>Bộ phận: {(() => { const r = staff.find(s => s.id === formData.reporterId); const dept = departments.find(d => d.id === (r?.departmentId || 0)); return dept?.name || '-'; })()}
-                        </div>
                       </div>
-                      <div className="col-md-6">
-                        <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.75rem' }}>Người xử lý</label>
-                        <select className="form-select form-select-sm shadow-none" value={formData.handlerId || 0} onChange={(e) => setFormData({ ...formData, handlerId: Number(e.target.value) || undefined })}>
-                          <option value={0}>-- Phân công xử lý --</option>
+                      <div className="col-6 mb-1">
+                        <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Người xử lý</label>
+                        <select className="form-select form-select-sm shadow-none" value={formData.handlerId || 0} onChange={(e) => setFormData({ ...formData, handlerId: Number(e.target.value) || undefined })} style={{ minHeight: '28px', fontSize: '0.75rem' }}>
+                          <option value={0}>-- Phân công --</option>
                           {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
-                        <div className="small text-muted mt-0 px-1" style={{ fontSize: '0.65rem' }}>
-                          <i className="fas fa-tools me-1"></i>Bộ phận: {(() => { const r = staff.find(s => s.id === formData.handlerId); const dept = departments.find(d => d.id === (r?.departmentId || 0)); return dept?.name || '-'; })()}
-                        </div>
                       </div>
                     </div>
                   </div>
 
-                   {/* Section 2: Status & Time */}
-                   <div className="bg-white p-2 border rounded-4 mb-3 shadow-sm border-light-subtle">
+                   {/* Section 2: Status & Time - Ultra Compact */}
+                   <div className="bg-white p-1 px-2 border rounded-4 mb-1 shadow-sm border-light-subtle">
                      <div className="row g-1 align-items-end">
-                       <div className="col-md-2">
-                         <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.6rem' }}>1. Báo cáo</label>
-                         <DateInput value={formData.reportDate} onChange={(v) => setFormData({ ...formData, reportDate: v })} required className="form-control form-control-sm shadow-none" />
+                       <div className="col-4">
+                         <label className="form-label fw-bold text-muted text-uppercase mb-0" style={{ fontSize: '0.6rem' }}>Báo cáo</label>
+                         <DateInput value={formData.reportDate} onChange={(v) => setFormData({ ...formData, reportDate: v })} required className="form-control form-control-sm shadow-none px-1" style={{ fontSize: '0.75rem', height: '28px' }} />
                        </div>
-                       <div className="col-md-2">
-                         <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.6rem' }}>2. Xử lý</label>
-                         <DateInput value={formData.handlingDate} onChange={(v) => setFormData({ ...formData, handlingDate: v })} className="form-control form-control-sm shadow-none" disabled={!isEdit} />
+                       <div className="col-4">
+                         <label className="form-label fw-bold text-muted text-uppercase mb-0" style={{ fontSize: '0.6rem' }}>Xử lý</label>
+                         <DateInput value={formData.handlingDate} onChange={(v) => setFormData({ ...formData, handlingDate: v })} className="form-control form-control-sm shadow-none px-1" disabled={!isEdit} style={{ fontSize: '0.75rem', height: '28px' }} />
                        </div>
-                       <div className="col-md-2">
-                         <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.6rem' }}>3. Hoàn thành</label>
-                         <DateInput value={formData.completedDate} onChange={(v) => setFormData({ ...formData, completedDate: v })} className="form-control form-control-sm shadow-none" disabled={!isEdit} />
+                       <div className="col-4">
+                         <label className="form-label fw-bold text-muted text-uppercase mb-0" style={{ fontSize: '0.6rem' }}>Xong</label>
+                         <DateInput value={formData.completedDate} onChange={(v) => setFormData({ ...formData, completedDate: v })} className="form-control form-control-sm shadow-none px-1" disabled={!isEdit} style={{ fontSize: '0.75rem', height: '28px' }} />
                        </div>
-                       <div className="col-md-2">
-                         <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.6rem' }}>Ưu tiên</label>
-                         <select className="form-select form-select-sm shadow-none" style={{ height: '31px' }} value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number(e.target.value) as DamageReportPriority })}>
+                       <div className="col-5 mt-1">
+                         <label className="form-label fw-bold text-muted text-uppercase mb-0" style={{ fontSize: '0.6rem' }}>Ưu tiên</label>
+                         <select className="form-select form-select-sm shadow-none px-1" style={{ height: '28px', fontSize: '0.75rem' }} value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number(e.target.value) as DamageReportPriority })}>
                             <option value={DamageReportPriority.Low}>Thấp</option>
                             <option value={DamageReportPriority.Normal}>Bình thường</option>
                             <option value={DamageReportPriority.High}>Cao</option>
                             <option value={DamageReportPriority.Urgent}>Khẩn cấp</option>
                          </select>
                        </div>
-                       <div className="col-md-4">
-                         <label className="form-label fw-bold text-muted text-uppercase mb-1" style={{ fontSize: '0.6rem' }}>Trạng thái xử lý</label>
-                         <div className="input-group input-group-sm" style={{ height: '31px' }}>
-                            <span className="input-group-text bg-light border-end-0 py-0 px-2"><i className="fas fa-tasks text-muted" style={{ fontSize: '0.7rem' }}></i></span>
-                            <select className="form-select form-select-sm shadow-none border-start-0 fw-bold text-primary h-100" value={formData.status} disabled={!isEdit} onChange={(e) => {
-                              const newStatus = Number(e.target.value) as DamageReportStatus;
-                              let updates: any = { status: newStatus };
-                              if (newStatus === DamageReportStatus.InProgress && !formData.handlingDate) {
-                                updates.handlingDate = formatDateInput(new Date());
-                              } else if (newStatus === DamageReportStatus.Completed) {
-                                if (!formData.handlingDate) updates.handlingDate = formatDateInput(new Date());
-                                if (!formData.completedDate) updates.completedDate = formatDateInput(new Date());
-                              }
-                              setFormData({ ...formData, ...updates });
-                            }}>
-                              <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
-                              <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
-                              <option value={DamageReportStatus.Completed}>Hoàn thành</option>
-                              <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
-                              <option value={DamageReportStatus.Rejected}>Từ chối</option>
-                            </select>
-                         </div>
+                       <div className="col-7 mt-1">
+                         <label className="form-label fw-bold text-muted text-uppercase mb-0" style={{ fontSize: '0.6rem' }}>Trạng thái</label>
+                         <select className="form-select form-select-sm shadow-none fw-bold text-primary px-1" style={{ height: '28px', fontSize: '0.75rem' }} value={formData.status} disabled={!isEdit} onChange={(e) => {
+                            const newStatus = Number(e.target.value) as DamageReportStatus;
+                            let updates: any = { status: newStatus };
+                            if (newStatus === DamageReportStatus.InProgress && !formData.handlingDate) {
+                              updates.handlingDate = formatDateInput(new Date());
+                            } else if (newStatus === DamageReportStatus.Completed) {
+                              if (!formData.handlingDate) updates.handlingDate = formatDateInput(new Date());
+                              if (!formData.completedDate) updates.completedDate = formatDateInput(new Date());
+                            }
+                            setFormData({ ...formData, ...updates });
+                          }}>
+                            <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
+                            <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
+                            <option value={DamageReportStatus.Completed}>Hoàn thành</option>
+                            <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
+                            <option value={DamageReportStatus.Rejected}>Từ chối</option>
+                         </select>
                        </div>
                      </div>
                    </div>
 
-                  {/* Section 3: Content */}
-                  <div className="mb-3">
-                    <label className="form-label fw-bold mb-1" style={{ fontSize: '0.85rem' }}><i className="fas fa-edit me-1 text-primary"></i>Nội dung sự vụ <span className="text-danger">*</span></label>
-                    <textarea 
-                      className="form-control shadow-none" 
-                      rows={3} 
-                      style={{ borderRadius: '10px', resize: 'none', padding: '10px', fontSize: '0.85rem' }}
-                      value={formData.damageContent || ''} 
-                      onChange={(e) => setFormData({ ...formData, damageContent: e.target.value })}
-                      placeholder="Mô tả chi tiết tình trạng hư hỏng..."
-                    ></textarea>
+                  {/* Section 3 & 4: Content & Notes - Ultra Compact */}
+                  <div className="row g-1 mb-1">
+                    <div className="col-12">
+                      <label className="form-label fw-bold mb-0" style={{ fontSize: '0.7rem' }}><i className="fas fa-edit me-1 text-primary"></i>Nội dung sự vụ <span className="text-danger">*</span></label>
+                      <textarea 
+                        className="form-control shadow-none" 
+                        rows={2} 
+                        style={{ borderRadius: '8px', resize: 'none', padding: '6px', fontSize: '0.75rem' }}
+                        value={formData.damageContent || ''} 
+                        onChange={(e) => setFormData({ ...formData, damageContent: e.target.value })}
+                        placeholder="Mô tả chi tiết..."
+                      ></textarea>
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label fw-bold text-success mb-0" style={{ fontSize: '0.7rem' }}><i className="fas fa-comment-medical me-1"></i>Ghi chú/Kết quả</label>
+                      <textarea 
+                        className="form-control shadow-none bg-light bg-opacity-25" 
+                        rows={1} 
+                        style={{ borderRadius: '8px', resize: 'none', borderStyle: 'dashed', fontSize: '0.75rem', padding: '6px' }}
+                        value={formData.handlerNotes || ''} 
+                        onChange={(e) => setFormData({ ...formData, handlerNotes: e.target.value })}
+                        placeholder="Kết quả xử lý..."
+                      ></textarea>
+                    </div>
                   </div>
 
-                  {/* Section 4: Handler Notes */}
-                  <div className="mb-3">
-                    <label className="form-label fw-bold text-success mb-1" style={{ fontSize: '0.85rem' }}><i className="fas fa-comment-medical me-1"></i>Ghi chú của người xử lý</label>
-                    <textarea 
-                      className="form-control shadow-none bg-light bg-opacity-25" 
-                      rows={2} 
-                      style={{ borderRadius: '10px', resize: 'none', borderStyle: 'dashed', fontSize: '0.85rem' }}
-                      value={formData.handlerNotes || ''} 
-                      onChange={(e) => setFormData({ ...formData, handlerNotes: e.target.value })}
-                      placeholder="Nhập kết quả xử lý..."
-                    ></textarea>
-                  </div>
-
-                  {/* Section 5: Photos */}
-                  <div className="row g-2">
-                    <div className="col-md-6">
+                  {/* Section 5: Photos - Compact */}
+                  <div className="row g-1 mb-0">
+                    <div className="col-6">
                       <div className="card border-0 shadow-sm overflow-hidden h-100" style={{ borderRadius: '10px', backgroundColor: '#f8fbff' }}>
-                        <div className="p-2">
-                          <div className="d-flex justify-content-between align-items-center mb-1">
-                             <div className="fw-bold small text-primary" style={{ fontSize: '0.7rem' }}><i className="fas fa-camera-retro me-1"></i>ẢNH TRƯỚC</div>
-                             <button type="button" className="btn btn-primary btn-sm rounded-pill py-0 px-2" style={{ fontSize: '0.6rem' }} onClick={() => { setFileManagerMode('image'); setFileManagerTarget('images'); setShowFileManager(true); }}>
-                               Thêm
-                             </button>
+                        <div className="p-1 px-2">
+                          <div className="d-flex justify-content-between align-items-center mb-0">
+                             <div className="fw-bold small text-primary" style={{ fontSize: '0.65rem' }}>TRƯỚC</div>
+                             <button type="button" className="btn btn-primary btn-sm rounded-pill py-0 px-2" style={{ fontSize: '0.6rem' }} onClick={() => { setFileManagerMode('image'); setFileManagerTarget('images'); setShowFileManager(true); }}>+</button>
                           </div>
-                          <div className="d-flex flex-wrap gap-1" style={{ minHeight: '50px' }}>
+                          <div className="d-flex flex-wrap gap-1" style={{ minHeight: '35px' }}>
                             {formData.images?.map((img, idx) => (
-                              <div key={idx} className="position-relative" style={{ width: '60px', height: '45px' }}>
+                              <div key={idx} className="position-relative" style={{ width: '45px', height: '35px' }}>
                                 <img src={img} className="rounded shadow-sm" alt="Before" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 <button type="button" className="btn-close position-absolute top-0 end-0 bg-white shadow-sm p-1 rounded-circle" style={{ width: '6px', height: '6px', margin: '-3px' }} onClick={() => setFormData({ ...formData, images: (formData.images || []).filter((_, i) => i !== idx) })} />
                               </div>
                             ))}
-                            {(!formData.images || formData.images.length === 0) && <div className="d-flex align-items-center text-muted small italic opacity-50 p-2" style={{ fontSize: '0.65rem' }}>Chưa chọn ảnh...</div>}
+                            {(!formData.images || formData.images.length === 0) && <div className="text-muted small italic opacity-50" style={{ fontSize: '0.6rem' }}>-</div>}
                           </div>
                         </div>
                       </div>
                     </div>
-                    <div className="col-md-6">
+                    <div className="col-6">
                       <div className="card border-0 shadow-sm overflow-hidden h-100" style={{ borderRadius: '10px', backgroundColor: '#f6fff9' }}>
-                        <div className="p-2">
-                          <div className="d-flex justify-content-between align-items-center mb-1">
-                             <div className="fw-bold small text-success" style={{ fontSize: '0.7rem' }}><i className="fas fa-check-circle me-1"></i>ẢNH SAU</div>
-                             <button type="button" className="btn btn-success btn-sm rounded-pill py-0 px-2" style={{ fontSize: '0.6rem' }} onClick={() => { setFileManagerMode('image'); setFileManagerTarget('afterImages'); setShowFileManager(true); }}>
-                               Thêm
-                             </button>
+                        <div className="p-1 px-2">
+                          <div className="d-flex justify-content-between align-items-center mb-0">
+                             <div className="fw-bold small text-success" style={{ fontSize: '0.65rem' }}>SAU</div>
+                             <button type="button" className="btn btn-success btn-sm rounded-pill py-0 px-2" style={{ fontSize: '0.6rem' }} onClick={() => { setFileManagerMode('image'); setFileManagerTarget('afterImages'); setShowFileManager(true); }}>+</button>
                           </div>
-                          <div className="d-flex flex-wrap gap-1" style={{ minHeight: '50px' }}>
+                          <div className="d-flex flex-wrap gap-1" style={{ minHeight: '35px' }}>
                             {formData.afterImages?.map((img, idx) => (
-                              <div key={idx} className="position-relative" style={{ width: '60px', height: '45px' }}>
+                              <div key={idx} className="position-relative" style={{ width: '45px', height: '35px' }}>
                                 <img src={img} className="rounded shadow-sm" alt="After" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 <button type="button" className="btn-close position-absolute top-0 end-0 bg-white shadow-sm p-1 rounded-circle" style={{ width: '6px', height: '6px', margin: '-3px' }} onClick={() => setFormData({ ...formData, afterImages: (formData.afterImages || []).filter((_, i) => i !== idx) })} />
                               </div>
                             ))}
-                            {(!formData.afterImages || formData.afterImages.length === 0) && <div className="d-flex align-items-center text-muted small italic opacity-50 p-2" style={{ fontSize: '0.65rem' }}>Chưa chọn ảnh...</div>}
+                            {(!formData.afterImages || formData.afterImages.length === 0) && <div className="text-muted small italic opacity-50" style={{ fontSize: '0.6rem' }}>-</div>}
                           </div>
                         </div>
                       </div>
@@ -3002,16 +3063,20 @@ export default function DamageReportsPage() {
                 </form>
               </div>
               
-              <div className="modal-footer border-0 p-3 pt-0">
-                <button type="button" className="btn btn-light rounded-pill px-4 btn-sm" style={{ fontWeight: '600' }} onClick={() => setShowModal(false)}>Hủy bỏ</button>
-                {!isEdit && (
-                  <button type="button" className="btn btn-success rounded-pill px-4 btn-sm shadow-sm" style={{ fontWeight: '700' }} onClick={() => handleSave(true)}>
-                    Hoàn thành trong ngày
+              <div className="modal-footer border-0 p-2 pt-0">
+                <div className="d-flex w-100 gap-2">
+                  <button type="button" className="btn btn-light rounded-pill btn-sm flex-fill" style={{ fontWeight: '600' }} onClick={() => setShowModal(false)}>
+                    <i className="fas fa-times me-1"></i>Hủy
                   </button>
-                )}
-                <button type="button" className="btn btn-primary rounded-pill px-5 btn-sm shadow-sm" style={{ fontWeight: '700' }} onClick={() => handleSave(false)}>
-                  Lưu báo cáo
-                </button>
+                  {!isEdit && (
+                    <button type="button" className="btn btn-success rounded-pill btn-sm shadow-sm flex-fill" style={{ fontWeight: '700' }} onClick={() => handleSave(true)}>
+                      <i className="fas fa-check me-1"></i>Xong
+                    </button>
+                  )}
+                  <button type="button" className="btn btn-primary rounded-pill btn-sm shadow-sm flex-fill" style={{ fontWeight: '700' }} onClick={() => handleSave(false)}>
+                    <i className="fas fa-save me-1"></i>Lưu
+                  </button>
+                </div>
               </div>
             </div>
           </div>
