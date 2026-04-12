@@ -1755,3 +1755,103 @@ a {
     padding-right: 1rem !important;
   }
 }
+
+/* Dashboard Optimized Content Styles */
+.stat-tile-modern {
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.05) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04) !important;
+  transition: all 0.25s ease-in-out !important;
+  overflow: hidden;
+  height: 100%;
+}
+
+.stat-tile-modern:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08) !important;
+  border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+.stat-tile-body {
+  padding: 1.25rem !important;
+  display: flex !important;
+  flex-direction: column;
+}
+
+.stat-tile-title {
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+  color: #64748b !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.stat-tile-value {
+  font-size: 1.75rem !important;
+  font-weight: 700 !important;
+  color: #1e293b !important;
+  margin-bottom: 0.75rem !important;
+}
+
+.stat-tile-link {
+  font-size: 0.8125rem !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: auto;
+}
+
+.stat-tile-link:hover {
+  text-decoration: underline !important;
+}
+
+/* Accent colors for icons or borders */
+.border-accent-primary { border-top: 4px solid #3b82f6 !important; }
+.border-accent-success { border-top: 4px solid #22c55e !important; }
+.border-accent-info { border-top: 4px solid #06b6d4 !important; }
+.border-accent-warning { border-top: 4px solid #f59e0b !important; }
+.border-accent-danger { border-top: 4px solid #ef4444 !important; }
+
+.text-accent-primary { color: #3b82f6 !important; }
+.text-accent-success { color: #22c55e !important; }
+.text-accent-info { color: #06b6d4 !important; }
+.text-accent-warning { color: #f59e0b !important; }
+.text-accent-danger { color: #ef4444 !important; }
+
+/* Alert Compact Modern */
+.alert-compact-modern {
+  border-radius: 10px !important;
+  padding: 0.75rem 1rem !important;
+  border: 1px solid transparent !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 0.75rem !important;
+  margin-bottom: 0.75rem !important;
+}
+
+.alert-compact-modern i {
+  font-size: 1.15rem !important;
+  margin-top: 0.125rem;
+}
+
+.alert-compact-content {
+  flex: 1;
+}
+
+.alert-compact-title {
+  font-weight: 600 !important;
+  font-size: 0.9375rem !important;
+}
+
+/* Dashboard Section Heading */
+.dashboard-section-title {
+  font-size: 1rem !important;
+  font-weight: 700 !important;
+  color: #334155 !important;
+  margin-bottom: 1rem !important;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}

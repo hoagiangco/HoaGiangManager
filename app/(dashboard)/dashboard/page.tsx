@@ -83,222 +83,168 @@ export default function DashboardPage() {
   const hasPendingReports = pendingReports.pending.totalCount > 0 || pendingReports.inProgress.totalCount > 0;
 
   return (
-    <div className="container-fluid">
-      {/* Pending Reports Notifications */}
+    <div className="container-fluid py-4">
+      {/* Pending Reports Section */}
       {isAdmin && hasPendingReports && (
-        <div className="row mb-4">
-          <div className="col-12">
-            <div className="card border-0 shadow-sm">
-              <div className="card-header bg-white border-bottom">
-                <h5 className="mb-0">
-                  <i className="fas fa-clipboard-list me-2 text-primary"></i>
-                  Báo cáo công việc
-                </h5>
-              </div>
-              <div className="card-body">
-                <div className="row g-3">
-                  {pendingReports.pending.totalCount > 0 && (
-                    <div className="col-md-6">
-                      <div className="alert alert-warning mb-0 d-flex align-items-center" role="alert">
-                        <i className="fas fa-clock fa-2x me-3"></i>
-                        <div className="flex-grow-1">
-                          <strong>{pendingReports.pending.totalCount}</strong> báo cáo công việc <strong>chờ xử lý</strong>
-                          {pendingReports.pending.unassignedCount > 0 && (
-                            <div className="small mt-1">
-                              <span className="badge bg-danger text-white">
-                                {pendingReports.pending.unassignedCount} chưa phân công
-                              </span>
-                            </div>
-                          )}
-                          {pendingReports.pending.handlers.length > 0 && (
-                            <div className="small text-muted mt-1">
-                              {pendingReports.pending.handlers.map((handler: ReportHandler, index: number) => (
-                                <span key={handler.handlerId}>
-                                  {index > 0 && ', '}
-                                  <strong>{handler.handlerName}</strong> ({handler.count})
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
+        <div className="mb-5">
+          <h5 className="dashboard-section-title">
+            <i className="fas fa-clipboard-list text-accent-primary"></i>
+            Báo cáo công việc cần xử lý
+          </h5>
+          <div className="row g-3">
+            {pendingReports.pending.totalCount > 0 && (
+              <div className="col-lg-6">
+                <div className="alert-compact-modern alert-warning border-warning-subtle shadow-sm">
+                  <i className="fas fa-clock text-warning"></i>
+                  <div className="alert-compact-content">
+                    <div className="alert-compact-title">
+                      {pendingReports.pending.totalCount} báo cáo chờ xử lý
+                      {pendingReports.pending.unassignedCount > 0 && (
+                        <span className="badge bg-danger ms-2">
+                          {pendingReports.pending.unassignedCount} chưa phân công
+                        </span>
+                      )}
                     </div>
-                  )}
-                  {pendingReports.inProgress.totalCount > 0 && (
-                    <div className="col-md-6">
-                      <div className="alert alert-info mb-0 d-flex align-items-center" role="alert">
-                        <i className="fas fa-spinner fa-2x me-3"></i>
-                        <div className="flex-grow-1">
-                          <strong>{pendingReports.inProgress.totalCount}</strong> báo cáo công việc <strong>đang xử lý</strong>
-                          {pendingReports.inProgress.unassignedCount > 0 && (
-                            <div className="small mt-1">
-                              <span className="badge bg-danger text-white">
-                                {pendingReports.inProgress.unassignedCount} chưa phân công
-                              </span>
-                            </div>
-                          )}
-                          {pendingReports.inProgress.handlers.length > 0 && (
-                            <div className="small text-muted mt-1">
-                              {pendingReports.inProgress.handlers.map((handler: ReportHandler, index: number) => (
-                                <span key={handler.handlerId}>
-                                  {index > 0 && ', '}
-                                  <strong>{handler.handlerName}</strong> ({handler.count})
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
+                    {pendingReports.pending.handlers.length > 0 && (
+                      <div className="small text-muted mt-1">
+                        {pendingReports.pending.handlers.slice(0, 3).map((h: ReportHandler, i: number) => (
+                          <span key={h.handlerId}>{i > 0 && ', '}<strong>{h.handlerName}</strong> ({h.count})</span>
+                        ))}
+                        {pendingReports.pending.handlers.length > 3 && '...'}
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+            {pendingReports.inProgress.totalCount > 0 && (
+              <div className="col-lg-6">
+                <div className="alert-compact-modern alert-info border-info-subtle shadow-sm">
+                  <i className="fas fa-spinner fa-spin text-info"></i>
+                  <div className="alert-compact-content">
+                    <div className="alert-compact-title">{pendingReports.inProgress.totalCount} báo cáo đang xử lý</div>
+                    {pendingReports.inProgress.handlers.length > 0 && (
+                      <div className="small text-muted mt-1">
+                        {pendingReports.inProgress.handlers.slice(0, 3).map((h: ReportHandler, i: number) => (
+                          <span key={h.handlerId}>{i > 0 && ', '}<strong>{h.handlerName}</strong> ({h.count})</span>
+                        ))}
+                        {pendingReports.inProgress.handlers.length > 3 && '...'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Maintenance Notifications */}
+      {/* Maintenance Notifications Section */}
       {isAdmin && hasNotifications && (
-        <div className="row mb-4">
-          <div className="col-12">
-            <div className="card border-0 shadow-sm">
-              <div className="card-header bg-white border-bottom">
-                <h5 className="mb-0">
-                  <i className="fas fa-bell me-2 text-warning"></i>
-                  Thông báo bảo trì
-                </h5>
-              </div>
-              <div className="card-body">
-                <div className="row g-3">
-                  {notifications.overduePlans > 0 && (
-                    <div className="col-md-4">
-                      <div className="alert alert-danger mb-0 d-flex align-items-center" role="alert">
-                        <i className="fas fa-exclamation-triangle fa-2x me-3"></i>
-                        <div className="flex-grow-1">
-                          <strong>{notifications.overduePlans}</strong> kế hoạch bảo trì <strong>quá hạn</strong>
-                          <div className="mt-1">
-                            <Link href="/dashboard/maintenance?tab=plans" className="alert-link">
-                              Xem chi tiết →
-                            </Link>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {notifications.upcomingPlans > 0 && (
-                    <div className="col-md-4">
-                      <div className="alert alert-warning mb-0 d-flex align-items-center" role="alert">
-                        <i className="fas fa-clock fa-2x me-3"></i>
-                        <div className="flex-grow-1">
-                          <strong>{notifications.upcomingPlans}</strong> kế hoạch bảo trì <strong>sắp đến hạn</strong> (7 ngày tới)
-                          <div className="mt-1">
-                            <Link href="/dashboard/maintenance?tab=upcoming" className="alert-link">
-                              Xem chi tiết →
-                            </Link>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {notifications.pendingEvents > 0 && (
-                    <div className="col-md-4">
-                      <div className="alert alert-info mb-0 d-flex align-items-center" role="alert">
-                        <i className="fas fa-tasks fa-2x me-3"></i>
-                        <div className="flex-grow-1">
-                          <strong>{notifications.pendingEvents}</strong> sự kiện bảo trì <strong>cần xử lý</strong>
-                          <div className="mt-1">
-                            <Link href="/dashboard/maintenance?tab=upcoming" className="alert-link">
-                              Xem chi tiết →
-                            </Link>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+        <div className="mb-5">
+          <h5 className="dashboard-section-title">
+            <i className="fas fa-bell text-accent-warning"></i>
+            Thông báo bảo trì hệ thống
+          </h5>
+          <div className="row g-3">
+            {notifications.overduePlans > 0 && (
+              <div className="col-md-4">
+                <div className="alert-compact-modern alert-danger border-danger-subtle shadow-sm">
+                  <i className="fas fa-exclamation-triangle text-danger"></i>
+                  <div className="alert-compact-content">
+                    <div className="alert-compact-title text-danger">{notifications.overduePlans} kế hoạch quá hạn</div>
+                    <Link href="/dashboard/maintenance?tab=plans" className="small fw-bold text-danger text-decoration-none">Xem chi tiết →</Link>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+            {notifications.upcomingPlans > 0 && (
+              <div className="col-md-4">
+                <div className="alert-compact-modern alert-warning border-warning-subtle shadow-sm">
+                  <i className="fas fa-clock text-warning"></i>
+                  <div className="alert-compact-content">
+                    <div className="alert-compact-title">{notifications.upcomingPlans} kế hoạch sắp đến hạn</div>
+                    <Link href="/dashboard/maintenance?tab=upcoming" className="small fw-bold text-warning-emphasis text-decoration-none">Xem chi tiết →</Link>
+                  </div>
+                </div>
+              </div>
+            )}
+            {notifications.pendingEvents > 0 && (
+              <div className="col-md-4">
+                <div className="alert-compact-modern alert-info border-info-subtle shadow-sm">
+                  <i className="fas fa-tasks text-info"></i>
+                  <div className="alert-compact-content">
+                    <div className="alert-compact-title">{notifications.pendingEvents} sự kiện cần xử lý</div>
+                    <Link href="/dashboard/maintenance?tab=upcoming" className="small fw-bold text-info-emphasis text-decoration-none">Xem chi tiết →</Link>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      <div className="row">
+      {/* Stats Tiles Section */}
+      <h5 className="dashboard-section-title">
+        <i className="fas fa-chart-pie text-accent-success"></i>
+        Tổng quan tài sản & nhân sự
+      </h5>
+      <div className="row g-4 transition-fade">
         {isAdmin && (
           <>
-            <div className="col-md-3 mb-4">
-              <div className="card text-white bg-primary">
-                <div 
-                  className="card-body dashboard-card-body" 
-                  onClick={() => router.push('/dashboard/devices')}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <h5 className="card-title">Thiết bị</h5>
-                  <h2>{stats.devices}</h2>
-                  <Link href="/dashboard/devices" className="text-white" onClick={(e) => e.stopPropagation()}>
-                    Xem chi tiết →
+            <div className="col-xl-3 col-sm-6">
+              <div className="stat-tile-modern border-accent-primary" onClick={() => router.push('/dashboard/devices')} style={{ cursor: 'pointer' }}>
+                <div className="stat-tile-body">
+                  <div className="stat-tile-title">THIẾT BỊ</div>
+                  <div className="stat-tile-value">{stats.devices}</div>
+                  <Link href="/dashboard/devices" className="stat-tile-link text-accent-primary" onClick={(e) => e.stopPropagation()}>
+                    Xem chi tiết <i className="fas fa-chevron-right small"></i>
                   </Link>
                 </div>
               </div>
             </div>
-            <div className="col-md-3 mb-4">
-              <div className="card text-white bg-success">
-                <div 
-                  className="card-body dashboard-card-body" 
-                  onClick={() => router.push('/dashboard/departments')}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <h5 className="card-title">Phòng ban</h5>
-                  <h2>{stats.departments}</h2>
-                  <Link href="/dashboard/departments" className="text-white" onClick={(e) => e.stopPropagation()}>
-                    Xem chi tiết →
+            <div className="col-xl-3 col-sm-6">
+              <div className="stat-tile-modern border-accent-success" onClick={() => router.push('/dashboard/departments')} style={{ cursor: 'pointer' }}>
+                <div className="stat-tile-body">
+                  <div className="stat-tile-title">PHÒNG BAN</div>
+                  <div className="stat-tile-value">{stats.departments}</div>
+                  <Link href="/dashboard/departments" className="stat-tile-link text-accent-success" onClick={(e) => e.stopPropagation()}>
+                    Xem chi tiết <i className="fas fa-chevron-right small"></i>
                   </Link>
                 </div>
               </div>
             </div>
-            <div className="col-md-3 mb-4">
-              <div className="card text-white bg-info">
-                <div 
-                  className="card-body dashboard-card-body" 
-                  onClick={() => router.push('/dashboard/staff')}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <h5 className="card-title">Nhân viên</h5>
-                  <h2>{stats.staff}</h2>
-                  <Link href="/dashboard/staff" className="text-white" onClick={(e) => e.stopPropagation()}>
-                    Xem chi tiết →
+            <div className="col-xl-3 col-sm-6">
+              <div className="stat-tile-modern border-accent-info" onClick={() => router.push('/dashboard/staff')} style={{ cursor: 'pointer' }}>
+                <div className="stat-tile-body">
+                  <div className="stat-tile-title">NHÂN VIÊN</div>
+                  <div className="stat-tile-value">{stats.staff}</div>
+                  <Link href="/dashboard/staff" className="stat-tile-link text-accent-info" onClick={(e) => e.stopPropagation()}>
+                    Xem chi tiết <i className="fas fa-chevron-right small"></i>
                   </Link>
                 </div>
               </div>
             </div>
-            <div className="col-md-3 mb-4">
-              <div className="card text-white bg-warning">
-                <div 
-                  className="card-body dashboard-card-body" 
-                  onClick={() => router.push('/dashboard/events')}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <h5 className="card-title">Sự kiện</h5>
-                  <h2>{stats.events}</h2>
-                  <Link href="/dashboard/events" className="text-white" onClick={(e) => e.stopPropagation()}>
-                    Xem chi tiết →
+            <div className="col-xl-3 col-sm-6">
+              <div className="stat-tile-modern border-accent-warning" onClick={() => router.push('/dashboard/events')} style={{ cursor: 'pointer' }}>
+                <div className="stat-tile-body">
+                  <div className="stat-tile-title">SỰ KIỆN</div>
+                  <div className="stat-tile-value">{stats.events}</div>
+                  <Link href="/dashboard/events" className="stat-tile-link text-accent-warning" onClick={(e) => e.stopPropagation()}>
+                    Xem chi tiết <i className="fas fa-chevron-right small"></i>
                   </Link>
                 </div>
               </div>
             </div>
           </>
         )}
-        <div className="col-md-3 mb-4">
-          <div className="card text-white bg-danger">
-            <div 
-              className="card-body dashboard-card-body" 
-              onClick={() => router.push('/dashboard/damage-reports')}
-              style={{ cursor: 'pointer' }}
-            >
-              <h5 className="card-title">Báo cáo</h5>
-              <h2>{stats.damageReports}</h2>
-              <Link href="/dashboard/damage-reports" className="text-white" onClick={(e) => e.stopPropagation()}>
-                Xem chi tiết →
+        <div className="col-xl-3 col-sm-6">
+          <div className="stat-tile-modern border-accent-danger" onClick={() => router.push('/dashboard/damage-reports')} style={{ cursor: 'pointer' }}>
+            <div className="stat-tile-body">
+              <div className="stat-tile-title">BÁO CÁO CÔNG VIỆC</div>
+              <div className="stat-tile-value">{stats.damageReports}</div>
+              <Link href="/dashboard/damage-reports" className="stat-tile-link text-accent-danger" onClick={(e) => e.stopPropagation()}>
+                Xem chi tiết <i className="fas fa-chevron-right small"></i>
               </Link>
             </div>
           </div>
