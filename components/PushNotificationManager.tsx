@@ -42,9 +42,9 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
     const [isSupported, setIsSupported] = useState(false);
     const [showDropdown, setShowDropdown] = useState(false);
     const [isSubscribing, setIsSubscribing] = useState(false);
-    const [debugStatus, setDebugStatus] = useState<string>('');
     const dropdownRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
+    const prevUnreadCount = useRef(0);
 
     // Fetch persistent notifications
     const { data: notificationsData } = useSWR('/notifications?limit=10', fetcher, {
@@ -55,19 +55,30 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
     const unreadCount = notifications.length;
 
     useEffect(() => {
-        console.log('[Push] Initializing...');
+        // Play sound if new notification arrives
+        if (unreadCount > prevUnreadCount.current) {
+            playNotificationSound();
+        }
+        prevUnreadCount.current = unreadCount;
+    }, [unreadCount]);
+
+    const playNotificationSound = () => {
+        try {
+            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+            audio.volume = 0.5;
+            audio.play().catch(e => console.log('[Push] Audio play blocked or failed:', e));
+        } catch (e) {}
+    };
+
+    useEffect(() => {
         if (typeof window !== 'undefined') {
             const hasSW = 'serviceWorker' in navigator;
             const hasPush = 'PushManager' in window;
             const isSecure = window.isSecureContext;
-
-            console.log('[Push] Support check:', { hasSW, hasPush, isSecure });
             
             if (hasSW && hasPush && isSecure) {
                 setIsSupported(true);
-                setDebugStatus('Supported');
                 
-                // Ensure SW is registered
                 ensureServiceWorkerRegistered()
                     .then(() => {
                         if (Notification.permission === 'granted') {
@@ -76,11 +87,7 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
                     })
                     .catch(err => {
                         console.error('[Push] SW Registration failed:', err);
-                        setDebugStatus('SW Error');
                     });
-            } else {
-                const reason = !isSecure ? 'Secure Context Required' : 'Not Supported';
-                setDebugStatus(reason);
             }
         }
 
@@ -97,7 +104,6 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
         try {
             let registration = await navigator.serviceWorker.getRegistration();
             if (!registration) {
-                console.log('[Push] No SW found, registering manually...');
                 registration = await navigator.serviceWorker.register('/sw.js');
                 console.log('[Push] SW registered manually:', registration.scope);
             }
@@ -125,7 +131,6 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
     const subscribeToPush = async (registration: ServiceWorkerRegistration, silent = false) => {
         if (isSubscribing) return;
         setIsSubscribing(true);
-        console.log('[Push] Subscribing with VAPID key...');
         try {
             const subscription = await registration.pushManager.subscribe({
                 userVisibleOnly: true,
@@ -135,7 +140,6 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
             await api.post('/notifications/subscribe', subscription);
             console.log('[Push] Successfully subscribed');
             if (!silent) toast.success('Đã kích hoạt thông báo thành công!');
-            setDebugStatus('Subscribed');
         } catch (error) {
             console.error('[Push] Subscribe error:', error);
             if (!silent) toast.error('Lỗi khi đăng ký thông báo: ' + (error instanceof Error ? error.message : 'Unknown error'));
@@ -160,12 +164,10 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
             }
 
             try {
-                setDebugStatus('Preparing...');
                 const registration = await ensureServiceWorkerRegistered();
                 
                 // Wait for SW to be active if it's new
                 if (!registration.active) {
-                    setDebugStatus('Activating SW...');
                     await new Promise((resolve) => {
                         const interval = setInterval(() => {
                             if (registration.active) {
@@ -177,7 +179,6 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
                     });
                 }
 
-                console.log('[Push] Checking subscription...');
                 const existingSubscription = await registration.pushManager.getSubscription();
                 
                 if (!existingSubscription) {
@@ -185,9 +186,7 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
                         await subscribeToPush(registration);
                     }
                 } else {
-                    console.log('[Push] Refreshing sub on server...');
                     await api.post('/notifications/subscribe', existingSubscription);
-                    setDebugStatus('Subscribed');
                 }
             } catch (err) {
                 console.error('[Push] Bell error:', err);
@@ -231,7 +230,7 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
         try { return formatDistanceToNow(new Date(dateStr), { addSuffix: true, locale: vi }); } catch (e) { return 'Vừa xong'; }
     };
 
-    if (!isSupported && !debugStatus.includes('Secure')) return null;
+    if (!isSupported) return null;
 
     return (
         <div className="notification-container d-flex align-items-center" style={{ minWidth: '35px' }} ref={dropdownRef}>
@@ -291,7 +290,6 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
                             <Link href="/dashboard/damage-reports" className="small text-decoration-none" onClick={() => setShowDropdown(false)}>
                                 Xem tất cả
                             </Link>
-                            <div className="mt-1" style={{ fontSize: '9px', opacity: 0.3 }}>Status: {debugStatus}</div>
                         </div>
                     </div>
                 )}
@@ -308,6 +306,11 @@ export function PushNotificationManager({ pendingCount = 0 }: PushNotificationMa
                 .x-small { font-size: 0.75rem; }
                 @keyframes dropdownFadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
                 @media (max-width: 576px) { .notification-dropdown { position: fixed; top: 60px; left: 10px; right: 10px; width: auto; } }
+            `}</style>
+        </div>
+    );
+}
+ght: 10px; width: auto; } }
             `}</style>
         </div>
     );
