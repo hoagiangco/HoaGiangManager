@@ -1363,7 +1363,7 @@ export default function DamageReportsPage() {
         : targetStatus === DamageReportStatus.Cancelled
           ? `Hủy báo cáo - ${report.deviceName || 'Mô tả chung'}`
           : `Từ chối báo cáo - ${report.deviceName || 'Mô tả chung'}`,
-      eventDescription: report.handlerNotes || report.damageContent || '',
+      eventDescription: report.damageContent || report.handlerNotes || '',
       handlerNotes: report.handlerNotes || '',
       deviceId: report.deviceId,
       afterImages: report.afterImages || [],
@@ -1475,7 +1475,7 @@ export default function DamageReportsPage() {
         status: DamageReportStatus.Completed,
         eventTypeId: maintenanceEventType.id,
         eventTitle: `Bảo trì định kỳ - ${batch?.title || report.maintenanceBatchId}`,
-        eventDescription: report.handlerNotes || report.damageContent || '',
+        eventDescription: report.damageContent || report.handlerNotes || '',
         eventDeviceId: report.deviceId || null,
         afterImages: report.afterImages?.length ? report.afterImages : (formData.afterImages?.length ? formData.afterImages : null),
         handlerNotes: report.handlerNotes || formData.handlerNotes || null,
