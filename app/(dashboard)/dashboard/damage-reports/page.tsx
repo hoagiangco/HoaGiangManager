@@ -11,7 +11,6 @@ import FileManager from '@/components/FileManager';
 import DateInput from '@/components/DateInput';
 import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
-import ExportModal from '@/components/ExportModal';
 
 // Handler Notes Editor Component
 const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false, canEdit = true }: {
@@ -253,11 +252,22 @@ export default function DamageReportsPage() {
   const [fileManagerMode, setFileManagerMode] = useState<'image' | 'all'>('image');
   const [fileManagerTarget, setFileManagerTarget] = useState<'images' | 'afterImages'>('images');
 
-  // Export Excel modal state
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [exportDepartment, setExportDepartment] = useState(0);
-  const [exportFromDate, setExportFromDate] = useState(formatDateInput(new Date(new Date().getFullYear(), 0, 1))); // Start of year
-  const [exportToDate, setExportToDate] = useState(formatDateInput(new Date())); // Today
+  // File Manager state
+  const [visibleColumns, setVisibleColumns] = useState([
+    { id: 'index', label: 'STT', visible: true },
+    { id: 'reportDate', label: 'Ngày báo', visible: true },
+    { id: 'reportId', label: 'Mã báo cáo', visible: true },
+    { id: 'deviceName', label: 'Tên thiết bị', visible: true },
+    { id: 'serial', label: 'Serial', visible: true },
+    { id: 'location', label: 'Khu vực/Vị trí', visible: true },
+    { id: 'category', label: 'Danh mục', visible: true },
+    { id: 'damageContent', label: 'Nội dung hư hỏng', visible: true },
+    { id: 'priority', label: 'Mức độ', visible: true },
+    { id: 'reporter', label: 'Người báo', visible: true },
+    { id: 'handler', label: 'Người xử lý', visible: true },
+    { id: 'completedDate', label: 'Ngày hoàn thành', visible: true },
+    { id: 'status', label: 'Trạng thái', visible: true }
+  ]);
   const [showImageModal, setShowImageModal] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -1655,134 +1665,6 @@ export default function DamageReportsPage() {
   }, [showModal, isEdit, staff, currentUser]);
 
   // Open Export Modal
-  const handleOpenExportModal = () => {
-    setShowExportModal(true);
-  };
-
-  // Export to Excel function
-  const handleExportExcel = async () => {
-    try {
-      // Validate dates
-      if (!exportFromDate || !exportToDate) {
-        toast.error('Vui lòng chọn khoảng thời gian');
-        return;
-      }
-
-      const fromDate = new Date(exportFromDate);
-      const toDate = new Date(exportToDate);
-      toDate.setHours(23, 59, 59, 999); // End of day
-
-      if (fromDate > toDate) {
-        toast.error('Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc');
-        return;
-      }
-
-      // Check if there's data to export before showing loading toast
-      const fromCheck = new Date(exportFromDate);
-      fromCheck.setHours(0, 0, 0, 0);
-      const toCheck = new Date(exportToDate);
-      toCheck.setHours(23, 59, 59, 999);
-
-      // Filter reports on client-side to check if there's any data
-      const hasData = allReports.some(report => {
-        // Check department filter
-        if (exportDepartment > 0 && report.reportingDepartmentId !== exportDepartment) {
-          return false;
-        }
-
-        // Check date range
-        if (report.reportDate) {
-          const reportDate = new Date(report.reportDate);
-          reportDate.setHours(0, 0, 0, 0);
-          if (reportDate < fromCheck || reportDate > toCheck) {
-            return false;
-          }
-        } else {
-          return false; // Skip reports without reportDate
-        }
-
-        return true;
-      });
-
-      if (!hasData) {
-        const deptName = exportDepartment > 0
-          ? (departments.find(d => d.id === exportDepartment)?.name || 'bộ phận đã chọn')
-          : 'tất cả bộ phận';
-        const dateRange = formatDateRange(fromDate, toDate);
-        toast.error(`Không có dữ liệu để xuất cho ${deptName} trong khoảng thời gian từ ${dateRange}. Vui lòng chọn khoảng thời gian khác hoặc bộ phận khác.`);
-        return;
-      }
-
-      // Show loading only if we have data
-      toast.info('Đang xuất Excel...');
-
-      // Build query string
-      const params = new URLSearchParams({
-        departmentId: exportDepartment.toString(),
-        fromDate: exportFromDate,
-        toDate: exportToDate,
-      });
-
-      // Call API to export Excel
-      const response = await api.get(`/damage-reports/export?${params.toString()}`, {
-        responseType: 'blob', // Important for binary data
-      });
-
-      // Get filename from Content-Disposition header or generate one
-      const contentDisposition = response.headers['content-disposition'];
-      let fileName = `BaoCao_${formatDateFilename(fromDate)}_${formatDateFilename(toDate)}.xlsx`;
-
-      if (contentDisposition) {
-        const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-        if (fileNameMatch && fileNameMatch[1]) {
-          fileName = fileNameMatch[1].replace(/['"]/g, '');
-          // Decode URI component if needed
-          try {
-            fileName = decodeURIComponent(fileName);
-          } catch (e) {
-            // If decode fails, use as is
-          }
-        }
-      }
-
-      // Create blob and download
-      const blob = new Blob([response.data], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      });
-
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', fileName);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-
-      setShowExportModal(false);
-      toast.success('Xuất Excel thành công!');
-    } catch (error: any) {
-      console.error('Export error:', error);
-
-      // Try to get error message from response
-      let errorMessage = 'Lỗi khi xuất Excel';
-      if (error.response?.data) {
-        try {
-          // If response is JSON
-          const text = await error.response.data.text();
-          const json = JSON.parse(text);
-          errorMessage = json.error || errorMessage;
-        } catch (e) {
-          // If response is not JSON, use default message
-          errorMessage = error.response.status === 403
-            ? 'Bạn không có quyền xuất Excel'
-            : errorMessage;
-        }
-      }
-
-      toast.error(errorMessage);
-    }
-  };
 
 
   const __view = (
@@ -1868,16 +1750,7 @@ export default function DamageReportsPage() {
                   <div ref={overflowMenuRef} style={{ position: 'relative' }}>
                     {/* Desktop: nút inline riêng lẻ */}
                     <div className="d-none d-md-flex gap-1 align-items-center">
-                      {isAdmin(currentUser?.roles) && (
-                        <button
-                          className="btn btn-success btn-sm d-flex align-items-center justify-content-center"
-                          onClick={handleOpenExportModal}
-                          title="Xuất Excel"
-                          style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
-                        >
-                          <i className="fas fa-file-excel" style={{ fontSize: '0.8rem' }}></i>
-                        </button>
-                      )}
+                      {/* Buttons removed: ColumnDropdown and Export Excel */}
                       {userPermissions.canEdit && (
                         <button
                           className="btn btn-outline-secondary btn-sm d-flex align-items-center justify-content-center"
@@ -1922,16 +1795,6 @@ export default function DamageReportsPage() {
                           minWidth: '170px',
                           overflow: 'hidden'
                         }}>
-                          {isAdmin(currentUser?.roles) && (
-                            <button
-                              className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start py-3 px-3"
-                              style={{ fontSize: '0.85rem', cursor: 'pointer' }}
-                              onClick={() => { handleOpenExportModal(); setIsOverflowMenuOpen(false); }}
-                            >
-                              <i className="fas fa-file-excel text-success" style={{ width: '16px' }}></i>
-                              Xuất Excel
-                            </button>
-                          )}
                           {userPermissions.canEdit && (
                             <button
                               className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start py-3 px-3"
@@ -3584,39 +3447,7 @@ export default function DamageReportsPage() {
       )}
 
       {/* Export Excel Modal */}
-      <ExportModal
-        show={showExportModal}
-        onClose={() => setShowExportModal(false)}
-        title="Xuất Excel - Báo cáo hư hỏng"
-        apiEndpoint="/damage-reports/export"
-        params={{
-          departmentId: exportDepartment,
-          fromDate: exportFromDate,
-          toDate: exportToDate,
-          status: selectedStatus,
-          priority: selectedPriority,
-          deviceId: selectedDevice,
-          keyword: searchKeyword
-        }}
-        filterOptions={{
-          statuses: [
-            { id: 1, name: 'Chờ xử lý' },
-            { id: 2, name: 'Đã phân công' },
-            { id: 3, name: 'Đang xử lý' },
-            { id: 4, name: 'Hoàn thành' },
-            { id: 5, name: 'Đã hủy' },
-            { id: 6, name: 'Từ chối' },
-          ],
-          priorities: [
-            { id: 1, name: 'Thấp' },
-            { id: 2, name: 'Bình thường' },
-            { id: 3, name: 'Cao' },
-            { id: 4, name: 'Khẩn cấp' },
-          ],
-          departments: departments.map(d => ({ id: d.id, name: d.name }))
-        }}
-        defaultFileName="Bao_cao_hu_hong"
-      />
+      
 
       {/* Done Confirmation Modal */}
       {showDoneConfirm && (

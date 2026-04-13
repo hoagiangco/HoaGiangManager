@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '@/lib/utils/api';
 import useSWR, { mutate as globalMutate } from 'swr';
 import { fetcher } from '@/lib/utils/swr-fetcher';
@@ -11,7 +11,7 @@ import AdminRoute from '@/components/AdminRoute';
 import { DeviceCategory, EventType, DeviceVM, DamageReportVM } from '@/types';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
 import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
-import ExportModal from '@/components/ExportModal';
+import { exportToExcel } from '@/lib/utils/excelExporter.client';
 
 interface UpcomingPlan {
   id: number;
@@ -135,9 +135,17 @@ function MaintenancePageContent() {
   const [planEvents, setPlanEvents] = useState<Record<number, BatchEvent>>({}); // Map planId -> latest event
   const [maintenanceReports, setMaintenanceReports] = useState<DamageReportVM[]>([]); // All damage reports for matching
   const [loading, setLoading] = useState(false);
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [exportParams, setExportParams] = useState<Record<string, any>>({});
-  const [exportTitle, setExportTitle] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState([
+    { id: 'index', label: 'STT', visible: true },
+    { id: 'deviceName', label: 'Tên thiết bị', visible: true },
+    { id: 'nextDueDate', label: 'Ngày bảo trì tiếp theo', visible: true },
+    { id: 'daysUntilDue', label: 'Số ngày còn lại', visible: true },
+    { id: 'title', label: 'Tiêu đề', visible: true },
+    { id: 'maintenanceType', label: 'Hình thức', visible: true },
+    { id: 'maintenanceProvider', label: 'Đơn vị thực hiện', visible: true },
+    { id: 'lastCompleted', label: 'Hoàn thành gần nhất', visible: true }
+  ]);
 
   // Modals
   const [showBatchModal, setShowBatchModal] = useState(false);
@@ -797,41 +805,141 @@ function MaintenancePageContent() {
     loadRoundDetail(batchId, roundDate);
   };
 
-  const handleExportRound = async (batchId: string, roundDate: string) => {
+  const handleExportMaintenanceRound = async (batchId: string, roundDate: string) => {
+    if (loading) return;
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/maintenance-rounds/${batchId}/${roundDate}/export`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      setLoading(true);
+      const res = await api.get(`/maintenance-rounds/${batchId}/${roundDate}/export`, {
+        responseType: 'blob'
       });
-
-      if (!response.ok) {
-        // Try to parse error as JSON
-        try {
-          const errorData = await response.json();
-          toast.error(errorData.error || 'Lỗi khi xuất báo cáo');
-        } catch {
-          toast.error('Lỗi khi xuất báo cáo');
-        }
-        return;
-      }
-
-      const blob = await response.blob();
+      
+      const blob = new Blob([res.data], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Bao-cao-dot-bao-tri-${batchId}-${roundDate}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Bao_cao_dot_bao_tri_${batchId}_${roundDate}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
       window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      toast.success('Đã xuất báo cáo thành công');
     } catch (error: any) {
       console.error('Error exporting round:', error);
-      toast.error('Lỗi khi xuất báo cáo');
+      toast.error('Lỗi khi xuất file Excel');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleExportMaintenance = async (params: Record<string, any> = {}) => {
+    if (exporting) return;
+    setExporting(true);
+    setLoading(true);
+
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.set('type', 'maintenance');
+      queryParams.set('preview', 'true');
+      
+      Object.entries(params).forEach(([key, val]) => {
+        if (val !== undefined && val !== null) queryParams.set(key, String(val));
+      });
+
+      const response = await api.get(`/statistics/export?${queryParams.toString()}`);
+      if (!response.data.status) {
+        throw new Error(response.data.error || 'Lỗi khi lấy dữ liệu xuất');
+      }
+
+      const rawData = response.data.data || [];
+      const columns = visibleColumns.filter(c => c.visible).map(c => ({
+        id: c.id,
+        label: c.label,
+        width: c.id === 'deviceName' || c.id === 'title' ? 40 : 20
+      }));
+
+      const exportData = rawData.map((item: any, idx: number) => {
+        const row: any = { ...item };
+        row.index = idx + 1;
+        row.nextDueDate = formatDateDisplay(item.nextDueDate);
+        row.maintenanceType = item.maintenanceType === 'internal' ? 'Nội bộ' : 'Thuê ngoài';
+        const last = item.lastCompletedEvent;
+        row.lastCompleted = last ? `${formatDateDisplay(last.endDate)} (${last.staffName || ''})` : 'Chưa có';
+        return row;
+      });
+
+      await exportToExcel({
+        title: params.batchId ? `BÁO CÁO LỊCH SỬ BẢO TRÌ BATCH: ${params.batchId}` : 'BÁO CÁO KẾ HOẠCH BẢO TRÌ THIẾT BỊ',
+        filename: `Bao_cao_bao_tri`,
+        columns,
+        data: exportData
+      });
+
+      toast.success('Xuất file thành công');
+    } catch (error: any) {
+      console.error('Export error:', error);
+      toast.error(error.message || 'Lỗi khi xuất file');
+    } finally {
+      setExporting(false);
+      setLoading(false);
+    }
+  };
+
+  const ColumnDropdown = () => {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      const clickOutside = (e: MouseEvent) => {
+        if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+          setIsOpen(false);
+        }
+      };
+      document.addEventListener('mousedown', clickOutside);
+      return () => document.removeEventListener('mousedown', clickOutside);
+    }, []);
+
+    const toggleColumn = (id: string) => {
+      setVisibleColumns(prev => prev.map(col =>
+        col.id === id ? { ...col, visible: !col.visible } : col
+      ));
+    };
+
+    return (
+      <div className="position-relative d-inline-block" ref={dropdownRef}>
+        <button
+          className="btn btn-outline-info btn-sm"
+          onClick={() => setIsOpen(!isOpen)}
+          title="Tùy chỉnh cột hiển thị"
+          style={{ width: '36px', height: '31px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <i className="fas fa-columns"></i>
+        </button>
+        {isOpen && (
+          <div className="position-absolute shadow-lg bg-white rounded p-3" style={{
+            zIndex: 1060, top: '35px', right: 0, width: '250px', maxHeight: '350px', overflowY: 'auto', border: '1px solid #dee2e6'
+          }}>
+            <h6 className="fw-bold mb-3 small">Hiển thị cột</h6>
+            <div className="d-flex flex-column gap-2">
+              {visibleColumns.map((col) => (
+                <div key={col.id} className="form-check mb-0">
+                  <input
+                    className="form-check-input shadow-none"
+                    type="checkbox"
+                    id={`col-maint-${col.id}`}
+                    checked={col.visible}
+                    onChange={() => toggleColumn(col.id)}
+                  />
+                  <label className="form-check-label small cur-pointer" htmlFor={`col-maint-${col.id}`} style={{ cursor: 'pointer' }}>
+                    {col.label}
+                  </label>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const handleReschedule = async () => {
@@ -1845,18 +1953,34 @@ function MaintenancePageContent() {
             <i className="fas fa-wrench me-2 text-primary"></i>
             Quản Lý Bảo Trì
           </h4>
-          <button
-            className="btn btn-white btn-sm border rounded-circle d-flex align-items-center justify-content-center"
-            style={{ width: '32px', height: '32px' }}
-            onClick={() => {
-              loadData();
-              toast.success('Đã tải lại dữ liệu');
-            }}
-            title="Tải lại dữ liệu"
-            id="reload-maintenance-btn"
-          >
-            <i className="fas fa-sync-alt" style={{ fontSize: '0.8rem' }}></i>
-          </button>
+          <div className="d-flex align-items-center gap-2">
+            <ColumnDropdown />
+            <button
+              className="btn btn-outline-success btn-sm d-flex align-items-center gap-2 px-3 fw-bold"
+              onClick={() => handleExportMaintenance()}
+              disabled={exporting}
+              title="Xuất Excel danh sách bảo trì"
+            >
+              {exporting ? (
+                <span className="spinner-border spinner-border-sm" role="status"></span>
+              ) : (
+                <i className="fas fa-file-excel"></i>
+              )}
+              <span className="d-none d-sm-inline">Xuất Excel</span>
+            </button>
+            <button
+              className="btn btn-white btn-sm border rounded-circle d-flex align-items-center justify-content-center"
+              style={{ width: '32px', height: '32px' }}
+              onClick={() => {
+                loadData();
+                toast.success('Đã tải lại dữ liệu');
+              }}
+              title="Tải lại dữ liệu"
+              id="reload-maintenance-btn"
+            >
+              <i className="fas fa-sync-alt" style={{ fontSize: '0.8rem' }}></i>
+            </button>
+          </div>
         </div>
 
         {/* Tabs - compact pill style */}
@@ -2467,13 +2591,13 @@ function MaintenancePageContent() {
                               aria-controls={collapseId}
                               style={{ cursor: 'pointer' }}
                             >
-                              <div className="d-flex flex-wrap justify-content-between align-items-start w-100 me-3 gap-3">
+                              <div className="d-flex flex-wrap flex-md-nowrap justify-content-between align-items-center w-100 pe-5 gap-3" style={{ minWidth: 0 }}>
                                 {/* Bên trái: Tiêu đề, Batch ID, Lịch trình - chia 2 hàng */}
-                                <div className="d-flex flex-column gap-2 flex-grow-1" style={{ minWidth: 'min(100%, 250px)' }}>
+                                <div className="d-flex flex-column gap-1 flex-grow-1 overflow-hidden" style={{ minWidth: '150px' }}>
                                   {/* Hàng trên: Tiêu đề và Batch ID */}
                                   <div className="d-flex align-items-center gap-2">
-                                    <i className="fas fa-layer-group text-primary"></i>
-                                    <h6 className="mb-0 fw-bold">{getShortTitle(group.title)}</h6>
+                                    <i className="fas fa-layer-group text-primary" style={{ fontSize: '0.9rem' }}></i>
+                                    <h6 className="mb-0 fw-bold text-truncate" style={{ fontSize: '0.95rem' }}>{getShortTitle(group.title)}</h6>
                                   </div>
 
                                   {/* Hàng dưới: Lịch trình */}
@@ -2513,9 +2637,9 @@ function MaintenancePageContent() {
                                 </div>
 
                                 {/* Bên phải: Thông tin thiết bị, badges và action buttons - chia 2 hàng, căn lề phải */}
-                                <div className="d-flex flex-column align-items-start align-items-md-end gap-2 flex-grow-1 flex-md-shrink-0 w-100 w-md-auto mt-2 mt-md-0">
-                                  {/* Hàng trên: Thông tin thiết bị và badges */}
-                                  <div className="d-flex flex-wrap align-items-center gap-1 gap-md-2 justify-content-start justify-content-md-end w-100 w-md-auto">
+                                <div className="d-flex flex-column flex-md-row align-items-md-center gap-2 flex-shrink-0 ms-auto mt-2 mt-md-0">
+                                  {/* Hàng trên (Badges) - sẽ thành cột trái trên desktop */}
+                                  <div className="d-flex flex-wrap align-items-center gap-1 gap-md-2 justify-content-start justify-content-md-end">
                                     <span className="text-muted small me-2">
                                       <i className="fas fa-boxes me-1"></i>
                                       <span className="fw-bold">{group.totalDevices}</span> thiết bị
@@ -2546,8 +2670,8 @@ function MaintenancePageContent() {
                                     )}
                                   </div>
 
-                                  {/* Hàng dưới: Action buttons */}
-                                  <div className="d-flex flex-wrap gap-2 justify-content-start justify-content-md-end mt-1 w-100 w-md-auto" onClick={(e) => e.stopPropagation()}>
+                                  {/* Hàng dưới (Actions) - sẽ thành cột phải trên desktop */}
+                                  <div className="d-flex flex-wrap gap-1 justify-content-start justify-content-md-end" onClick={(e) => e.stopPropagation()}>
                                     <button
                                       className="btn btn-sm btn-outline-info d-flex align-items-center justify-content-center"
                                       style={{ width: '32px', height: '32px', borderRadius: '6px' }}
@@ -2850,16 +2974,18 @@ function MaintenancePageContent() {
                     Chi Tiết Batch: {getShortTitle(selectedBatchTitle || selectedBatchId || '')}
                   </h5>
                   <div className="d-flex align-items-center gap-2">
+                    <ColumnDropdown />
                     <button
                       className="btn btn-outline-success btn-sm d-flex align-items-center gap-2"
-                      onClick={() => {
-                        setExportTitle(`Xuất lịch sử bảo trì: ${getShortTitle(selectedBatchTitle || selectedBatchId || '')}`);
-                        setExportParams({ batchId: selectedBatchId });
-                        setShowExportModal(true);
-                      }}
+                      onClick={() => handleExportMaintenance({ batchId: selectedBatchId })}
+                      disabled={exporting}
                       title="Xuất lịch sử bảo trì của kế hoạch này"
                     >
-                      <i className="fas fa-file-excel"></i>
+                      {exporting ? (
+                        <span className="spinner-border spinner-border-sm" role="status"></span>
+                      ) : (
+                        <i className="fas fa-file-excel"></i>
+                      )}
                       <span className="d-none d-sm-inline">Xuất lịch sử</span>
                     </button>
                     <button
@@ -3123,7 +3249,7 @@ function MaintenancePageContent() {
                                       </button>
                                       <button
                                         className="btn btn-outline-success"
-                                        onClick={() => handleExportRound(round.batchId, round.roundDate)}
+                                        onClick={() => handleExportMaintenanceRound(round.batchId, round.roundDate)}
                                         title="Xuất Excel"
                                       >
                                         <i className="fas fa-file-excel me-1"></i>
@@ -3433,7 +3559,7 @@ function MaintenancePageContent() {
                     className="btn btn-success"
                     onClick={() => {
                       if (selectedRound) {
-                        handleExportRound(selectedRound.batchId, selectedRound.roundDate);
+                        handleExportMaintenanceRound(selectedRound.batchId, selectedRound.roundDate);
                       }
                     }}
                   >
@@ -4866,14 +4992,7 @@ function MaintenancePageContent() {
           </div>
         )}
 
-        <ExportModal
-          show={showExportModal}
-          onClose={() => setShowExportModal(false)}
-          title={exportTitle}
-          apiEndpoint={exportParams.batchId ? `/maintenance-plans/${exportParams.batchId}/export` : ''}
-          params={exportParams}
-          defaultFileName="Lich_su_bao_tri"
-        />
+        
 
         <QuickViewReportModal
           isOpen={showQuickView}

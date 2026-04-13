@@ -3,6 +3,11 @@ import { authenticate } from '@/lib/auth/middleware';
 import pool from '@/lib/db';
 import { format } from 'date-fns';
 
+function stripHtml(html: string) {
+  if (!html) return '';
+  return html.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ').trim();
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { user, error } = await authenticate(request);
@@ -16,6 +21,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'devices'; // devices | reports | maintenance
     const departmentId = searchParams.get('departmentId');
+    const locationId = searchParams.get('locationId');
     const status = searchParams.get('status');
     const fromDate = searchParams.get('fromDate');
     const toDate = searchParams.get('toDate');
@@ -29,17 +35,23 @@ export async function GET(request: NextRequest) {
           loc."Name" as "LocationName",
           cat."Name" as "CategoryName"
         FROM "Device" d
-        LEFT JOIN "Department" dep ON d."DepartmentId" = dep."ID"
-        LEFT JOIN "Location" loc ON d."LocationId" = loc."ID"
-        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryId" = cat."ID"
+        LEFT JOIN "Department" dep ON d."DepartmentID" = dep."ID"
+        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
+        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
         WHERE 1=1
       `;
       const params: any[] = [];
       let paramCount = 1;
 
       if (departmentId && departmentId !== '0') {
-        query += ` AND d."DepartmentId" = $${paramCount}`;
+        query += ` AND d."DepartmentID" = $${paramCount}`;
         params.push(departmentId);
+        paramCount++;
+      }
+
+      if (locationId && locationId !== '0') {
+        query += ` AND d."LocationID" = $${paramCount}`;
+        params.push(locationId);
         paramCount++;
       }
 
@@ -71,7 +83,7 @@ export async function GET(request: NextRequest) {
         'Ngày sử dụng': row.UseDate ? format(new Date(row.UseDate), 'dd/MM/yyyy') : '',
         'Hạn bảo hành': row.WarrantyDate ? format(new Date(row.WarrantyDate), 'dd/MM/yyyy') : '',
         'Trạng thái': deviceStatusMap[row.Status] || 'Không xác định',
-        'Ghi chú': row.Description || ''
+        'Ghi chú': stripHtml(row.Description || '')
       }));
 
       return NextResponse.json({ status: true, data: formattedData });
@@ -87,18 +99,24 @@ export async function GET(request: NextRequest) {
           dep."Name" as "DepartmentName",
           s."Name" as "StaffName"
         FROM "Event" e
-        LEFT JOIN "EventType" t ON e."EventTypeId" = t."Id"
-        LEFT JOIN "Device" d ON e."DeviceId" = d."ID"
-        LEFT JOIN "Department" dep ON d."DepartmentId" = dep."ID"
-        LEFT JOIN "Staff" s ON e."StaffId" = s."ID"
+        LEFT JOIN "EventType" t ON e."EventTypeID" = t."ID"
+        LEFT JOIN "Device" d ON e."DeviceID" = d."ID"
+        LEFT JOIN "Department" dep ON d."DepartmentID" = dep."ID"
+        LEFT JOIN "Staff" s ON e."StaffID" = s."ID"
         WHERE t."Category" = 'maintenance'
       `;
       const params: any[] = [];
       let paramCount = 1;
 
       if (departmentId && departmentId !== '0') {
-        query += ` AND d."DepartmentId" = $${paramCount}`;
+        query += ` AND d."DepartmentID" = $${paramCount}`;
         params.push(departmentId);
+        paramCount++;
+      }
+
+      if (locationId && locationId !== '0') {
+        query += ` AND d."LocationID" = $${paramCount}`;
+        params.push(locationId);
         paramCount++;
       }
 
@@ -132,8 +150,8 @@ export async function GET(request: NextRequest) {
         'Ngày bắt đầu': row.StartDate ? format(new Date(row.StartDate), 'dd/MM/yyyy HH:mm') : '',
         'Ngày hoàn thành': row.EndDate ? format(new Date(row.EndDate), 'dd/MM/yyyy HH:mm') : '',
         'Trạng thái': statusMap[row.Status] || row.Status,
-        'Nội dung': row.Description || '',
-        'Kết quả/Ghi chú': row.Notes || ''
+        'Nội dung': stripHtml(row.Description || ''),
+        'Kết quả/Ghi chú': stripHtml(row.Notes || '')
       }));
 
       return NextResponse.json({ status: true, data: formattedData });

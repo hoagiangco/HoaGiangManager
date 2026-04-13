@@ -55,6 +55,7 @@ export class DamageReportService {
     reporterId?: number;
     handlerId?: number;
     departmentId?: number;
+    locationId?: number;
     search?: string;
     currentUserId?: string; // For filtering by current user's staffId
     isAdmin?: boolean; // If false, only show reports created by current user
@@ -165,6 +166,13 @@ export class DamageReportService {
         paramIndex++;
       }
 
+      if (filters.locationId) {
+        // Filter reports where the device's location matches
+        query += ` AND d."LocationID" = $${paramIndex}`;
+        params.push(filters.locationId);
+        paramIndex++;
+      }
+
       if (filters.search) {
         query += ` AND (
           dr."DamageContent" ILIKE $${paramIndex} OR
@@ -194,6 +202,7 @@ export class DamageReportService {
     reporterId?: number;
     handlerId?: number;
     departmentId?: number;
+    locationId?: number;
     search?: string;
     sortField?: string;
     sortOrder?: 'asc' | 'desc';
@@ -209,6 +218,7 @@ export class DamageReportService {
       reporterId, 
       handlerId, 
       departmentId, 
+      locationId,
       search, 
       sortField = 'reportDate', 
       sortOrder = 'desc',
@@ -257,6 +267,11 @@ export class DamageReportService {
     if (departmentId) {
       params.push(departmentId);
       whereClause += ` AND dr."ReportingDepartmentID" = $${params.length}`;
+    }
+
+    if (locationId) {
+      params.push(locationId);
+      whereClause += ` AND (d."LocationID" = $${params.length} OR dr."DamageLocation" ILIKE (SELECT "Name" FROM "Location" WHERE "ID" = $${params.length}))`;
     }
 
     if (search && search.trim()) {
@@ -1255,4 +1270,57 @@ export class DamageReportService {
       console.error('syncDeviceStatus failed:', err);
     }
   }
+
+  /**
+   * Get data for daily summary report
+   */
+  async getDailyReportData(date: Date): Promise<{
+    newReports: DamageReportVM[];
+    completedReports: DamageReportVM[];
+    pendingReports: DamageReportVM[];
+    summary: {
+      totalNew: number;
+      totalCompleted: number;
+      totalPending: number;
+    }
+  }> {
+    const from = new Date(date);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(date);
+    to.setHours(23, 59, 59, 999);
+
+    // Get all reports in one go 
+    const allReports = await this.getAll({ isAdmin: true });
+    
+    // 1. New reports today
+    const filteredNew = allReports.filter(r => {
+      if (!r.reportDate) return false;
+      const d = new Date(r.reportDate);
+      return d >= from && d <= to;
+    });
+
+    // 2. Completed reports today
+    const filteredCompleted = allReports.filter(r => {
+      if (!r.completedDate || r.status !== DamageReportStatus.Completed) return false;
+      const d = new Date(r.completedDate);
+      return d >= from && d <= to;
+    });
+
+    // 3. All pending/in-progress reports (snapshot of current state)
+    const pendingReports = allReports.filter(r => 
+      [DamageReportStatus.Pending, DamageReportStatus.Assigned, DamageReportStatus.InProgress].includes(r.status)
+    );
+
+    return {
+      newReports: filteredNew,
+      completedReports: filteredCompleted,
+      pendingReports: pendingReports,
+      summary: {
+        totalNew: filteredNew.length,
+        totalCompleted: filteredCompleted.length,
+        totalPending: pendingReports.length
+      }
+    };
+  }
 }
+

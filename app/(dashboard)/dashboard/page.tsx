@@ -7,6 +7,7 @@ import { fetcher } from '@/lib/utils/swr-fetcher';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { toast } from 'react-toastify';
 
 interface MaintenanceNotifications {
   overduePlans: number;
@@ -65,12 +66,66 @@ export default function DashboardPage() {
     inProgress: { totalCount: 0, unassignedCount: 0, handlers: [] }
   };
 
-  const stats = {
+    const stats = {
     devices: devicesData?.data?.length || 0,
     departments: departmentsData?.data?.length || 0,
     staff: staffData?.data?.length || 0,
     events: eventsData?.data?.length || 0,
     damageReports: damageReportsData?.data?.length || 0,
+  };
+
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportDailyReport = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      const response = await api.get('/damage-reports/daily-report', {
+        responseType: 'arraybuffer'
+      });
+      
+      const contentType = response.headers['content-type'] || '';
+      
+      // Check if server returned an error JSON
+      if (contentType.includes('application/json')) {
+        const text = new TextDecoder('utf-8').decode(response.data);
+        const errorData = JSON.parse(text);
+        throw new Error(errorData.error || 'Lỗi server');
+      }
+      
+      // Explicitly construct Blob with correct MIME type
+      const blob = new Blob([response.data], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      
+      // Generate safe filename
+      const dateStr = new Date().toLocaleDateString('en-GB').replace(/\//g, '-'); // dd-mm-yyyy
+      const fileName = `Bao_cao_ngay_${dateStr}.xlsx`;
+      
+      // Use dynamic import specifically to grab the default export correctly
+      const fileSaver = await import('file-saver');
+      const saveAsObject = fileSaver.default || fileSaver.saveAs || fileSaver;
+      saveAsObject(blob, fileName);
+      
+      toast.success('Đã xuất báo cáo ngày thành công');
+    } catch (error: any) {
+      console.error('Export failed:', error);
+      let errorMsg = 'Lỗi khi xuất báo cáo ngày. Vui lòng thử lại.';
+      
+      if (error.response?.data && error.response?.headers?.['content-type']?.includes('application/json')) {
+          try {
+             const text = new TextDecoder('utf-8').decode(error.response.data);
+             const errorData = JSON.parse(text);
+             errorMsg = errorData.error || errorMsg;
+          } catch(e) {}
+      } else if (error.message) {
+         errorMsg = error.message;
+      }
+      
+      toast.error(errorMsg);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const loading = !devicesData || !notificationsData || !pendingReportsData;
@@ -89,7 +144,7 @@ export default function DashboardPage() {
         <div className="alert-center-container">
           <div className="section-heading-compact mb-3">
             <i className="fas fa-bolt text-danger"></i>
-            Hệ thống & Cảnh báo quan trọng
+            Hệ thống thông báo
           </div>
           <div className="row g-2">
             {/* Pending Reports */}
@@ -146,7 +201,7 @@ export default function DashboardPage() {
       {/* Stats Grid - Extra Compact Tiles */}
       <div className="section-heading-compact">
         <i className="fas fa-chart-bar text-primary"></i>
-        Tổng quan tài sản
+        Chức năng
       </div>
       <div className="row g-2">
         <div className={isAdmin ? "col-xl-2 col-lg-4 col-md-6" : "col-xl-3 col-sm-6"}>
@@ -159,6 +214,24 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+        {isAdmin && (
+          <div className="col-xl-2 col-lg-4 col-md-6">
+            <div 
+              className={`stat-tile-compact ${isExporting ? 'opacity-50' : ''}`} 
+              onClick={handleExportDailyReport} 
+              style={{ cursor: isExporting ? 'wait' : 'pointer', border: '1px solid #e2e8f0' }}
+            >
+              <div className="stat-tile-accent" style={{ backgroundColor: '#2563eb' }}></div>
+              <div className="stat-tile-content">
+                <div className="stat-tile-title">Báo cáo ngày</div>
+                <div className="stat-tile-value">
+                  <i className={`fas ${isExporting ? 'fa-spinner fa-spin' : 'fa-file-excel'} text-primary`}></i>
+                </div>
+                <div className="stat-tile-footer text-primary text-decoration-none">Xuất Excel</div>
+              </div>
+            </div>
+          </div>
+        )}
         {isAdmin && (
           <>
             <div className="col-xl-2 col-lg-4 col-md-6">

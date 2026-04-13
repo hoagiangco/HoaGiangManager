@@ -1973,4 +1973,17 @@ a {
   align-items: center;
   gap: 0.5rem;
   text-transform: uppercase;
+}
+
+/* Professional Table Row Hover Effects */
+.table tbody tr td,
+.table tbody tr th,
+.dr-desktop-table tbody tr td {
+  transition: background-color 0.2s ease;
+}
+
+.table.table-hover tbody tr:hover td,
+.table.table-hover tbody tr:hover th,
+.dr-desktop-table tbody tr:hover td {
+  background-color: rgba(59, 130, 246, 0.05) !important;
 }

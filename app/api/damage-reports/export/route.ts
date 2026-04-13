@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const priority = searchParams.get('priority');
     const deviceId = searchParams.get('deviceId');
+    const locationId = searchParams.get('locationId');
     const keyword = searchParams.get('keyword');
     const isPreview = searchParams.get('preview') === 'true';
 
@@ -68,6 +69,9 @@ export async function GET(request: NextRequest) {
     }
     if (deviceId && parseInt(deviceId) > 0) {
       filters.deviceId = parseInt(deviceId);
+    }
+    if (locationId && parseInt(locationId) > 0) {
+      filters.locationId = parseInt(locationId);
     }
     if (keyword) {
       filters.keyword = keyword;
@@ -150,6 +154,11 @@ export async function GET(request: NextRequest) {
       [DamageReportPriority.Urgent]: 'Khẩn cấp',
     };
 
+    const stripHtml = (html: string) => {
+      if (!html) return '';
+      return html.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ').trim();
+    };
+
     const excelData = filteredReports.map(report => {
       const reporterName = staffMap.get(report.reporterId) || 'N/A';
       const handlerName = report.handlerId ? (staffMap.get(report.handlerId) || 'N/A') : 'Chưa phân công';
@@ -162,15 +171,13 @@ export async function GET(request: NextRequest) {
         'Người báo cáo': reporterName,
         'Phòng ban': departmentName,
         'Người xử lý': handlerName,
-        'Ngày phân công': formatDateDisplay(report.assignedDate) || '',
         'Ngày xử lý': formatDateDisplay(report.handlingDate) || '',
         'Ngày hoàn thành': formatDateDisplay(report.completedDate) || '',
         'Thiết bị/Vị trí': deviceName,
-        'Nội dung hư hỏng': report.damageContent || '',
+        'Nội dung hư hỏng': stripHtml(report.damageContent || ''),
         'Trạng thái': statusMap[report.status] || '',
         'Mức độ ưu tiên': priorityMap[report.priority] || '',
-        'Ghi chú': report.notes || '',
-        'Ghi chú người xử lý': report.handlerNotes || '',
+        'Ghi chú người xử lý': stripHtml(report.handlerNotes || ''),
         'Ngày tạo': formatDateTime(report.createdAt) || '',
         'Người cập nhật': report.updatedByName || '',
       };

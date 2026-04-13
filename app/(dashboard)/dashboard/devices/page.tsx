@@ -14,8 +14,7 @@ import FileManager from '@/components/FileManager';
 import AdminRoute from '@/components/AdminRoute';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
 import SearchableSelect from '@/components/SearchableSelect';
-import ExportModal from '@/components/ExportModal';
-import * as XLSX from 'xlsx';
+
 
 // Dynamically import ReactQuill to avoid SSR issues
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
@@ -31,7 +30,18 @@ function DevicesPageContent() {
   const [selectedDepartment, setSelectedDepartment] = useState(0);
   const [selectedLocation, setSelectedLocation] = useState(0);
   const [selectedStatus, setSelectedStatus] = useState<DeviceStatus | 0>(0);
-  const [showExportModal, setShowExportModal] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState([
+    { id: 'index', label: 'STT', visible: true },
+    { id: 'name', label: 'Tên thiết bị', visible: true },
+    { id: 'serial', label: 'Serial/mã nhận dạng', visible: true },
+    { id: 'warrantyDate', label: 'Bảo hành đến', visible: true },
+    { id: 'useDate', label: 'Ngày sử dụng', visible: true },
+    { id: 'deviceCategoryName', label: 'Danh mục', visible: true },
+    { id: 'departmentName', label: 'Phòng ban', visible: true },
+    { id: 'locationName', label: 'Vị trí', visible: true },
+    { id: 'status', label: 'Trạng thái', visible: true },
+    { id: 'lastReport', label: 'Báo cáo gần nhất', visible: false }
+  ]);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -375,13 +385,14 @@ function DevicesPageContent() {
       .replace(/Đ/g, 'D');
   };
 
-  const handleExportHistoryExcel = () => {
+  const handleExportHistoryExcel = async () => {
     if (!historyData) {
       toast.warning('Chưa có dữ liệu lịch sử để xuất');
       return;
     }
     
     try {
+      const XLSX = await import('xlsx');
       const wb = XLSX.utils.book_new();
       
       const dataRows: any[][] = [
@@ -580,6 +591,7 @@ function DevicesPageContent() {
       toast.error(msg || 'Lỗi khi thêm vị trí');
     }
   };
+
 
   const getStatusBadge = (status: DeviceStatus) => {
     const statusMap: Record<DeviceStatus, { label: string; color: string; bgColor: string }> = {
@@ -806,14 +818,6 @@ function DevicesPageContent() {
                 aria-label="Xóa"
               >
                 <i className="fas fa-trash"></i>
-              </button>
-              <button 
-                className="btn btn-success btn-sm ms-md-1" 
-                onClick={() => setShowExportModal(true)}
-                title="Xuất Excel danh sách thiết bị"
-                aria-label="Xuất Excel"
-              >
-                <i className="fas fa-file-excel"></i>
               </button>
               <button 
                 className="btn btn-white btn-sm border ms-1" 
@@ -1854,32 +1858,7 @@ function DevicesPageContent() {
         onClose={() => setShowQuickView(false)}
       />
 
-      <ExportModal
-        show={showExportModal}
-        onClose={() => setShowExportModal(false)}
-        title="Xuất Excel - Danh sách thiết bị"
-        apiEndpoint="/devices/export"
-        params={{
-          cateId: selectedCategory,
-          departmentId: selectedDepartment,
-          locationId: selectedLocation,
-          status: selectedStatus,
-          keyword: searchKeyword
-        }}
-        filterOptions={{
-          categories: categories.map(c => ({ id: c.id, name: c.name })),
-          departments: departments.map(d => ({ id: d.id, name: d.name })),
-          locations: locations.map(l => ({ id: l.id, name: l.name })),
-          statuses: [
-            { id: 1, name: 'Đang sử dụng' },
-            { id: 2, name: 'Đang sửa chữa' },
-            { id: 3, name: 'Hư hỏng' },
-            { id: 4, name: 'Đã thanh lý' },
-            { id: 5, name: 'Có hư hỏng' },
-          ]
-        }}
-        defaultFileName="Danh_sach_thiet_bi"
-      />
+      
     </div>
   );
 }
