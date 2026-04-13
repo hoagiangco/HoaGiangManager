@@ -1309,6 +1309,19 @@ export default function DamageReportsPage() {
     return report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.InProgress;
   };
 
+  const handleRemind = async (reportId: number) => {
+    try {
+      const response = await api.post('/reports/remind', { reportId });
+      if (response.data.status) {
+        toast.success(response.data.message || 'Đã gửi nhắc việc thành công');
+      } else {
+        toast.error(response.data.error || 'Lỗi khi gửi nhắc việc');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Lỗi khi gửi nhắc việc');
+    }
+  };
+
   const resetCompletionModal = () => {
     setCompletionModal({
       show: false,
@@ -2135,42 +2148,41 @@ export default function DamageReportsPage() {
                   position: 'relative'
                 }}
               >
-                <table className="table table-bordered table-hover table-striped align-middle" style={{ marginBottom: 0, minWidth: '1200px', borderCollapse: 'separate', borderSpacing: 0 }}>
+                <table className="table align-middle dr-desktop-table" style={{ marginBottom: 0, minWidth: '1200px', borderCollapse: 'collapse' }}>
                   <thead className="sticky-top dashboard-table-header" style={{ zIndex: 5, position: 'sticky', top: 0 }}>
-                    <tr style={{ fontWeight: '600', borderBottom: '2px solid #34495e', color: '#ffffff', fontSize: '0.8rem' }}>
-                      <th style={{ width: '60px' }}>
-                        <div className="d-flex align-items-center gap-1">
-                          <input
-                            type="checkbox"
-                            checked={currentReports.length > 0 && selectedIds.length === currentReports.length}
-                            onChange={handleSelectAll}
-                            style={{ transform: 'scale(1.25)', transformOrigin: 'left center' }}
-                          />
-                        </div>
+                    <tr style={{ fontWeight: '600', color: '#ffffff', fontSize: '0.75rem', letterSpacing: '0.03em' }}>
+                      <th style={{ width: '76px', textAlign: 'center', padding: '0.6rem 0.5rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={currentReports.length > 0 && selectedIds.length === currentReports.length}
+                          onChange={handleSelectAll}
+                          style={{ transform: 'scale(1.2)', cursor: 'pointer' }}
+                          title="Chọn tất cả"
+                        />
                       </th>
-                      <th style={{ cursor: 'pointer', minWidth: '150px' }} onClick={() => handleSort('displayLocation')}>
+                      <th style={{ cursor: 'pointer', minWidth: '150px', padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }} onClick={() => handleSort('displayLocation')}>
                         Vị trí/Thiết bị {getSortIcon('displayLocation')}
                       </th>
-                      <th style={{ cursor: 'pointer', minWidth: '200px' }} onClick={() => handleSort('damageContent')}>
+                      <th style={{ cursor: 'pointer', minWidth: '200px', padding: '0.6rem 0.75rem' }} onClick={() => handleSort('damageContent')}>
                         Nội dung {getSortIcon('damageContent')}
                       </th>
-                      <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reportDate')}>
+                      <th style={{ cursor: 'pointer', minWidth: '105px', padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }} onClick={() => handleSort('reportDate')}>
                         Ngày b/c {getSortIcon('reportDate')}
                       </th>
-                      <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('reporterName')}>
+                      <th style={{ cursor: 'pointer', minWidth: '120px', padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }} onClick={() => handleSort('reporterName')}>
                         Người b/c {getSortIcon('reporterName')}
                       </th>
-                      <th style={{ cursor: 'pointer', minWidth: '120px' }} onClick={() => handleSort('handlerName')}>
+                      <th style={{ cursor: 'pointer', minWidth: '120px', padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }} onClick={() => handleSort('handlerName')}>
                         Người xử lý {getSortIcon('handlerName')}
                       </th>
-                      <th style={{ minWidth: '120px' }}>Người cập nhật</th>
-                      <th style={{ cursor: 'pointer', minWidth: '100px' }} onClick={() => handleSort('status')}>
+                      <th style={{ minWidth: '110px', padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }}>Ngày hoàn thành</th>
+                      <th style={{ cursor: 'pointer', minWidth: '70px', padding: '0.6rem 0.4rem', whiteSpace: 'nowrap' }} onClick={() => handleSort('status')}>
                         Trạng thái {getSortIcon('status')}
                       </th>
-                      <th style={{ cursor: 'pointer', minWidth: '100px' }} onClick={() => handleSort('priority')}>
+                      <th style={{ cursor: 'pointer', minWidth: '55px', padding: '0.6rem 0.4rem', whiteSpace: 'nowrap' }} onClick={() => handleSort('priority')}>
                         Ưu tiên {getSortIcon('priority')}
                       </th>
-                      <th style={{ minWidth: '200px' }}>Ghi chú người xử lý</th>
+                      <th style={{ minWidth: '280px', padding: '0.6rem 0.75rem' }}>Ghi chú xử lý</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2191,132 +2203,205 @@ export default function DamageReportsPage() {
                       currentReports.map((report) => (
                         <tr
                           key={report.id}
+                          className={`dr-table-row${selectedIds.includes(report.id) ? ' dr-row-selected' : ''}`}
                           style={{
-                            cursor: report.id && selectedIds.includes(report.id) ? 'pointer' : 'default',
                             verticalAlign: 'middle',
-                            fontSize: '0.8rem'
+                            fontSize: '0.8rem',
+                            borderBottom: '1px solid #eef0f3',
+                            transition: 'background-color 0.12s ease'
                           }}
                         >
-                          <td>
-                            <div className="d-flex align-items-center gap-2">
+                          <td style={{ padding: '0.3rem 0.4rem', width: '76px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center' }}>
+                              {/* Checkbox */}
                               <input
                                 type="checkbox"
                                 checked={selectedIds.includes(report.id)}
                                 onChange={() => handleCheckboxChange(report.id)}
-                                style={{ transform: 'scale(1.25)', transformOrigin: 'left center' }}
+                                style={{ transform: 'scale(1.15)', cursor: 'pointer', flexShrink: 0 }}
                               />
-                              <button
-                                type="button"
-                                className="btn btn-link text-primary p-0 border-0 shadow-none"
-                                title="Xem nhanh"
-                                onClick={(e) => { e.stopPropagation(); openQuickView(report.id); }}
-                                style={{ lineHeight: 1 }}
-                              >
-                                <i className="fas fa-eye"></i>
-                              </button>
+                              {/* Action button group: eye + bell */}
+                              <div style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '6px',
+                                overflow: 'hidden',
+                                backgroundColor: '#f8fafc',
+                                flexShrink: 0
+                              }}>
+                                {/* Eye button */}
+                                <button
+                                  type="button"
+                                  title="Xem nhanh"
+                                  onClick={(e) => { e.stopPropagation(); openQuickView(report.id); }}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    borderRight: '1px solid #e2e8f0',
+                                    padding: '3px 6px',
+                                    cursor: 'pointer',
+                                    color: '#2563eb',
+                                    fontSize: '0.72rem',
+                                    lineHeight: 1,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    transition: 'background 0.12s'
+                                  }}
+                                  onMouseEnter={e => (e.currentTarget.style.background = '#eff6ff')}
+                                  onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                                >
+                                  <i className="fas fa-eye"></i>
+                                </button>
+                                {/* Bell button — always takes space to keep column width consistent */}
+                                <div style={{ width: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned || report.status === DamageReportStatus.InProgress) && report.handlerId && (isAdmin(currentUser?.roles) || report.reporterId === currentUserStaffId) ? (
+                                    <button
+                                      type="button"
+                                      title="Nhắc nhở xử lý"
+                                      onClick={(e) => { e.stopPropagation(); handleRemind(report.id); }}
+                                      style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        padding: '3px 4px',
+                                        cursor: 'pointer',
+                                        color: '#d97706',
+                                        fontSize: '0.72rem',
+                                        lineHeight: 1,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        width: '100%',
+                                        justifyContent: 'center',
+                                        transition: 'background 0.12s'
+                                      }}
+                                      onMouseEnter={e => (e.currentTarget.style.background = '#fffbeb')}
+                                      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                                    >
+                                      <i className="fas fa-bell"></i>
+                                    </button>
+                                  ) : (
+                                    <span style={{ width: '100%', display: 'block' }} />
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </td>
-                          <td>
-                            {report.displayLocation || 'Không xác định'}
-                            {report.isOverdue && (
-                              <i className="fas fa-exclamation-triangle text-danger ms-1" title="Quá hạn"></i>
-                            )}
+                          {/* Vị trí/Thiết bị */}
+                          <td style={{ padding: '0.45rem 0.75rem', maxWidth: '170px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <span style={{ fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                                {report.displayLocation || 'Không xác định'}
+                              </span>
+                              {report.isOverdue && (
+                                <i className="fas fa-exclamation-triangle" style={{ color: '#ef4444', fontSize: '0.7rem', flexShrink: 0 }} title="Quá hạn"></i>
+                              )}
+                            </div>
                           </td>
-                          <td>
-                            <div style={{ maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {/* Nội dung */}
+                          <td style={{ padding: '0.45rem 0.75rem' }}>
+                            <div style={{ minWidth: '150px', maxWidth: '400px', whiteSpace: 'normal', wordBreak: 'break-word', color: '#374151' }}>
                               {report.damageContent || 'N/A'}
                             </div>
                           </td>
-                          <td>{report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}</td>
-                          <td>{report.reporterName || 'N/A'}</td>
-                          <td>{report.handlerName || 'Chưa phân công'}</td>
-                          <td>{report.updatedByName || '-'}</td>
-                          <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
-                              <select
-                                className="form-control form-control-sm damage-report-status-select"
-                                value={report.status}
-                                onChange={(e) => handleStatusChange(report.id, Number(e.target.value) as DamageReportStatus)}
-                                disabled={!canUpdateStatusForReport(report)}
-                                style={{
-                                  width: 'auto',
-                                  minWidth: '85px',
-                                  maxWidth: '100px',
-                                  fontSize: '0.65rem',
-                                  fontWeight: '600',
-                                  padding: '0.1rem 0.4rem',
-                                  height: '1.4rem',
-                                  lineHeight: '1.2',
-                                  border: 'none',
-                                  borderRadius: '20px',
-                                  display: 'inline-block',
-                                  textAlign: 'center',
-                                  appearance: 'none',
-                                  WebkitAppearance: 'none',
-                                  ...getStatusStyle(report.status)
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                 {isAdmin(currentUser?.roles) ? (
-                                  <>
-                                    <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.7rem' }}>Chờ xử lý</option>
-                                    <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.7rem' }}>Đang xử lý</option>
-                                    <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.7rem' }}>Hoàn thành</option>
-                                    <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.7rem' }}>Đã hủy</option>
-                                    <option value={DamageReportStatus.Rejected} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.7rem' }}>Từ chối</option>
-                                  </>
-                                ) : (
-                                  <>
-                                    {/* User can only see Pending option if they are currently Pending */}
-                                    {report.status === DamageReportStatus.Pending && (
-                                      <option value={DamageReportStatus.Pending} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.7rem' }}>Chờ xử lý</option>
-                                    )}
-                                    {/* Can transition to or stay in InProgress */}
-                                    {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.InProgress) && (
-                                      <option value={DamageReportStatus.InProgress} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.7rem' }}>Đang xử lý</option>
-                                    )}
-                                    <option value={DamageReportStatus.Completed} style={{ backgroundColor: '#d1e7dd', color: '#0f5132', fontSize: '0.7rem' }}>Hoàn thành</option>
-                                    {report.status === DamageReportStatus.Cancelled && (
-                                      <option value={DamageReportStatus.Cancelled} style={{ backgroundColor: '#e9ecef', color: '#212529', fontSize: '0.7rem' }}>Đã hủy</option>
-                                    )}
-                                    <option value={DamageReportStatus.Rejected} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.7rem' }}>Từ chối</option>
-                                  </>
-                                )}
-                              </select>
-                            </div>
+                          {/* Ngày */}
+                          <td style={{ padding: '0.45rem 0.75rem', whiteSpace: 'nowrap', color: '#64748b', fontSize: '0.77rem' }}>
+                            {report.reportDate ? formatDateDisplay(report.reportDate) : 'N/A'}
                           </td>
-                          <td>
+                          {/* Người b/c */}
+                          <td style={{ padding: '0.45rem 0.75rem', whiteSpace: 'nowrap' }}>
+                            <span style={{ color: '#334155', fontWeight: 500 }}>{report.reporterName || 'N/A'}</span>
+                          </td>
+                          {/* Người xử lý */}
+                          <td style={{ padding: '0.45rem 0.75rem', whiteSpace: 'nowrap' }}>
+                            {report.handlerName
+                              ? <span style={{ color: '#2563eb', fontWeight: 500 }}>{report.handlerName}</span>
+                              : <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.75rem' }}>Chưa phân công</span>
+                            }
+                          </td>
+                          {/* Ngày hoàn thành */}
+                          <td style={{ padding: '0.45rem 0.75rem', whiteSpace: 'nowrap', color: '#64748b', fontSize: '0.77rem' }}>
+                            {report.completedDate
+                              ? <span style={{ color: '#16a34a', fontWeight: 500 }}>{formatDateDisplay(report.completedDate)}</span>
+                              : <span style={{ color: '#cbd5e1' }}>—</span>
+                            }
+                          </td>
+                          {/* Trạng thái */}
+                          <td style={{ padding: '0.2rem 0.3rem' }}>
                             <select
-                              className="form-control form-control-sm damage-report-priority-select"
+                              className="damage-report-status-select"
+                              value={report.status}
+                              onChange={(e) => handleStatusChange(report.id, Number(e.target.value) as DamageReportStatus)}
+                              disabled={!canUpdateStatusForReport(report)}
+                              style={{
+                                fontSize: '0.68rem',
+                                fontWeight: 600,
+                                padding: '0.1rem 0.9rem 0.1rem 0.2rem',
+                                height: '22px',
+                                border: '1.5px solid',
+                                borderRadius: '4px',
+                                cursor: canUpdateStatusForReport(report) ? 'pointer' : 'default',
+                                outline: 'none',
+                                width: 'fit-content',
+                                letterSpacing: '0.01em',
+                                ...getStatusStyle(report.status)
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {isAdmin(currentUser?.roles) ? (
+                                <>
+                                  <option value={DamageReportStatus.Pending}>Chờ</option>
+                                  <option value={DamageReportStatus.InProgress}>Đang XL</option>
+                                  <option value={DamageReportStatus.Completed}>Xong</option>
+                                  <option value={DamageReportStatus.Cancelled}>Hủy</option>
+                                  <option value={DamageReportStatus.Rejected}>Từ chối</option>
+                                </>
+                              ) : (
+                                <>
+                                  {report.status === DamageReportStatus.Pending && (
+                                    <option value={DamageReportStatus.Pending}>Chờ</option>
+                                  )}
+                                  {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.InProgress) && (
+                                    <option value={DamageReportStatus.InProgress}>Đang XL</option>
+                                  )}
+                                  <option value={DamageReportStatus.Completed}>Xong</option>
+                                  {report.status === DamageReportStatus.Cancelled && (
+                                    <option value={DamageReportStatus.Cancelled}>Hủy</option>
+                                  )}
+                                  <option value={DamageReportStatus.Rejected}>Từ chối</option>
+                                </>
+                              )}
+                            </select>
+                          </td>
+                          {/* Ưu tiên */}
+                          <td style={{ padding: '0.2rem 0.3rem' }}>
+                            <select
+                              className="damage-report-priority-select"
                               value={report.priority}
                               onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
                               disabled={!userPermissions.canEdit || report.status === DamageReportStatus.Completed}
                               style={{
-                                width: 'auto',
-                                minWidth: '75px',
-                                maxWidth: '90px',
-                                fontSize: '0.65rem',
-                                fontWeight: '600',
-                                padding: '0.1rem 0.4rem',
-                                height: '1.4rem',
-                                lineHeight: '1.2',
-                                border: 'none',
-                                borderRadius: '20px',
-                                display: 'inline-block',
-                                textAlign: 'center',
-                                appearance: 'none',
-                                WebkitAppearance: 'none',
+                                fontSize: '0.68rem',
+                                fontWeight: 600,
+                                padding: '0.1rem 0.9rem 0.1rem 0.2rem',
+                                height: '22px',
+                                border: '1.5px solid',
+                                borderRadius: '4px',
+                                cursor: (!userPermissions.canEdit || report.status === DamageReportStatus.Completed) ? 'default' : 'pointer',
+                                outline: 'none',
+                                width: 'fit-content',
+                                letterSpacing: '0.01em',
                                 ...getPriorityStyle(report.priority)
                               }}
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <option value={DamageReportPriority.Low} style={{ backgroundColor: '#f8f9fa', color: '#6c757d', fontSize: '0.7rem' }}>Thấp</option>
-                              <option value={DamageReportPriority.Normal} style={{ backgroundColor: '#cfe2ff', color: '#0a58ca', fontSize: '0.7rem' }}>Bình thường</option>
-                              <option value={DamageReportPriority.High} style={{ backgroundColor: '#fff3cd', color: '#664d03', fontSize: '0.7rem' }}>Cao</option>
-                              <option value={DamageReportPriority.Urgent} style={{ backgroundColor: '#f8d7da', color: '#842029', fontSize: '0.7rem' }}>Khẩn cấp</option>
+                              <option value={DamageReportPriority.Low}>Thấp</option>
+                              <option value={DamageReportPriority.Normal}>Thường</option>
+                              <option value={DamageReportPriority.High}>Cao</option>
+                              <option value={DamageReportPriority.Urgent}>Khẩn</option>
                             </select>
                           </td>
-                          <td onClick={(e) => e.stopPropagation()}>
+                          {/* Ghi chú xử lý */}
+                          <td style={{ padding: '0.45rem 0.75rem' }} onClick={(e) => e.stopPropagation()}>
                             <HandlerNotesEditor
                               reportId={report.id}
                               value={report.handlerNotes || ''}
@@ -2435,6 +2520,25 @@ export default function DamageReportsPage() {
                           >
                             <i className="fas fa-expand-alt fa-sm"></i>
                           </button>
+                          {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned || report.status === DamageReportStatus.InProgress) && report.handlerId && (isAdmin(currentUser?.roles) || report.reporterId === currentUserStaffId) && (
+                            <button
+                              type="button"
+                              className="btn btn-icon-only rounded-circle border-0"
+                              title="Nhắc nhở xử lý"
+                              style={{ 
+                                backgroundColor: 'rgba(255,193,7,0.2)',
+                                color: '#ffc107',
+                                width: '32px',
+                                height: '32px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                              onClick={(e) => { e.stopPropagation(); handleRemind(report.id); }}
+                            >
+                              <i className="fas fa-bell fa-sm"></i>
+                            </button>
+                          )}
                           <div className="form-check m-0 p-0" style={{ minHeight: 'auto' }}>
                             <input
                               type="checkbox"

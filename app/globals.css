@@ -864,6 +864,95 @@ a {
   }
 }
 
+/* ================================================
+   Damage Reports - Desktop Data Grid Table
+   ================================================ */
+@media (min-width: 993px) {
+  /* Base table reset for clean data-grid look */
+  .dr-desktop-table {
+    border-top: 2px solid #e2e8f0;
+    background: #ffffff;
+  }
+
+  .dr-desktop-table thead tr {
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    border-bottom: none;
+  }
+
+  .dr-desktop-table thead th {
+    border: none !important;
+    border-right: 1px solid rgba(255,255,255,0.08) !important;
+    background: transparent;
+    user-select: none;
+  }
+
+  .dr-desktop-table thead th:last-child {
+    border-right: none !important;
+  }
+
+  /* Body row baseline */
+  .dr-desktop-table tbody tr {
+    background-color: #ffffff;
+  }
+
+  /* Zebra stripe - subtle */
+  .dr-desktop-table tbody tr:nth-child(even) {
+    background-color: #f8fafc;
+  }
+
+  /* Row hover */
+  .dr-table-row:hover {
+    background-color: #eff6ff !important;
+    box-shadow: inset 3px 0 0 #3b82f6;
+  }
+
+  /* Selected row */
+  .dr-row-selected {
+    background-color: #dbeafe !important;
+    box-shadow: inset 3px 0 0 #2563eb;
+  }
+
+  .dr-row-selected:hover {
+    background-color: #bfdbfe !important;
+  }
+
+  /* Cell borders - only horizontal separator */
+  .dr-desktop-table tbody td {
+    border-left: none !important;
+    border-right: none !important;
+    border-top: none !important;
+  }
+
+  /* Status & Priority select - show dropdown arrow, proper focus ring */
+  .damage-report-status-select,
+  .damage-report-priority-select {
+    appearance: auto !important;
+    -webkit-appearance: auto !important;
+    background-image: none !important;
+    cursor: pointer;
+    transition: box-shadow 0.15s ease, opacity 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  }
+
+  .damage-report-status-select:hover:not(:disabled),
+  .damage-report-priority-select:hover:not(:disabled) {
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+    opacity: 1;
+  }
+
+  .damage-report-status-select:focus,
+  .damage-report-priority-select:focus {
+    box-shadow: 0 0 0 2.5px rgba(37, 99, 235, 0.4) !important;
+    outline: none !important;
+  }
+
+  .damage-report-status-select:disabled,
+  .damage-report-priority-select:disabled {
+    opacity: 0.75;
+    cursor: not-allowed;
+  }
+}
+
 /* Damage Report Card Hover Effect */
 .damage-report-card {
   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
@@ -873,6 +962,7 @@ a {
   transform: translateY(-5px);
   box-shadow: 0 8px 25px rgba(0,0,0,0.1) !important;
   border-color: rgba(0,0,0,0.15) !important;
+
 }
 
 
