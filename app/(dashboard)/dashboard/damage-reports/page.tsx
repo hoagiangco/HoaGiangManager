@@ -601,6 +601,41 @@ export default function DamageReportsPage() {
     setLoading(reportsLoading);
   }, [reportsLoading]);
 
+  // Handle query parameters for automated report creation (from maintenance module)
+  useEffect(() => {
+    if (currentUser && currentUserStaffId && staff.length > 0 && typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const action = params.get('action');
+      const batchId = params.get('batchId');
+      
+      if (action === 'create' && batchId) {
+        // Find current staff to get departmentId
+        const currentStaff = staff.find(s => s.id === currentUserStaffId);
+        
+        // Find batch to get title
+        const batch = maintenanceBatches.find(b => b.batchId === batchId);
+        const batchTitle = batch ? batch.title : batchId;
+        
+        // Open create modal with batchId pre-filled
+        setFormData(prev => ({
+          ...prev,
+          deviceSelection: 'maintenance',
+          maintenanceBatchId: batchId,
+          damageContent: `Thực hiện bảo trì cho đợt ${batchTitle}`,
+          reportDate: formatDateInput(new Date()),
+          reporterId: currentUserStaffId,
+          reportingDepartmentId: currentStaff?.departmentId || 0,
+          handlerId: currentUserStaffId,
+        }));
+        setShowModal(true);
+        
+        // Clear the URL parameters to prevent re-opening on refresh
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+      }
+    }
+  }, [currentUser, currentUserStaffId, staff, maintenanceBatches, reportsResponse]); // Wait for currentUser, staff list, batches and initial data load
+
   const loadData = async () => {
     mutate();
     globalMutate('/reports/pending');

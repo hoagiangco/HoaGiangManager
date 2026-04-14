@@ -209,6 +209,7 @@ function MaintenancePageContent() {
   const [batchCompleteDate, setBatchCompleteDate] = useState('');
   const [batchCompleteNotes, setBatchCompleteNotes] = useState('');
   const [batchCompleteStaffId, setBatchCompleteStaffId] = useState<number | null>(null);
+  const [batchAutoCreateReport, setBatchAutoCreateReport] = useState(true);
   const [selectedGroup, setSelectedGroup] = useState<{
     batchId: string;
     title: string;
@@ -236,7 +237,7 @@ function MaintenancePageContent() {
   const [completeDate, setCompleteDate] = useState('');
   const [completeNotes, setCompleteNotes] = useState('');
   const [completeStaffId, setCompleteStaffId] = useState<number | null>(null);
-  const [staffList, setStaffList] = useState<Array<{ id: number; name: string }>>([]);
+  const [staffList, setStaffList] = useState<Array<{ id: number; name: string; departmentId?: number }>>([]);
 
   // Start maintenance modal
   const [showStartModal, setShowStartModal] = useState(false);
@@ -247,6 +248,53 @@ function MaintenancePageContent() {
   const [showDeviceModal, setShowDeviceModal] = useState(false);
   const [allDevices, setAllDevices] = useState<DeviceVM[]>([]);
   const [filteredDevices, setFilteredDevices] = useState<DeviceVM[]>([]);
+
+  // Function to check if a report already exists for a batch (only active and recent ones)
+  const checkIfReportExists = (batchId: string, currentDate: string) => {
+    return maintenanceReports.some(report => 
+      report.maintenanceBatchId === batchId && 
+      report.status !== 4 && 
+      report.status !== 5 &&
+      (report.reportDate || '') >= currentDate // Chỉ tính báo cáo có ngày lớn hơn hoặc bằng ngày đang chọn
+    );
+  };
+
+  // Helper to create a quick report in the background
+  const handleGenerateReport = async (batch: { batchId: string; title: string }, staffId: number | null, notes: string = '', date: string = formatDateInput(new Date())) => {
+    if (checkIfReportExists(batch.batchId, date)) {
+      toast.warning(`Đã có báo cáo cho đợt bảo trì: ${batch.title}. Hãy kiểm tra lại trong mục Báo cáo.`);
+      return false;
+    }
+
+    try {
+      // Lấy thông tin phòng ban của nhân viên nếu có
+      let departmentId = 0;
+      const staff = staffList.find(s => s.id === staffId);
+      if (staff && staff.departmentId) {
+        departmentId = staff.departmentId;
+      }
+
+      await api.post('/damage-reports', {
+        deviceSelection: 'maintenance',
+        maintenanceBatchId: batch.batchId,
+        damageContent: `Báo cáo bảo trì định kỳ cho đợt: ${batch.title}.${notes ? ' Ghi chú: ' + notes : ''}`,
+        reportDate: date,
+        status: 1, // Pending (chờ xử lý)
+        priority: 2, // Normal
+        reporterId: staffId || currentUserStaffId || 0,
+        handlerId: staffId || currentUserStaffId || 0,
+        reportingDepartmentId: departmentId,
+      });
+      
+      toast.success('Đã tự động tạo báo cáo công việc (Trạng thái: Chờ xử lý)');
+      globalMutate('/damage-reports'); // Refresh data in background
+      return true;
+    } catch (error) {
+      console.error('Error generating report:', error);
+      toast.error('Lỗi khi tạo báo cáo công việc');
+      return false;
+    }
+  };
   const [deviceSearchKeyword, setDeviceSearchKeyword] = useState('');
   const [selectedDevices, setSelectedDevices] = useState<DeviceVM[]>([]);
   const [categoryDevices, setCategoryDevices] = useState<DeviceVM[]>([]);
@@ -1430,7 +1478,18 @@ function MaintenancePageContent() {
             });
           });
         }
+
+        // Tự động tạo báo cáo (Trạng thái chờ xử lý)
+        if (selectedGroup && selectedGroup.batchId !== 'no-batch') {
+          await handleGenerateReport(
+            { batchId: selectedGroup.batchId, title: selectedGroup.title },
+            batchCompleteStaffId,
+            batchCompleteNotes,
+            batchCompleteDate
+          );
+        }
       }
+      
       if (errorCount > 0) {
         toast.warning(`${errorCount} kế hoạch gặp lỗi khi ghi nhận hoàn thành`);
       }
@@ -1652,6 +1711,7 @@ function MaintenancePageContent() {
         setStaffList((response.data.data || []).map((s: any) => ({
           id: s.id,
           name: s.name || `Nhân viên #${s.id}`,
+          departmentId: s.departmentId,
         })));
       }
     } catch (error: any) {
@@ -1666,17 +1726,37 @@ function MaintenancePageContent() {
     }
 
     try {
-      const response = await api.put(`/events/${selectedEvent.id}`, {
-        status: 'in_progress',
-        startDate: formatDateInput(new Date()),
-        notes: startNotes.trim() || null,
-        staffId: startStaffId || null,
-      });
+      let response;
+      if (selectedEvent.id === 0) {
+        // Create new event
+        response = await api.post('/events', {
+          title: selectedEvent.title || `Bảo trì - ${selectedEvent.deviceName}`,
+          deviceId: selectedEvent.deviceId,
+          eventTypeId: selectedEvent.eventTypeId || 0,
+          status: 'in_progress',
+          startDate: formatDateInput(new Date()),
+          eventDate: formatDateInput(new Date()),
+          notes: startNotes.trim() || null,
+          staffId: startStaffId || null,
+          metadata: {
+            maintenanceBatchId: selectedEvent.maintenanceBatchId
+          }
+        });
+      } else {
+        // Update existing event
+        response = await api.put(`/events/${selectedEvent.id}`, {
+          status: 'in_progress',
+          startDate: formatDateInput(new Date()),
+          notes: startNotes.trim() || null,
+          staffId: startStaffId || null,
+        });
+      }
 
       if (response.data.status) {
         toast.success('Đã bắt đầu bảo trì');
         setShowStartModal(false);
         setSelectedEvent(null);
+        setSelectedPlan(null);
         setStartNotes('');
         setStartStaffId(null);
 
@@ -2690,14 +2770,6 @@ function MaintenancePageContent() {
                                           nextDate.setHours(0, 0, 0, 0);
                                           const daysUntilDue = Math.ceil((nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
                                           
-                                          if (daysUntilDue <= 0 && group.matchedReport) {
-                                            return (
-                                              <span className="ms-md-2 mt-1 mt-md-0 px-2 py-0 border border-info border-opacity-50 text-info rounded bg-info bg-opacity-10 d-inline-flex align-items-center" style={{ fontSize: '0.75rem' }}>
-                                                <i className="fas fa-tools me-1"></i>đang thực hiện: {formatDateDisplay(group.matchedReport.reportDate)}
-                                              </span>
-                                            );
-                                          }
-
                                           const statusText = daysUntilDue > 0 ? `còn lại ${daysUntilDue} ngày` : daysUntilDue === 0 ? 'hôm nay' : `quá ${Math.abs(daysUntilDue)} ngày`;
                                           return <span className="ms-1">({statusText})</span>;
                                         })()}
@@ -2714,7 +2786,7 @@ function MaintenancePageContent() {
                                       <i className="fas fa-boxes me-1"></i>
                                       <span className="fw-bold">{group.totalDevices}</span> thiết bị
                                     </span>
-                                    {group.metadata?.assignedStaffId && isUserAdmin && (() => {
+                                    {group.metadata?.assignedStaffId && (() => {
                                       const assignee = staffListForCreate.find((s: any) => s.id === group.metadata?.assignedStaffId);
                                       if (assignee) {
                                         return (
@@ -2769,10 +2841,11 @@ function MaintenancePageContent() {
                                     >
                                       <i className="fas fa-eye"></i>
                                     </button>
-                                    {group.activeCount > 0 && isUserAdmin && (
+                                    
+                                    {/* Ghi nhận hoàn thành cho Admin HOẶC Người được phân công */}
+                                    {group.activeCount > 0 && (isUserAdmin || group.metadata?.assignedStaffId === currentUserStaffId) && (
                                       <>
                                         {(() => {
-                                          // Kiểm tra xem có plan nào đã đến hạn không
                                           const today = new Date();
                                           today.setHours(0, 0, 0, 0);
                                           const hasDuePlans = group.plans.some((plan) => {
@@ -2781,25 +2854,55 @@ function MaintenancePageContent() {
                                             dueDate.setHours(0, 0, 0, 0);
                                             return dueDate <= today;
                                           });
- 
-                                          return hasDuePlans ? (
-                                            <button
-                                              className="btn btn-sm btn-outline-success d-flex align-items-center justify-content-center"
-                                              style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                              onClick={() => {
-                                                setSelectedGroup(group);
-                                                setBatchCompleteDate(formatDateInput(new Date()));
-                                                setBatchCompleteNotes('');
-                                                setBatchCompleteStaffId(null);
-                                                loadStaffList();
-                                                setShowBatchCompleteModal(true);
-                                              }}
-                                              title="Ghi nhận hoàn thành tất cả"
-                                            >
-                                              <i className="fas fa-check-double"></i>
-                                            </button>
-                                          ) : null;
+
+                                          // Button Lập báo cáo luôn xuất hiện nếu là nhóm có thiết bị đang hoạt động
+                                          const canCreateReport = group.activeCount > 0;
+  
+                                          return (
+                                            <>
+                                              {canCreateReport && (
+                                                <button
+                                                  className="btn btn-sm btn-outline-primary d-flex align-items-center justify-content-center"
+                                                  style={{ width: '32px', height: '32px', borderRadius: '6px' }}
+                                                  onClick={() => {
+                                                    handleGenerateReport(
+                                                      { batchId: group.batchId, title: group.title },
+                                                      currentUserStaffId,
+                                                      'Lập báo cáo thủ công từ danh sách bảo trì'
+                                                    );
+                                                  }}
+                                                  title="Lập ngay báo cáo bảo trì (Báo cáo công việc)"
+                                                >
+                                                  <i className="fas fa-file-medical"></i>
+                                                </button>
+                                              )}
+                                              {hasDuePlans && (
+                                                <button
+                                                  className="btn btn-sm btn-outline-success d-flex align-items-center justify-content-center"
+                                                  style={{ width: '32px', height: '32px', borderRadius: '6px' }}
+                                                  onClick={() => {
+                                                    setSelectedGroup(group);
+                                                    setBatchCompleteDate(formatDateInput(new Date()));
+                                                    setBatchCompleteNotes('');
+                                                    setBatchCompleteStaffId(currentUserStaffId || group.metadata?.assignedStaffId || null);
+                                                    setBatchAutoCreateReport(true);
+                                                    loadStaffList();
+                                                    setShowBatchCompleteModal(true);
+                                                  }}
+                                                  title="Ghi nhận hoàn thành tất cả"
+                                                >
+                                                  <i className="fas fa-check-double"></i>
+                                                </button>
+                                              )}
+                                            </>
+                                          );
                                         })()}
+                                      </>
+                                    )}
+
+                                    {/* Các nút chỉnh sửa/dời/hủy/xóa chỉ cho Admin */}
+                                    {isUserAdmin && (
+                                      <>
                                         <button
                                           className="btn btn-sm btn-outline-info d-flex align-items-center justify-content-center"
                                           style={{ width: '32px', height: '32px', borderRadius: '6px' }}
@@ -2813,7 +2916,6 @@ function MaintenancePageContent() {
                                           style={{ width: '32px', height: '32px', borderRadius: '6px' }}
                                           onClick={() => {
                                             setSelectedGroup(group);
-                                            // Set default date to earliest nextDueDate or today
                                             const earliestDate = group.plans
                                               .filter(p => p.isActive && p.nextDueDate)
                                               .map(p => p.nextDueDate ? new Date(p.nextDueDate) : null)
@@ -2837,17 +2939,15 @@ function MaintenancePageContent() {
                                         >
                                           <i className="fas fa-times"></i>
                                         </button>
+                                        <button
+                                          className="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center"
+                                          style={{ width: '32px', height: '32px', borderRadius: '6px' }}
+                                          onClick={() => handleBatchDelete(group)}
+                                          title="Xóa kế hoạch tất cả"
+                                        >
+                                          <i className="fas fa-trash"></i>
+                                        </button>
                                       </>
-                                    )}
-                                    {isUserAdmin && (
-                                      <button
-                                        className="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center"
-                                        style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                        onClick={() => handleBatchDelete(group)}
-                                        title="Xóa kế hoạch tất cả"
-                                      >
-                                        <i className="fas fa-trash"></i>
-                                      </button>
                                     )}
                                   </div>
                                 </div>
@@ -2929,12 +3029,38 @@ function MaintenancePageContent() {
                                             {plan.isActive ? (
                                               <div className="btn-group btn-group-sm d-inline-flex">
                                                 {/* Event actions */}
+                                                {!hasEvent && (
+                                                  <button
+                                                    className="btn btn-primary"
+                                                    onClick={() => {
+                                                      const mockEvent: any = {
+                                                        id: 0,
+                                                        title: plan.title || `Bảo trì - ${plan.deviceName}`,
+                                                        deviceId: plan.deviceId,
+                                                        deviceName: plan.deviceName,
+                                                        eventTypeId: plan.eventTypeId || 0,
+                                                        maintenanceBatchId: group.batchId !== 'no-batch' ? group.batchId : null,
+                                                        status: 'planned',
+                                                      };
+                                                      setSelectedEvent(mockEvent);
+                                                      setSelectedPlan(plan);
+                                                      setStartStaffId(currentUserStaffId || group.metadata?.assignedStaffId || null);
+                                                      setStartNotes('');
+                                                      loadStaffList();
+                                                      setShowStartModal(true);
+                                                    }}
+                                                    title="Bắt đầu bảo trì"
+                                                  >
+                                                    <i className="fas fa-play"></i>
+                                                  </button>
+                                                )}
                                                 {hasEvent && eventStatus === 'planned' && (
                                                   <button
                                                     className="btn btn-primary"
                                                     onClick={() => {
                                                       setSelectedEvent(event);
-                                                      setStartStaffId(event.staffId || null);
+                                                      setSelectedPlan(plan);
+                                                      setStartStaffId(event.staffId || currentUserStaffId || group.metadata?.assignedStaffId || null);
                                                       setStartNotes('');
                                                       loadStaffList();
                                                       setShowStartModal(true);
@@ -2949,9 +3075,10 @@ function MaintenancePageContent() {
                                                     className="btn btn-success"
                                                     onClick={() => {
                                                       setSelectedEvent(event);
+                                                      setSelectedPlan(plan);
                                                       setCompleteDate(formatDateInput(new Date()));
                                                       setCompleteNotes('');
-                                                      setCompleteStaffId(event.staffId || null);
+                                                      setCompleteStaffId(event.staffId || currentUserStaffId || group.metadata?.assignedStaffId || null);
                                                       loadStaffList();
                                                       setShowCompleteModal(true);
                                                     }}
@@ -3986,17 +4113,19 @@ function MaintenancePageContent() {
                     )}
                   </div>
                   <div className="modal-footer py-2">
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-primary"
-                      onClick={() => {
-                        setShowViewPlanModal(false);
-                        handleOpenEditBatch(selectedGroup.batchId, selectedGroup.title);
-                      }}
-                    >
-                      <i className="fas fa-edit me-1"></i>
-                      Chỉnh sửa
-                    </button>
+                    {isUserAdmin && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary"
+                        onClick={() => {
+                          setShowViewPlanModal(false);
+                          handleOpenEditBatch(selectedGroup.batchId, selectedGroup.title);
+                        }}
+                      >
+                        <i className="fas fa-edit me-1"></i>
+                        Chỉnh sửa
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="btn btn-sm btn-secondary"
@@ -4351,6 +4480,10 @@ function MaintenancePageContent() {
                       placeholder="Nhập ghi chú cho tất cả kế hoạch..."
                     />
                   </div>
+                   <div className="alert alert-info py-2 mb-0">
+                     <i className="fas fa-info-circle me-2"></i>
+                     Hệ thống sẽ tự động tạo báo cáo công việc (trạng thái chờ xử lý) để gắn liền với lần bảo trì này.
+                   </div>
                 </div>
                 <div className="modal-footer">
                   <button
