@@ -661,6 +661,32 @@ a {
   }
 }
 
+/* Responsive width utility: auto on md+ screens */
+@media (min-width: 768px) {
+  .w-md-auto {
+    width: auto !important;
+  }
+}
+
+/* Maintenance accordion: ensure enough right padding for collapse arrow,
+   and prevent the inner content from being clipped under it */
+.accordion-button {
+  padding-right: 3.5rem !important;
+}
+
+@media (max-width: 767px) {
+  /* On mobile, the accordion inner div should not restrict width */
+  .accordion-button > div {
+    width: 100%;
+    max-width: 100%;
+  }
+  /* Ensure badges wrap instead of truncating */
+  .accordion-button .badge {
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
 /* Image preview box for device form */
 .image-preview-box {
   width: 100%;

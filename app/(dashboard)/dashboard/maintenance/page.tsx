@@ -12,6 +12,7 @@ import { DeviceCategory, EventType, DeviceVM, DamageReportVM } from '@/types';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
 import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
 import { exportToExcel } from '@/lib/utils/excelExporter.client';
+import { useAuth } from '@/lib/contexts/AuthContext';
 
 interface UpcomingPlan {
   id: number;
@@ -72,6 +73,7 @@ interface MaintenancePlanForm {
   maintenanceType: 'internal' | 'outsource';
   maintenanceProvider: string;
   cost: number;
+  assignedStaffId?: number | null;
 }
 
 interface DeviceReminderPlanVM {
@@ -127,7 +129,19 @@ interface BatchEvent {
 }
 
 function MaintenancePageContent() {
+  const { user: currentUser, isAdmin: isUserAdmin, loading: authLoading } = useAuth();
+  
+  // Tab handling
   const [activeTab, setActiveTab] = useState<'create' | 'batches' | 'plans' | 'cancelled'>('plans');
+
+  // Enforce tab access for non-admins
+  useEffect(() => {
+    if (!authLoading && currentUser && !isUserAdmin) {
+      if (activeTab !== 'plans') {
+        setActiveTab('plans');
+      }
+    }
+  }, [activeTab, isUserAdmin, authLoading, currentUser]);
   const [upcomingPlans, setUpcomingPlans] = useState<UpcomingPlan[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<BatchEvent[]>([]);
   const [batches, setBatches] = useState<MaintenanceBatch[]>([]);
@@ -181,6 +195,7 @@ function MaintenancePageContent() {
   const [editBatchMaintenanceType, setEditBatchMaintenanceType] = useState<'internal' | 'outsource'>('internal');
   const [editBatchProvider, setEditBatchProvider] = useState('');
   const [editBatchCost, setEditBatchCost] = useState(0);
+  const [editBatchAssignedStaffId, setEditBatchAssignedStaffId] = useState<number | null>(null);
   const [editBatchEventTypeId, setEditBatchEventTypeId] = useState(0);
   const [editBatchStartFrom, setEditBatchStartFrom] = useState('');
   const [editBatchEndAt, setEditBatchEndAt] = useState('');
@@ -255,6 +270,7 @@ function MaintenancePageContent() {
     maintenanceType: 'internal',
     maintenanceProvider: '',
     cost: 0,
+    assignedStaffId: null,
   });
   const [submitting, setSubmitting] = useState(false);
   const [showQuickView, setShowQuickView] = useState(false);
@@ -267,10 +283,30 @@ function MaintenancePageContent() {
       const tabParam = params.get('tab');
       const validTabs: Array<'create' | 'batches' | 'plans' | 'cancelled'> = ['create', 'batches', 'plans', 'cancelled'];
       if (tabParam && validTabs.includes(tabParam as any)) {
-        setActiveTab(tabParam as 'create' | 'batches' | 'plans' | 'cancelled');
+        // Delay applying if not admin
+        if (isUserAdmin || tabParam === 'plans') {
+           setActiveTab(tabParam as 'create' | 'batches' | 'plans' | 'cancelled');
+        }
       }
     }
-  }, []);
+  }, [isUserAdmin]);
+
+  // Staff data logic to resolve current user's Staff ID and feed the UI dropdown
+  const { data: staffData } = useSWR('/staff?departmentId=0', fetcher);
+  const staffListForCreate = React.useMemo(() => staffData?.status ? staffData.data : [], [staffData]);
+  const [currentUserStaffId, setCurrentUserStaffId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!currentUser || !staffData?.status || !staffData.data) return;
+    const staffArray = staffData.data;
+    const possibleUserIds = [String(currentUser.id), String((currentUser as any).userId), String((currentUser as any).fid), String((currentUser as any).sub)].filter(Boolean);
+    const email = currentUser.email ? String(currentUser.email).trim().toLowerCase() : null;
+    let me = staffArray.find((s: any) => s.userId && possibleUserIds.some(uid => uid === String(s.userId)));
+    if (!me && email) {
+      me = staffArray.find((s: any) => s.email?.trim().toLowerCase() === email);
+    }
+    if (me) setCurrentUserStaffId(me.id);
+  }, [currentUser, staffData]);
 
   // Static data for form
   const { data: catData } = useSWR(activeTab === 'create' ? '/device-categories' : null, fetcher);
@@ -378,8 +414,8 @@ function MaintenancePageContent() {
   }, [plansResponse, eventsResponse, reportsResponse]);
 
   useEffect(() => {
-    setLoading(loadingBatches || loadingPlans);
-  }, [loadingBatches, loadingPlans]);
+    setLoading(loadingBatches || loadingPlans || authLoading);
+  }, [loadingBatches, loadingPlans, authLoading]);
 
   const loadData = async () => { 
     mutateBatches(); 
@@ -543,11 +579,21 @@ function MaintenancePageContent() {
   // Group plans by maintenanceBatchId
   const groupedPlans = React.useMemo(() => {
     // Filter plans based on activeTab
-    const filteredPlans = activeTab === 'plans'
+    let filteredPlans = activeTab === 'plans'
       ? allPlans.filter(p => p.isActive)
       : activeTab === 'cancelled'
         ? allPlans.filter(p => !p.isActive)
         : allPlans;
+
+    // Phân quyền hiển thị kế hoạch bảo trì nếu không phải là Admin
+    if (!isUserAdmin) {
+      if (currentUserStaffId) {
+        filteredPlans = filteredPlans.filter(p => Number(p.metadata?.assignedStaffId) === currentUserStaffId);
+      } else {
+        // Nếu user này không có liên kết với bất kỳ account Staff nào, thì không thấy lịch nào.
+        filteredPlans = [];
+      }
+    }
 
     const groups: Record<string, {
       batchId: string;
@@ -1082,6 +1128,7 @@ function MaintenancePageContent() {
             maintenanceType: editBatchMaintenanceType,
             maintenanceProvider: editBatchMaintenanceType === 'outsource' ? editBatchProvider : undefined,
             cost: editBatchMaintenanceType === 'outsource' ? editBatchCost : undefined,
+            assignedStaffId: editBatchAssignedStaffId || null,
           };
 
           const response = await api.put(`/device-reminder-plans/${plan.id}`, {
@@ -1445,6 +1492,7 @@ function MaintenancePageContent() {
     setEditBatchMaintenanceType(firstPlan.metadata?.maintenanceType || 'internal');
     setEditBatchProvider(firstPlan.metadata?.maintenanceProvider || '');
     setEditBatchCost(firstPlan.metadata?.cost || 0);
+    setEditBatchAssignedStaffId(firstPlan.metadata?.assignedStaffId || null);
 
     // Mặc định sử dụng eventTypeId của bản ghi cũ, nếu không có thì tìm ID Bảo trì
     let eventTypeId = firstPlan.eventTypeId || 0;
@@ -1872,6 +1920,7 @@ function MaintenancePageContent() {
         startFrom: formData.startFrom,
         metadata: {
           maintenanceType: formData.maintenanceType,
+          assignedStaffId: formData.assignedStaffId || null,
         },
       };
 
@@ -1921,6 +1970,7 @@ function MaintenancePageContent() {
           maintenanceType: 'internal',
           maintenanceProvider: '',
           cost: 0,
+          assignedStaffId: null,
         });
         // Reload batches
         if (activeTab === 'batches') {
@@ -1985,42 +2035,49 @@ function MaintenancePageContent() {
 
         {/* Tabs - compact pill style */}
         <div className="d-flex flex-wrap gap-2 mb-3">
-          <button
-            className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'create' ? 'btn-primary shadow-sm' : 'btn-outline-secondary'}`}
-            style={{ fontSize: '0.8rem', fontWeight: activeTab === 'create' ? 600 : 400 }}
-            onClick={() => setActiveTab('create')}
-          >
-            <i className="fas fa-plus-circle"></i>
-            <span className="d-none d-sm-inline">Tạo Kế Hoạch</span>
-            <span className="d-sm-none">Tạo</span>
-          </button>
-          <button
-            className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'batches' ? 'btn-primary shadow-sm' : 'btn-outline-secondary'}`}
-            style={{ fontSize: '0.8rem', fontWeight: activeTab === 'batches' ? 600 : 400 }}
-            onClick={() => setActiveTab('batches')}
-          >
-            <i className="fas fa-layer-group"></i>
-            <span className="d-none d-sm-inline">Batch Bảo Trì</span>
-            <span className="d-sm-none">Batch</span>
-          </button>
+          {isUserAdmin && (
+            <>
+              <button
+                className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'create' ? 'btn-primary shadow-sm' : 'btn-outline-secondary'}`}
+                style={{ fontSize: '0.8rem', fontWeight: activeTab === 'create' ? 600 : 400 }}
+                onClick={() => setActiveTab('create')}
+              >
+                <i className="fas fa-plus-circle"></i>
+                <span className="d-none d-sm-inline">Tạo Kế Hoạch</span>
+                <span className="d-sm-none">Tạo</span>
+              </button>
+              <button
+                className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'batches' ? 'btn-primary shadow-sm' : 'btn-outline-secondary'}`}
+                style={{ fontSize: '0.8rem', fontWeight: activeTab === 'batches' ? 600 : 400 }}
+                onClick={() => setActiveTab('batches')}
+              >
+                <i className="fas fa-layer-group"></i>
+                <span className="d-none d-sm-inline">Batch Bảo Trì</span>
+                <span className="d-sm-none">Batch</span>
+              </button>
+            </>
+          )}
           <button
             className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'plans' ? 'btn-primary shadow-sm' : 'btn-outline-secondary'}`}
             style={{ fontSize: '0.8rem', fontWeight: activeTab === 'plans' ? 600 : 400 }}
             onClick={() => setActiveTab('plans')}
           >
             <i className="fas fa-list-alt"></i>
-            <span className="d-none d-sm-inline">Đang Hoạt Động</span>
-            <span className="d-sm-none">Hoạt động</span>
+            <span className="d-none d-sm-inline">Lịch Bảo Trì</span>
+            <span className="d-sm-none">Lịch</span>
           </button>
-          <button
-            className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'cancelled' ? 'btn-danger shadow-sm' : 'btn-outline-secondary'}`}
-            style={{ fontSize: '0.8rem', fontWeight: activeTab === 'cancelled' ? 600 : 400 }}
-            onClick={() => setActiveTab('cancelled')}
-          >
-            <i className="fas fa-ban"></i>
-            <span className="d-none d-sm-inline">Đã Hủy</span>
-            <span className="d-sm-none">Đã Hủy</span>
-          </button>
+          
+          {isUserAdmin && (
+            <button
+              className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'cancelled' ? 'btn-danger shadow-sm' : 'btn-outline-secondary'}`}
+              style={{ fontSize: '0.8rem', fontWeight: activeTab === 'cancelled' ? 600 : 400 }}
+              onClick={() => setActiveTab('cancelled')}
+            >
+              <i className="fas fa-ban"></i>
+              <span className="d-none d-sm-inline">Đã Hủy</span>
+              <span className="d-sm-none">Đã Hủy</span>
+            </button>
+          )}
         </div>
 
         {/* Content */}
@@ -2323,9 +2380,9 @@ function MaintenancePageContent() {
                   </div>
                 </div>
 
-                {/* Dates */}
+                {/* Dates & Assignment */}
                 <div className="row mb-3">
-                  <div className="col-md-6">
+                  <div className="col-md-4">
                     <label className="form-label">Ngày bắt đầu <span className="text-danger">*</span></label>
                     <DateInput
                       value={formData.startFrom}
@@ -2333,12 +2390,25 @@ function MaintenancePageContent() {
                       required
                     />
                   </div>
-                  <div className="col-md-6">
+                  <div className="col-md-4">
                     <label className="form-label">Ngày kết thúc (tùy chọn)</label>
                     <DateInput
                       value={formData.endAt}
                       onChange={(value) => setFormData({ ...formData, endAt: value })}
                     />
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label">Người thực hiện</label>
+                    <select
+                      className="form-select"
+                      value={formData.assignedStaffId || ''}
+                      onChange={(e) => setFormData({ ...formData, assignedStaffId: e.target.value ? parseInt(e.target.value) : null })}
+                    >
+                      <option value="">-- Để trống nếu chưa phân công --</option>
+                      {staffListForCreate.map((s: any) => (
+                        <option key={s.id} value={s.id}>{s.name} - {s.departmentName || 'Chưa rõ'}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -2527,7 +2597,7 @@ function MaintenancePageContent() {
               <div className="card-header py-2 px-3">
                 <h6 className="mb-0 text-truncate" style={{ fontSize: '0.85rem' }}>
                   <i className={`fas ${activeTab === 'plans' ? 'fa-list-alt' : 'fa-ban'} me-2`}></i>
-                  {activeTab === 'plans' ? 'Batch Đang Hoạt Động' : 'Batch Đã Hủy'}
+                  {activeTab === 'plans' ? (isUserAdmin ? 'Batch Đang Hoạt Động' : 'Lịch Bảo Trì Của Tôi') : 'Batch Đã Hủy'}
                 </h6>
               </div>
               <div className="card-body">
@@ -2591,7 +2661,7 @@ function MaintenancePageContent() {
                               aria-controls={collapseId}
                               style={{ cursor: 'pointer' }}
                             >
-                              <div className="d-flex flex-wrap flex-md-nowrap justify-content-between align-items-center w-100 pe-5 gap-3" style={{ minWidth: 0 }}>
+                              <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center w-100 pe-5 gap-2" style={{ minWidth: 0 }}>
                                 {/* Bên trái: Tiêu đề, Batch ID, Lịch trình - chia 2 hàng */}
                                 <div className="d-flex flex-column gap-1 flex-grow-1 overflow-hidden" style={{ minWidth: '150px' }}>
                                   {/* Hàng trên: Tiêu đề và Batch ID */}
@@ -2636,14 +2706,26 @@ function MaintenancePageContent() {
                                   )}
                                 </div>
 
-                                {/* Bên phải: Thông tin thiết bị, badges và action buttons - chia 2 hàng, căn lề phải */}
-                                <div className="d-flex flex-column flex-md-row align-items-md-center gap-2 flex-shrink-0 ms-auto mt-2 mt-md-0">
-                                  {/* Hàng trên (Badges) - sẽ thành cột trái trên desktop */}
-                                  <div className="d-flex flex-wrap align-items-center gap-1 gap-md-2 justify-content-start justify-content-md-end">
+                                {/* Bên phải: Thông tin thiết bị, badges và action buttons - luôn xuống hàng trên mobile */}
+                                <div className="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-md-end gap-2 w-100 w-md-auto mt-1 mt-md-0 ms-md-auto">
+                                  {/* Badge row - full width trên mobile */}
+                                  <div className="d-flex flex-wrap align-items-center justify-content-start justify-content-md-end gap-1 gap-md-2">
                                     <span className="text-muted small me-2">
                                       <i className="fas fa-boxes me-1"></i>
                                       <span className="fw-bold">{group.totalDevices}</span> thiết bị
                                     </span>
+                                    {group.metadata?.assignedStaffId && isUserAdmin && (() => {
+                                      const assignee = staffListForCreate.find((s: any) => s.id === group.metadata?.assignedStaffId);
+                                      if (assignee) {
+                                        return (
+                                          <span className="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 fw-normal small">
+                                            <i className="fas fa-user-hard-hat me-1"></i>
+                                            {assignee.name}
+                                          </span>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
                                     <span className="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 fw-normal small">{group.activeCount} hoạt động</span>
                                     {activeTab === 'plans' ? null : group.inactiveCount > 0 && (
                                       <span className="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 fw-normal small">{group.inactiveCount} đã hủy</span>
@@ -2670,8 +2752,8 @@ function MaintenancePageContent() {
                                     )}
                                   </div>
 
-                                  {/* Hàng dưới (Actions) - sẽ thành cột phải trên desktop */}
-                                  <div className="d-flex flex-wrap gap-1 justify-content-start justify-content-md-end" onClick={(e) => e.stopPropagation()}>
+                                  {/* Action buttons row - full width trên mobile */}
+                                  <div className="d-flex flex-wrap justify-content-start justify-content-md-end gap-1" onClick={(e) => e.stopPropagation()}>
                                     <button
                                       className="btn btn-sm btn-outline-info d-flex align-items-center justify-content-center"
                                       style={{ width: '32px', height: '32px', borderRadius: '6px' }}
@@ -2687,7 +2769,7 @@ function MaintenancePageContent() {
                                     >
                                       <i className="fas fa-eye"></i>
                                     </button>
-                                    {group.activeCount > 0 && (
+                                    {group.activeCount > 0 && isUserAdmin && (
                                       <>
                                         {(() => {
                                           // Kiểm tra xem có plan nào đã đến hạn không
@@ -2757,14 +2839,16 @@ function MaintenancePageContent() {
                                         </button>
                                       </>
                                     )}
-                                    <button
-                                      className="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center"
-                                      style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                      onClick={() => handleBatchDelete(group)}
-                                      title="Xóa kế hoạch tất cả"
-                                    >
-                                      <i className="fas fa-trash"></i>
-                                    </button>
+                                    {isUserAdmin && (
+                                      <button
+                                        className="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center"
+                                        style={{ width: '32px', height: '32px', borderRadius: '6px' }}
+                                        onClick={() => handleBatchDelete(group)}
+                                        title="Xóa kế hoạch tất cả"
+                                      >
+                                        <i className="fas fa-trash"></i>
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -2784,7 +2868,7 @@ function MaintenancePageContent() {
                                       <th className="align-middle">
                                         <div className="d-flex align-items-center gap-2">
                                           <span>Thiết Bị ({group.totalDevices})</span>
-                                          {group.canModifyDevices && (
+                                          {group.canModifyDevices && isUserAdmin && (
                                             <div className="d-flex gap-1 ms-2">
                                               <button
                                                 className="btn btn-outline-success p-0 d-flex align-items-center justify-content-center"
@@ -2878,34 +2962,38 @@ function MaintenancePageContent() {
                                                 )}
 
                                                 {/* Plan actions */}
-                                                <button
-                                                  className="btn btn-outline-warning"
-                                                  onClick={() => {
-                                                    setSelectedPlan(plan);
-                                                    setRescheduleDate(plan.nextDueDate ? formatDateInput(plan.nextDueDate) : formatDateInput(new Date()));
-                                                    setShowRescheduleModal(true);
-                                                  }}
-                                                  title="Dời lịch"
-                                                >
-                                                  <i className="fas fa-calendar-alt"></i>
-                                                </button>
-                                                <button
-                                                  className="btn btn-outline-danger"
-                                                  onClick={() => {
-                                                    setSelectedPlan(plan);
-                                                    setShowCancelModal(true);
-                                                  }}
-                                                  title="Hủy"
-                                                >
-                                                  <i className="fas fa-times"></i>
-                                                </button>
-                                                <button
-                                                  className="btn btn-outline-danger"
-                                                  onClick={() => handleDeletePlan(plan.id)}
-                                                  title="Xóa"
-                                                >
-                                                  <i className="fas fa-trash"></i>
-                                                </button>
+                                                {isUserAdmin && (
+                                                  <>
+                                                    <button
+                                                      className="btn btn-outline-warning"
+                                                      onClick={() => {
+                                                        setSelectedPlan(plan);
+                                                        setRescheduleDate(plan.nextDueDate ? formatDateInput(plan.nextDueDate) : formatDateInput(new Date()));
+                                                        setShowRescheduleModal(true);
+                                                      }}
+                                                      title="Dời lịch"
+                                                    >
+                                                      <i className="fas fa-calendar-alt"></i>
+                                                    </button>
+                                                    <button
+                                                      className="btn btn-outline-danger"
+                                                      onClick={() => {
+                                                        setSelectedPlan(plan);
+                                                        setShowCancelModal(true);
+                                                      }}
+                                                      title="Hủy"
+                                                    >
+                                                      <i className="fas fa-times"></i>
+                                                    </button>
+                                                    <button
+                                                      className="btn btn-outline-danger"
+                                                      onClick={() => handleDeletePlan(plan.id)}
+                                                      title="Xóa"
+                                                    >
+                                                      <i className="fas fa-trash"></i>
+                                                    </button>
+                                                  </>
+                                                )}
                                               </div>
                                             ) : (
                                               <span className="text-muted small">
@@ -2927,7 +3015,7 @@ function MaintenancePageContent() {
                   </div>
                 )}
                 
-                {activeTab === 'plans' && groupedPlans.length > 0 && (
+                {activeTab === 'plans' && groupedPlans.length > 0 && isUserAdmin && (
                   <div className="card mt-4 border-0 shadow-sm bg-light">
                     <div className="card-header bg-white border-0 py-2">
                       <h6 className="mb-0 text-muted small"><i className="fas fa-info-circle me-2"></i>Chú thích thao tác (Dành cho đợt bảo trì)</h6>
@@ -4078,6 +4166,21 @@ function MaintenancePageContent() {
                     </div>
                   )}
 
+                  {/* Người thực hiện */}
+                  <div className="mb-3">
+                    <label className="form-label fw-bold">Người Thực Hiện</label>
+                    <select
+                      className="form-select"
+                      value={editBatchAssignedStaffId || ''}
+                      onChange={(e) => setEditBatchAssignedStaffId(e.target.value ? parseInt(e.target.value) : null)}
+                    >
+                      <option value="">-- Để trống nếu chưa phân công --</option>
+                      {staffListForCreate.map((s: any) => (
+                        <option key={s.id} value={s.id}>{s.name} - {s.departmentName || 'Chưa rõ'}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div className="alert alert-info py-2 small mb-0 mt-2">
                     <i className="fas fa-info-circle me-2"></i>
                     Thay đổi sẽ được áp dụng cho tất cả <strong>{selectedGroupForInterval.plans.filter(p => p.isActive).length}</strong> kế hoạch đang hoạt động trong batch này.
@@ -5006,9 +5109,9 @@ function MaintenancePageContent() {
 
 export default function MaintenancePage() {
   return (
-    <AdminRoute>
+    <>
       <MaintenancePageContent />
-    </AdminRoute>
+    </>
   );
 }
 

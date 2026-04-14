@@ -74,7 +74,7 @@ export default function DashboardLayout({
         if (userData.fid) possibleUserIds.push(String(userData.fid));
         
         let foundStaff = staff.find((s: any) => 
-          s.userId && possibleUserIds.some(uid => uid && s.userId === uid)
+          s.userId && possibleUserIds.some(uid => uid && String(s.userId) === uid)
         );
         
         // Fallback to email match

@@ -721,19 +721,19 @@ export default function DamageReportsPage() {
     }
 
     // Try by userId keys (exact match)
-    let me = staff.find((s) => s.userId && possibleUserIds.some(uid => uid && s.userId === uid));
+    let me = staff.find((s) => s.userId && possibleUserIds.some(uid => uid && String(s.userId) === uid));
 
     // Try case-insensitive userId match
     if (!me) {
       me = staff.find((s) => s.userId && possibleUserIds.some(uid =>
-        uid && s.userId && s.userId.toLowerCase() === uid.toLowerCase()
+        uid && String(s.userId).toLowerCase() === uid.toLowerCase()
       ));
     }
 
     // Try by userId with trimmed whitespace
     if (!me) {
       me = staff.find((s) => s.userId && possibleUserIds.some(uid =>
-        uid && s.userId && s.userId.trim() === uid.trim()
+        uid && String(s.userId).trim() === uid.trim()
       ));
     }
 
