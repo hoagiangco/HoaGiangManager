@@ -209,6 +209,10 @@ function MaintenancePageContent() {
   const [batchCompleteDate, setBatchCompleteDate] = useState('');
   const [batchCompleteNotes, setBatchCompleteNotes] = useState('');
   const [batchCompleteStaffId, setBatchCompleteStaffId] = useState<number | null>(null);
+  const [showBatchStartModal, setShowBatchStartModal] = useState(false);
+  const [batchStartDate, setBatchStartDate] = useState('');
+  const [batchStartNotes, setBatchStartNotes] = useState('');
+  const [batchStartStaffId, setBatchStartStaffId] = useState<number | null>(null);
   const [batchAutoCreateReport, setBatchAutoCreateReport] = useState(true);
   const [selectedGroup, setSelectedGroup] = useState<{
     batchId: string;
@@ -257,7 +261,7 @@ function MaintenancePageContent() {
   };
 
   // Helper to create or update a report in the background
-  const handleGenerateReport = async (batch: { batchId: string; title: string }, staffId: number | null, notes: string = '', date: string = formatDateInput(new Date())) => {
+  const handleGenerateReport = async (batch: { batchId: string; title: string }, staffId: number | null, notes: string = '', date: string = formatDateInput(new Date()), statusParam: number = 4, deviceListText: string = '') => {
     try {
       // Lấy thông tin phòng ban của nhân viên nếu có
       let departmentId = 0;
@@ -266,19 +270,24 @@ function MaintenancePageContent() {
         departmentId = staff.departmentId;
       }
 
-      const reportPayload = {
+      const damageContentText = `Báo cáo bảo trì định kỳ cho đợt: ${batch.title} [Batch: ${batch.batchId}].${deviceListText ? `\n\nDanh sách thiết bị:\n${deviceListText}` : ''}`;
+
+      const reportPayload: any = {
         deviceSelection: 'maintenance',
         maintenanceBatchId: batch.batchId,
-        damageContent: `Báo cáo bảo trì định kỳ cho đợt: ${batch.title} [Batch: ${batch.batchId}].`,
+        damageContent: damageContentText,
         handlerNotes: notes ? notes : null,
         reportDate: date,
-        status: 4, // Completed (hoàn thành)
-        completedDate: date,
+        status: statusParam,
         priority: 2, // Normal
         reporterId: staffId || currentUserStaffId || 0,
         handlerId: staffId || currentUserStaffId || 0,
         reportingDepartmentId: departmentId,
       };
+
+      if (statusParam === 4) {
+        reportPayload.completedDate = date;
+      }
 
       // Tìm báo cáo đã tồn tại cho đợt bảo trì này
       const existingReport = findExistingReportForBatch(batch.batchId);
@@ -286,11 +295,13 @@ function MaintenancePageContent() {
       if (existingReport) {
         // UPDATE báo cáo đã có
         await api.put(`/damage-reports/${existingReport.id}`, reportPayload);
-        toast.success('Đã cập nhật báo cáo công việc hiện có (Trạng thái: Hoàn thành)');
+        const statusText = statusParam === 4 ? 'Hoàn thành' : 'Đang xử lý';
+        toast.success(`Đã cập nhật báo cáo công việc hiện có (Trạng thái: ${statusText})`);
       } else {
         // CREATE báo cáo mới
         await api.post('/damage-reports', reportPayload);
-        toast.success('Đã tự động tạo báo cáo công việc (Trạng thái: Hoàn thành)');
+        const statusText = statusParam === 4 ? 'Hoàn thành' : 'Đang xử lý';
+        toast.success(`Đã tự động tạo báo cáo công việc (Trạng thái: ${statusText})`);
       }
 
       globalMutate('/damage-reports'); // Refresh data in background
@@ -1334,6 +1345,117 @@ function MaintenancePageContent() {
     }
   };
 
+  const handleBatchStart = async () => {
+    if (!selectedGroup || !batchStartDate) {
+      toast.error('Vui lòng chọn ngày bắt đầu');
+      return;
+    }
+
+    if (!confirm(`Bạn có chắc chắn muốn bắt đầu bảo trì cho tất cả ${selectedGroup.plans.filter(p => p.isActive).length} thiết bị trong nhóm này?`)) {
+      return;
+    }
+
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+      const deviceNamesForReport: string[] = [];
+
+      for (const plan of selectedGroup.plans) {
+        if (!plan.isActive) continue; // Skip inactive plans
+
+        deviceNamesForReport.push(`- ${plan.deviceName || `Thiết bị #${plan.deviceId}`}`);
+
+        try {
+          const existingEvent = planEvents[plan.id];
+          let eventId = existingEvent?.id;
+
+          if (!eventId) {
+            const eventMetadata = {
+              ...(plan.metadata || {}),
+              maintenanceBatchId: plan.metadata?.maintenanceBatchId || (selectedGroup.batchId !== 'no-batch' ? selectedGroup.batchId : null),
+            };
+            const eventData = {
+              title: plan.title || `Bảo trì - ${plan.deviceName}`,
+              deviceId: plan.deviceId,
+              eventTypeId: plan.eventTypeId || 0,
+              description: plan.description || null,
+              status: 'in_progress',
+              eventDate: batchStartDate,
+              startDate: batchStartDate,
+              staffId: batchStartStaffId || null,
+              notes: batchStartNotes.trim() || null,
+              metadata: eventMetadata,
+            };
+
+            const createResponse = await api.post('/events', eventData);
+            if (!createResponse.data.status) {
+              errorCount++;
+              continue;
+            }
+          } else {
+            const response = await api.put(`/events/${eventId}`, {
+              title: existingEvent.title || plan.title || `Bảo trì - ${plan.deviceName}`,
+              deviceId: existingEvent.deviceId || plan.deviceId,
+              eventTypeId: existingEvent.eventTypeId || plan.eventTypeId || 0,
+              description: existingEvent.description || plan.description || null,
+              status: 'in_progress',
+              eventDate: existingEvent.eventDate || batchStartDate,
+              startDate: batchStartDate,
+              notes: batchStartNotes.trim() || '',
+              staffId: batchStartStaffId || existingEvent.staffId || null,
+              metadata: plan.metadata || null,
+            });
+
+            if (!response.data.status) {
+              errorCount++;
+              continue;
+            }
+          }
+          successCount++;
+        } catch (error: any) {
+          errorCount++;
+          console.error(`Error starting plan ${plan.id}:`, error);
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`Đã đánh dấu bắt đầu cho ${successCount} kế hoạch`);
+
+        // Tự động tạo báo cáo (Trạng thái đang xử lý - 3)
+        if (selectedGroup && selectedGroup.batchId !== 'no-batch' && batchAutoCreateReport) {
+          const deviceListText = deviceNamesForReport.join('\n');
+          await handleGenerateReport(
+            { batchId: selectedGroup.batchId, title: selectedGroup.title },
+            batchStartStaffId,
+            batchStartNotes,
+            batchStartDate,
+            3,
+            deviceListText
+          );
+        }
+      }
+
+      if (errorCount > 0) {
+        toast.warning(`${errorCount} kế hoạch gặp lỗi khi bắt đầu`);
+      }
+
+      setShowBatchStartModal(false);
+      setSelectedGroup(null);
+      setBatchStartDate('');
+      setBatchStartNotes('');
+      setBatchStartStaffId(null);
+      
+      if (selectedBatchId) {
+        loadBatchDetails(selectedBatchId);
+      }
+      loadAllPlans();
+
+    } catch (error: any) {
+      console.error('Error starting batch:', error);
+      toast.error('Lỗi khi bắt đầu hàng loạt');
+    }
+  };
+
   const handleBatchComplete = async () => {
     if (!selectedGroup || !batchCompleteDate) {
       toast.error('Vui lòng chọn ngày hoàn thành');
@@ -1347,9 +1469,12 @@ function MaintenancePageContent() {
     try {
       let successCount = 0;
       let errorCount = 0;
+      const deviceNamesForReport: string[] = [];
 
       for (const plan of selectedGroup.plans) {
         if (!plan.isActive) continue; // Skip inactive plans
+
+        deviceNamesForReport.push(`- ${plan.deviceName || `Thiết bị #${plan.deviceId}`}`);
 
         try {
           // Check if event already exists
@@ -1485,13 +1610,16 @@ function MaintenancePageContent() {
           });
         }
 
-        // Tự động tạo báo cáo (Trạng thái hoàn thành)
-        if (selectedGroup && selectedGroup.batchId !== 'no-batch') {
+        // Tự động tạo báo cáo (Trạng thái hoàn thành - 4)
+        if (selectedGroup && selectedGroup.batchId !== 'no-batch' && batchAutoCreateReport) {
+          const deviceListText = deviceNamesForReport.join('\n');
           await handleGenerateReport(
             { batchId: selectedGroup.batchId, title: selectedGroup.title },
             batchCompleteStaffId,
             batchCompleteNotes,
-            batchCompleteDate
+            batchCompleteDate,
+            4,
+            deviceListText
           );
         }
       }
@@ -2895,10 +3023,37 @@ function MaintenancePageContent() {
                                             dueDate.setHours(0, 0, 0, 0);
                                             return dueDate <= today;
                                           });
+                                          let inProgressCount = 0;
+                                          if ((group as any).inProgressCount !== undefined) {
+                                            inProgressCount = (group as any).inProgressCount;
+                                          } else {
+                                            inProgressCount = group.plans.filter(p => {
+                                              const ev = planEvents[p.id];
+                                              return ev && ev.status === 'in_progress';
+                                            }).length;
+                                          }
 
                                           return (
                                             <>
-                                              {hasDuePlans && (
+                                              {(hasDuePlans || inProgressCount > 0) && inProgressCount === 0 && (
+                                                <button
+                                                  className="btn btn-sm btn-outline-primary d-flex align-items-center justify-content-center border-primary"
+                                                  style={{ width: '32px', height: '32px', borderRadius: '6px' }}
+                                                  onClick={() => {
+                                                    setSelectedGroup(group);
+                                                    setBatchStartDate(formatDateInput(new Date()));
+                                                    setBatchStartNotes('');
+                                                    setBatchStartStaffId(group.metadata?.assignedStaffId || currentUserStaffId || null);
+                                                    setBatchAutoCreateReport(true);
+                                                    loadStaffList();
+                                                    setShowBatchStartModal(true);
+                                                  }}
+                                                  title="Bắt đầu thực hiện tất cả"
+                                                >
+                                                  <i className="fas fa-play"></i>
+                                                </button>
+                                              )}
+                                              {inProgressCount > 0 && (
                                                 <button
                                                   className="btn btn-sm btn-outline-success d-flex align-items-center justify-content-center"
                                                   style={{ width: '32px', height: '32px', borderRadius: '6px' }}
@@ -4435,6 +4590,99 @@ function MaintenancePageContent() {
                   >
                     <i className="fas fa-save me-2"></i>
                     Xác Nhận Dời Lịch
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Batch Start Modal */}
+        {showBatchStartModal && selectedGroup && (
+          <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-play-circle me-2"></i>
+                    Bắt Đầu Nhóm Bảo Trì
+                  </h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowBatchStartModal(false);
+                      setSelectedGroup(null);
+                      setBatchStartDate('');
+                      setBatchStartNotes('');
+                      setBatchStartStaffId(null);
+                    }}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  <div className="alert alert-primary">
+                    <i className="fas fa-info-circle me-2"></i>
+                    Bạn đang bắt đầu làm bảo trì cho <strong>{selectedGroup.plans.filter(p => p.isActive).length}</strong> thiết bị trong nhóm: <strong>{selectedGroup.title}</strong>
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Ngày Bắt Đầu <span className="text-danger">*</span></label>
+                    <DateInput
+                      value={batchStartDate}
+                      onChange={(value) => setBatchStartDate(value)}
+                      required
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Nhân Viên Thực Hiện</label>
+                    <select
+                      className="form-select"
+                      value={batchStartStaffId || ''}
+                      onChange={(e) => setBatchStartStaffId(e.target.value ? parseInt(e.target.value) : null)}
+                    >
+                      <option value="">-- Chọn nhân viên --</option>
+                      {staffList.map((staff) => (
+                        <option key={staff.id} value={staff.id}>
+                          {staff.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Ghi Chú</label>
+                    <textarea
+                      className="form-control"
+                      rows={3}
+                      value={batchStartNotes}
+                      onChange={(e) => setBatchStartNotes(e.target.value)}
+                      placeholder="Nhập ghi chú cho đợt bảo trì này..."
+                    />
+                  </div>
+                   <div className="alert alert-info py-2 mb-0">
+                     <i className="fas fa-info-circle me-2"></i>
+                     Hệ thống sẽ tự động tạo báo cáo công việc (trạng thái: Đang xử lý) để ghi nhận đợt bảo trì này.
+                   </div>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowBatchStartModal(false);
+                      setSelectedGroup(null);
+                      setBatchStartDate('');
+                      setBatchStartNotes('');
+                      setBatchStartStaffId(null);
+                    }}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleBatchStart}
+                  >
+                    <i className="fas fa-play me-2"></i>
+                    Xác Nhận Bắt Đầu
                   </button>
                 </div>
               </div>
