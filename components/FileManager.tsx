@@ -500,10 +500,10 @@ export default function FileManager({
     <>
     <div 
       className="modal show d-block" 
-      style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }} 
+      style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1100 }} 
       tabIndex={-1}
     >
-      <div className={`modal-dialog ${isFullscreen ? 'modal-fullscreen' : 'modal-xl'} modal-dialog-scrollable`} style={{ zIndex: 1061 }}>
+      <div className={`modal-dialog ${isFullscreen ? 'modal-fullscreen' : 'modal-xl'} modal-dialog-scrollable`} style={{ zIndex: 1101 }}>
         <div className="modal-content">
           <div className="modal-header d-flex align-items-center justify-content-between py-2 px-3">
             <h5 className="modal-title mb-0 d-flex align-items-center">

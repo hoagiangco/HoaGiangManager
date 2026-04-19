@@ -10,8 +10,9 @@ import DateInput from '@/components/DateInput';
 import AdminRoute from '@/components/AdminRoute';
 import { DeviceCategory, EventType, DeviceVM, DamageReportVM } from '@/types';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
+import Loading from '@/components/Loading';
 import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
-import { exportToExcel } from '@/lib/utils/excelExporter.client';
+
 import { useAuth } from '@/lib/contexts/AuthContext';
 
 interface UpcomingPlan {
@@ -149,17 +150,7 @@ function MaintenancePageContent() {
   const [planEvents, setPlanEvents] = useState<Record<number, BatchEvent>>({}); // Map planId -> latest event
   const [maintenanceReports, setMaintenanceReports] = useState<DamageReportVM[]>([]); // All damage reports for matching
   const [loading, setLoading] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [visibleColumns, setVisibleColumns] = useState([
-    { id: 'index', label: 'STT', visible: true },
-    { id: 'deviceName', label: 'Tên thiết bị', visible: true },
-    { id: 'nextDueDate', label: 'Ngày bảo trì tiếp theo', visible: true },
-    { id: 'daysUntilDue', label: 'Số ngày còn lại', visible: true },
-    { id: 'title', label: 'Tiêu đề', visible: true },
-    { id: 'maintenanceType', label: 'Hình thức', visible: true },
-    { id: 'maintenanceProvider', label: 'Đơn vị thực hiện', visible: true },
-    { id: 'lastCompleted', label: 'Hoàn thành gần nhất', visible: true }
-  ]);
+
 
   // Modals
   const [showBatchModal, setShowBatchModal] = useState(false);
@@ -253,24 +244,51 @@ function MaintenancePageContent() {
   const [allDevices, setAllDevices] = useState<DeviceVM[]>([]);
   const [filteredDevices, setFilteredDevices] = useState<DeviceVM[]>([]);
 
-  // Find existing report for a batch that overlaps in time with the maintenance date
+  // Find existing report for a batch, prioritizing non-completed ones
   const findExistingReportForBatch = (batchId: string) => {
-    return maintenanceReports.find(report =>
-      report.maintenanceBatchId === batchId
+    if (!batchId || batchId === 'no-batch') return null;
+    
+    // Sort to prioritize InProgress (3), then Pending (1), then Assigned (2)
+    // Completed (4) and others come last
+    const sortedReports = [...maintenanceReports].sort((a, b) => {
+      const getPriority = (s: number) => {
+        if (s === 3) return 0; // Highest priority: InProgress
+        if (s === 1 || s === 2) return 1; // Then other active states
+        return 2; // Everything else
+      };
+      return getPriority(a.status) - getPriority(b.status);
+    });
+
+    return sortedReports.find(report =>
+      String(report.maintenanceBatchId) === String(batchId)
     ) || null;
   };
 
   // Helper to create or update a report in the background
   const handleGenerateReport = async (batch: { batchId: string; title: string }, staffId: number | null, notes: string = '', date: string = formatDateInput(new Date()), statusParam: number = 4, deviceListText: string = '') => {
     try {
-      // Lấy thông tin phòng ban của nhân viên nếu có
+      // Resolve the effective staff ID for reporter/handler
+      const effectiveStaffId = staffId || currentUserStaffId || 0;
+      
+      if (effectiveStaffId === 0) {
+        toast.warning('Không thể xác định nhân viên thực hiện. Vui lòng chọn nhân viên hoặc kiểm tra lại thông tin tài khoản.');
+        return false;
+      }
+      
+      // Lấy thông tin phòng ban của nhân viên nếu có (Sử dụng dữ liệu từ SWR staffData cho tin cậy)
       let departmentId = 0;
-      const staff = staffList.find(s => s.id === staffId);
+      const staffListToSearch = staffData?.status ? staffData.data : [];
+      const staff = staffListToSearch.find((s: any) => s.id === effectiveStaffId);
       if (staff && staff.departmentId) {
         departmentId = staff.departmentId;
       }
 
-      const damageContentText = `Báo cáo bảo trì định kỳ cho đợt: ${batch.title} [Batch: ${batch.batchId}].${deviceListText ? `\n\nDanh sách thiết bị:\n${deviceListText}` : ''}`;
+      if (departmentId === 0) {
+        toast.error('Nhân viên thực hiện chưa được gán phòng ban. Vui lòng cập nhật thông tin nhân viên trong phần Quản lý nhân viên.');
+        return false;
+      }
+
+      const damageContentText = `Bảo trì định kỳ: ${batch.title} [Batch: ${batch.batchId}]`;
 
       const reportPayload: any = {
         deviceSelection: 'maintenance',
@@ -280,8 +298,8 @@ function MaintenancePageContent() {
         reportDate: date,
         status: statusParam,
         priority: 2, // Normal
-        reporterId: staffId || currentUserStaffId || 0,
-        handlerId: staffId || currentUserStaffId || 0,
+        reporterId: effectiveStaffId,
+        handlerId: effectiveStaffId,
         reportingDepartmentId: departmentId,
       };
 
@@ -294,7 +312,7 @@ function MaintenancePageContent() {
 
       if (existingReport) {
         // UPDATE báo cáo đã có
-        await api.put(`/damage-reports/${existingReport.id}`, reportPayload);
+        await api.put(`/damage-reports/${existingReport.id}`, { ...reportPayload, id: existingReport.id });
         const statusText = statusParam === 4 ? 'Hoàn thành' : 'Đang xử lý';
         toast.success(`Đã cập nhật báo cáo công việc hiện có (Trạng thái: ${statusText})`);
       } else {
@@ -306,9 +324,10 @@ function MaintenancePageContent() {
 
       globalMutate('/damage-reports'); // Refresh data in background
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating report:', error);
-      toast.error('Lỗi khi tạo/cập nhật báo cáo công việc');
+      const apiError = error.response?.data?.error || error.message || '';
+      toast.error(`Lỗi khi tạo/cập nhật báo cáo công việc${apiError ? `: ${apiError}` : ''}`);
       return false;
     }
   };
@@ -364,13 +383,45 @@ function MaintenancePageContent() {
   useEffect(() => {
     if (!currentUser || !staffData?.status || !staffData.data) return;
     const staffArray = staffData.data;
-    const possibleUserIds = [String(currentUser.id), String((currentUser as any).userId), String((currentUser as any).fid), String((currentUser as any).sub)].filter(Boolean);
+    
+    // Get all possible IDs for the current user
+    const possibleUserIds: string[] = [];
+    if (currentUser.id) possibleUserIds.push(String(currentUser.id));
+    if ((currentUser as any).userId) possibleUserIds.push(String((currentUser as any).userId));
+    if ((currentUser as any).fid) possibleUserIds.push(String((currentUser as any).fid));
+    if ((currentUser as any).sub) possibleUserIds.push(String((currentUser as any).sub));
+    
     const email = currentUser.email ? String(currentUser.email).trim().toLowerCase() : null;
-    let me = staffArray.find((s: any) => s.userId && possibleUserIds.some(uid => uid === String(s.userId)));
-    if (!me && email) {
-      me = staffArray.find((s: any) => s.email?.trim().toLowerCase() === email);
+    
+    // Try matching by various userId keys
+    let me = staffArray.find((s: any) => s.userId && possibleUserIds.some(uid => uid && String(s.userId) === uid));
+    
+    // Fallback: Case-insensitive match for userId
+    if (!me) {
+      me = staffArray.find((s: any) => s.userId && possibleUserIds.some(uid => 
+        uid && String(s.userId).toLowerCase() === uid.toLowerCase()
+      ));
     }
-    if (me) setCurrentUserStaffId(me.id);
+    
+    // Fallback: Match by email
+    if (!me && email) {
+      me = staffArray.find((s: any) => {
+        const staffEmail = (s.email || '').trim().toLowerCase();
+        return staffEmail && staffEmail === email;
+      });
+    }
+    
+    if (me) {
+      setCurrentUserStaffId(me.id);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Resolved currentUserStaffId:', me.id, me.name);
+      }
+    } else {
+      setCurrentUserStaffId(null);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Unable to resolve staff for current user:', currentUser.userName);
+      }
+    }
   }, [currentUser, staffData]);
 
   // Static data for form
@@ -414,8 +465,8 @@ function MaintenancePageContent() {
     { refreshInterval: 15000 }
   );
 
-  const { data: reportsResponse } = useSWR(
-    (activeTab === 'plans' || activeTab === 'cancelled') ? '/damage-reports' : null, 
+  const { data: reportsResponse, mutate: mutateReports } = useSWR(
+    (activeTab === 'plans' || activeTab === 'cancelled' || activeTab === 'batches') ? '/damage-reports' : null, 
     fetcher, 
     { refreshInterval: 20000 }
   );
@@ -485,6 +536,7 @@ function MaintenancePageContent() {
   const loadData = async () => { 
     mutateBatches(); 
     mutateEvents(); 
+    mutateReports();
     globalMutate('/reports/pending');
   };
   const loadFormData = async () => {};
@@ -943,115 +995,7 @@ function MaintenancePageContent() {
     }
   };
 
-  const handleExportMaintenance = async (params: Record<string, any> = {}) => {
-    if (exporting) return;
-    setExporting(true);
-    setLoading(true);
 
-    try {
-      const queryParams = new URLSearchParams();
-      queryParams.set('type', 'maintenance');
-      queryParams.set('preview', 'true');
-      
-      Object.entries(params).forEach(([key, val]) => {
-        if (val !== undefined && val !== null) queryParams.set(key, String(val));
-      });
-
-      const response = await api.get(`/statistics/export?${queryParams.toString()}`);
-      if (!response.data.status) {
-        throw new Error(response.data.error || 'Lỗi khi lấy dữ liệu xuất');
-      }
-
-      const rawData = response.data.data || [];
-      const columns = visibleColumns.filter(c => c.visible).map(c => ({
-        id: c.id,
-        label: c.label,
-        width: c.id === 'deviceName' || c.id === 'title' ? 40 : 20
-      }));
-
-      const exportData = rawData.map((item: any, idx: number) => {
-        const row: any = { ...item };
-        row.index = idx + 1;
-        row.nextDueDate = formatDateDisplay(item.nextDueDate);
-        row.maintenanceType = item.maintenanceType === 'internal' ? 'Nội bộ' : 'Thuê ngoài';
-        const last = item.lastCompletedEvent;
-        row.lastCompleted = last ? `${formatDateDisplay(last.endDate)} (${last.staffName || ''})` : 'Chưa có';
-        return row;
-      });
-
-      await exportToExcel({
-        title: params.batchId ? `BÁO CÁO LỊCH SỬ BẢO TRÌ BATCH: ${params.batchId}` : 'BÁO CÁO KẾ HOẠCH BẢO TRÌ THIẾT BỊ',
-        filename: `Bao_cao_bao_tri`,
-        columns,
-        data: exportData
-      });
-
-      toast.success('Xuất file thành công');
-    } catch (error: any) {
-      console.error('Export error:', error);
-      toast.error(error.message || 'Lỗi khi xuất file');
-    } finally {
-      setExporting(false);
-      setLoading(false);
-    }
-  };
-
-  const ColumnDropdown = () => {
-    const [isOpen, setIsOpen] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-      const clickOutside = (e: MouseEvent) => {
-        if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-          setIsOpen(false);
-        }
-      };
-      document.addEventListener('mousedown', clickOutside);
-      return () => document.removeEventListener('mousedown', clickOutside);
-    }, []);
-
-    const toggleColumn = (id: string) => {
-      setVisibleColumns(prev => prev.map(col =>
-        col.id === id ? { ...col, visible: !col.visible } : col
-      ));
-    };
-
-    return (
-      <div className="position-relative d-inline-block" ref={dropdownRef}>
-        <button
-          className="btn btn-outline-info btn-sm"
-          onClick={() => setIsOpen(!isOpen)}
-          title="Tùy chỉnh cột hiển thị"
-          style={{ width: '36px', height: '31px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >
-          <i className="fas fa-columns"></i>
-        </button>
-        {isOpen && (
-          <div className="position-absolute shadow-lg bg-white rounded p-3" style={{
-            zIndex: 1060, top: '35px', right: 0, width: '250px', maxHeight: '350px', overflowY: 'auto', border: '1px solid #dee2e6'
-          }}>
-            <h6 className="fw-bold mb-3 small">Hiển thị cột</h6>
-            <div className="d-flex flex-column gap-2">
-              {visibleColumns.map((col) => (
-                <div key={col.id} className="form-check mb-0">
-                  <input
-                    className="form-check-input shadow-none"
-                    type="checkbox"
-                    id={`col-maint-${col.id}`}
-                    checked={col.visible}
-                    onChange={() => toggleColumn(col.id)}
-                  />
-                  <label className="form-check-label small cur-pointer" htmlFor={`col-maint-${col.id}`} style={{ cursor: 'pointer' }}>
-                    {col.label}
-                  </label>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const handleReschedule = async () => {
     if (!selectedPlan || !rescheduleDate || !rescheduleReason.trim()) {
@@ -2253,20 +2197,7 @@ function MaintenancePageContent() {
             Quản Lý Bảo Trì
           </h4>
           <div className="d-flex align-items-center gap-2">
-            <ColumnDropdown />
-            <button
-              className="btn btn-outline-success btn-sm d-flex align-items-center gap-2 px-3 fw-bold"
-              onClick={() => handleExportMaintenance()}
-              disabled={exporting}
-              title="Xuất Excel danh sách bảo trì"
-            >
-              {exporting ? (
-                <span className="spinner-border spinner-border-sm" role="status"></span>
-              ) : (
-                <i className="fas fa-file-excel"></i>
-              )}
-              <span className="d-none d-sm-inline">Xuất Excel</span>
-            </button>
+
             <button
               className="btn btn-white btn-sm border rounded-circle d-flex align-items-center justify-content-center"
               style={{ width: '32px', height: '32px' }}
@@ -2331,11 +2262,7 @@ function MaintenancePageContent() {
 
         {/* Content */}
         {loading ? (
-          <div className="text-center py-5">
-            <div className="spinner-border text-primary" role="status">
-              <span className="visually-hidden">Đang tải...</span>
-            </div>
-          </div>
+          <Loading />
         ) : activeTab === 'create' ? (
           <div className="card">
             <div className="card-header">
@@ -3366,20 +3293,6 @@ function MaintenancePageContent() {
                     Chi Tiết Batch: {getShortTitle(selectedBatchTitle || selectedBatchId || '')}
                   </h5>
                   <div className="d-flex align-items-center gap-2">
-                    <ColumnDropdown />
-                    <button
-                      className="btn btn-outline-success btn-sm d-flex align-items-center gap-2"
-                      onClick={() => handleExportMaintenance({ batchId: selectedBatchId })}
-                      disabled={exporting}
-                      title="Xuất lịch sử bảo trì của kế hoạch này"
-                    >
-                      {exporting ? (
-                        <span className="spinner-border spinner-border-sm" role="status"></span>
-                      ) : (
-                        <i className="fas fa-file-excel"></i>
-                      )}
-                      <span className="d-none d-sm-inline">Xuất lịch sử</span>
-                    </button>
                     <button
                       type="button"
                       className="btn-close"
@@ -3434,7 +3347,7 @@ function MaintenancePageContent() {
                               <tr>
                                 <th>Thiết Bị</th>
                                 <th>Trạng Thái</th>
-                                <th>Ngày Sự Kiện</th>
+                                <th>Ngày Kế Hoạch</th>
                                 <th>Ngày Hoàn Thành</th>
                                 <th>Nhân Viên</th>
                                 <th>Thao Tác</th>

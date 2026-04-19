@@ -32,6 +32,8 @@ interface PendingReportsNotifications {
   inProgress: ReportGroup;
 }
 
+import Loading from '@/components/Loading';
+
 export default function DashboardPage() {
   const { user, isAdmin } = useAuth();
   const router = useRouter();
@@ -131,8 +133,9 @@ export default function DashboardPage() {
   const loading = !devicesData || !notificationsData || !pendingReportsData;
 
   if (loading) {
-    return <div className="text-center">Đang tải...</div>;
+    return <Loading fullPage />;
   }
+
 
   const hasNotifications = notifications.overduePlans > 0 || notifications.upcomingPlans > 0 || notifications.pendingEvents > 0;
   const hasPendingReports = pendingReports.pending.totalCount > 0 || pendingReports.inProgress.totalCount > 0;

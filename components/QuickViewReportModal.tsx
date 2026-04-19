@@ -170,7 +170,7 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
       <div 
         className="modal show d-block" 
         tabIndex={-1} 
-        style={{ backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1040, backdropFilter: 'blur(4px)' }} 
+        style={{ backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1080, backdropFilter: 'blur(4px)' }} 
         onClick={onClose}
       >
         <div 
@@ -207,6 +207,19 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
                 <div className="container-fluid p-0">
                   <div className="d-flex flex-column gap-3">
                     
+                    {/* Maintenance Notice */}
+                    {report.maintenanceBatchId && (
+                      <div className="alert alert-info py-2 px-3 mb-1 d-flex align-items-center gap-3 border-0 shadow-sm" style={{ fontSize: '0.75rem', borderRadius: '12px', backgroundColor: '#eef6ff' }}>
+                        <div className="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style={{ width: '24px', height: '24px', minWidth: '24px' }}>
+                          <i className="fas fa-info fa-xs"></i>
+                        </div>
+                        <div>
+                          <span className="fw-bold text-primary d-block">Báo cáo bảo trì tự động</span>
+                          <span className="text-muted">Báo cáo này được hệ thống tự động sinh ra từ đợt bảo trì định kỳ.</span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Location Card - More Compact */}
                     <div className="bg-white p-3 rounded-4 shadow-sm border-0">
                       <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">

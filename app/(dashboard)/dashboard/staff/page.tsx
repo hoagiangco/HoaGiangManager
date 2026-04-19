@@ -7,6 +7,7 @@ import { StaffVM, Department } from '@/types';
 import { formatDateDisplay, formatDateInput } from '@/lib/utils/dateFormat';
 import DateInput from '@/components/DateInput';
 import AdminRoute from '@/components/AdminRoute';
+import Loading from '@/components/Loading';
 
 function StaffPageContent() {
   // Control mobile filter visibility
@@ -416,17 +417,7 @@ function StaffPageContent() {
   }, [currentStaff]); // Re-run when table content changes
 
   if (loading) {
-    return (
-      <div className="container-fluid">
-        <div className="card">
-          <div className="card-body text-center py-5">
-            <div className="spinner-border text-primary" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <Loading fullPage />;
   }
 
   return (

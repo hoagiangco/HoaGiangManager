@@ -6,6 +6,7 @@ import { fetcher } from '@/lib/utils/swr-fetcher';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
 import { exportToExcel } from '@/lib/utils/excelExporter.client';
+import Loading from '@/components/Loading';
 
 export default function StatisticsPage() {
   const [activeTab, setActiveTab] = useState<'devices' | 'reports' | 'maintenance'>('devices');
@@ -420,7 +421,7 @@ export default function StatisticsPage() {
 }
 
 function PreviewTable({ data, loading, color, configCols }: { data: any[], loading: boolean, color: string, configCols: {id: string, visible: boolean}[] }) {
-  if (loading) return <div className="text-center py-5"><div className={`spinner-border text-${color}`} role="status"></div><p className="mt-2 text-muted x-small">Đang tải dữ liệu...</p></div>;
+  if (loading) return <Loading />;
   if (!data || data.length === 0) return <div className="alert alert-light text-center border p-4 my-3 text-muted" style={{ borderRadius: '12px' }}><i className="fas fa-search me-2"></i>Không tìm thấy dữ liệu phù hợp với bộ lọc</div>;
 
   const visibleColIds = configCols && configCols.length > 0 

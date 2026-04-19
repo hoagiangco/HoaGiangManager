@@ -14,6 +14,7 @@ import FileManager from '@/components/FileManager';
 import AdminRoute from '@/components/AdminRoute';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
 import SearchableSelect from '@/components/SearchableSelect';
+import Loading from '@/components/Loading';
 
 
 // Dynamically import ReactQuill to avoid SSR issues
@@ -1105,8 +1106,7 @@ function DevicesPageContent() {
                 {loading ? (
                   <tr>
                     <td colSpan={9} className="text-center py-4">
-                      <div className="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
-                      <span className="text-muted">Đang tải dữ liệu...</span>
+                      <Loading />
                     </td>
                   </tr>
                 ) : currentDevices.length === 0 ? (
@@ -1669,7 +1669,7 @@ function DevicesPageContent() {
       />
 
       {showHistoryModal && (
-        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }}>
           <div className="modal-dialog modal-lg modal-dialog-scrollable">
             <div className="modal-content">
               <div className="modal-header">
@@ -1681,11 +1681,7 @@ function DevicesPageContent() {
               </div>
               <div className="modal-body">
                 {historyLoading ? (
-                  <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '200px' }}>
-                    <div className="spinner-border text-primary" role="status">
-                      <span className="visually-hidden">Đang tải...</span>
-                    </div>
-                  </div>
+                  <Loading message="Đang tải lịch sử thiết bị..." />
                 ) : !historyData ? (
                   <div className="text-center text-muted py-4">
                     Không có dữ liệu lịch sử.
