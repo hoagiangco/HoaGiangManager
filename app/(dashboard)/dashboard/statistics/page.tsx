@@ -9,12 +9,11 @@ import { exportToExcel } from '@/lib/utils/excelExporter.client';
 import Loading from '@/components/Loading';
 
 export default function StatisticsPage() {
-  const [activeTab, setActiveTab] = useState<'devices' | 'reports' | 'maintenance'>('devices');
+  const [activeTab, setActiveTab] = useState<'devices' | 'reports'>('devices');
   
   // States for local filters
   const [deviceFilters, setDeviceFilters] = useState({ deptId: 0, locId: 0 });
   const [reportFilters, setReportFilters] = useState({ deptId: 0, locId: 0, fromDate: '', toDate: '' });
-  const [maintFilters, setMaintFilters] = useState({ deptId: 0, locId: 0, fromDate: '', toDate: '' });
 
   // Preview toggle states
   const [showPreview, setShowPreview] = useState<Record<string, boolean>>({});
@@ -38,7 +37,6 @@ export default function StatisticsPage() {
 
   const { data: deviceSummary } = useSWR(getSummaryUrl('devices', deviceFilters), fetcher);
   const { data: reportSummary } = useSWR(getSummaryUrl('reports', reportFilters), fetcher);
-  const { data: maintSummary } = useSWR(getSummaryUrl('maintenance', maintFilters), fetcher);
 
   // Preview Data fetch logic
   const getPreviewUrl = (tab: string, filters: any) => {
@@ -59,7 +57,6 @@ export default function StatisticsPage() {
 
   const { data: deviceList, isLoading: devListLoading } = useSWR(getPreviewUrl('devices', deviceFilters), fetcher);
   const { data: reportList, isLoading: repListLoading } = useSWR(getPreviewUrl('reports', reportFilters), fetcher);
-  const { data: maintList, isLoading: maintListLoading } = useSWR(getPreviewUrl('maintenance', maintFilters), fetcher);
 
   const togglePreview = (tab: string) => {
     setShowPreview(prev => ({ ...prev, [tab]: !prev[tab] }));
@@ -69,7 +66,6 @@ export default function StatisticsPage() {
   type ColMeta = { id: string, visible: boolean };
   const [colsDevice, setColsDevice] = useState<ColMeta[]>([]);
   const [colsReport, setColsReport] = useState<ColMeta[]>([]);
-  const [colsMaint, setColsMaint] = useState<ColMeta[]>([]);
   const [colDropdownTab, setColDropdownTab] = useState<string | null>(null);
 
   // Initialize columns when data arrives and config is empty
@@ -85,11 +81,6 @@ export default function StatisticsPage() {
     }
   }, [reportList]);
   
-  useEffect(() => {
-    if (maintList?.data && maintList.data.length > 0 && colsMaint.length === 0) {
-      setColsMaint(Object.keys(maintList.data[0]).map(k => ({ id: k, visible: true })));
-    }
-  }, [maintList]);
 
   // Export Logic Directly
   const handleExport = async (tab: string, filters: any, cols: ColMeta[]) => {
@@ -116,7 +107,7 @@ export default function StatisticsPage() {
       }
 
       const visibleColIds = cols.filter(c => c.visible).map(c => c.id);
-      const titlePrefix = tab === 'devices' ? 'THIẾT BỊ' : tab === 'reports' ? 'BÁO CÁO' : 'BẢO TRÌ';
+      const titlePrefix = tab === 'devices' ? 'THIẾT BỊ' : 'BÁO CÁO';
       
       // Map columns for the exporter
       const columns = visibleColIds.map(id => ({
@@ -171,15 +162,6 @@ export default function StatisticsPage() {
                 style={{ borderRadius: '8px' }}
               >
                 <i className="fas fa-file-invoice me-2"></i>Sự cố & Báo cáo
-              </button>
-            </li>
-            <li className="nav-item">
-              <button 
-                className={`nav-link px-4 py-2 fw-bold ${activeTab === 'maintenance' ? 'active bg-warning text-dark' : 'text-muted bg-light border'}`}
-                onClick={() => setActiveTab('maintenance')}
-                style={{ borderRadius: '8px' }}
-              >
-                <i className="fas fa-tools me-2"></i>Bảo trì
               </button>
             </li>
           </ul>
@@ -350,64 +332,6 @@ export default function StatisticsPage() {
             </div>
           )}
 
-          {/* Tab Content: Maintenance */}
-          {activeTab === 'maintenance' && (
-            <div>
-              <div className="row g-2 align-items-end mb-4 bg-light p-2 rounded-3 mx-0 border">
-                <div className="col-12 col-md-4">
-                  <label className="form-label x-small fw-bold text-muted mb-1">PHÒNG BAN</label>
-                  <select 
-                    className="form-select form-select-sm border shadow-none"
-                    value={maintFilters.deptId}
-                    onChange={e => setMaintFilters(prev => ({ ...prev, deptId: Number(e.target.value) }))}
-                  >
-                    <option value="0">Tất cả</option>
-                    {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
-                </div>
-                <div className="col-12 col-md-2">
-                  <label className="form-label x-small fw-bold text-muted mb-1">TỪ NGÀY</label>
-                  <input type="date" className="form-control form-control-sm border shadow-none" value={maintFilters.fromDate} onChange={e => setMaintFilters(prev => ({ ...prev, fromDate: e.target.value }))} />
-                </div>
-                <div className="col-12 col-md-2">
-                  <label className="form-label x-small fw-bold text-muted mb-1">ĐẾN NGÀY</label>
-                  <input type="date" className="form-control form-control-sm border shadow-none" value={maintFilters.toDate} onChange={e => setMaintFilters(prev => ({ ...prev, toDate: e.target.value }))} />
-                </div>
-                <div className="col-12 col-md-4 d-flex gap-2 justify-content-end">
-                   <div className="d-flex gap-2 position-relative w-100">
-                     <button className="btn btn-sm btn-outline-warning text-dark flex-grow-1 fw-bold" onClick={() => togglePreview('maintenance')}>
-                       <i className={`fas ${showPreview.maintenance ? 'fa-eye-slash' : 'fa-list-ul'} me-2`}></i>
-                       {showPreview.maintenance ? 'Đóng ds' : 'Xem danh sách'}
-                     </button>
-
-                     <ColumnDropdown 
-                       isOpen={colDropdownTab === 'maintenance'}
-                       onToggle={() => setColDropdownTab(prev => prev === 'maintenance' ? null : 'maintenance')}
-                       cols={colsMaint}
-                       setCols={setColsMaint}
-                       disabled={colsMaint.length === 0}
-                     />
-
-                     <button 
-                       className="btn btn-sm btn-warning px-3 fw-bold flex-grow-1" 
-                       onClick={() => handleExport('maintenance', maintFilters, colsMaint)}
-                       disabled={isExporting}
-                     >
-                       <i className={`fas ${isExporting ? 'fa-spinner fa-spin' : 'fa-file-excel'} me-1`}></i> Xuất
-                     </button>
-                   </div>
-                </div>
-              </div>
-
-              <div className="text-center py-4 bg-white rounded-4 border shadow-sm mb-4" style={{ maxWidth: '400px' }}>
-                <p className="text-muted mb-1 small uppercase fw-bold">Công việc bảo trì đang chạy</p>
-                <h1 className="display-2 fw-bold text-warning mb-0">{maintSummary?.data?.activeMaintenance ?? 0}</h1>
-                <div className="badge bg-warning bg-opacity-10 text-warning px-3 py-1 rounded-pill mt-2">Đang thực hiện</div>
-              </div>
-
-              {showPreview.maintenance && <PreviewTable data={maintList?.data} loading={maintListLoading} color="warning" configCols={colsMaint} />}
-            </div>
-          )}
         </div>
       </div>
 

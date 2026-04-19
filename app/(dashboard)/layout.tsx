@@ -145,7 +145,8 @@ export default function DashboardLayout({
         title: 'Hệ thống',
         items: [
           { href: '/dashboard/staff', label: 'Nhân viên', icon: 'fas fa-users' },
-          { href: '/dashboard/admin', label: 'Quản trị', icon: 'fas fa-cog' }
+          { href: '/dashboard/admin', label: 'Tài khoản người dùng', icon: 'fas fa-cog' },
+          { href: '/dashboard/backup', label: 'Sao lưu/ Phục hồi', icon: 'fas fa-database' }
         ]
       }
     );

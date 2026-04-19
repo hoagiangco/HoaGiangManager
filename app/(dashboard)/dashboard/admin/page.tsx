@@ -217,7 +217,6 @@ function AdminUsersPageContent() {
           </button>
         </div>
         <div className="card-body p-0">
-          {/* Custom style for tiny buttons */}
           <style dangerouslySetInnerHTML={{ __html: `
             .btn-tiny {
               padding: 0.15rem 0.35rem;
@@ -233,7 +232,6 @@ function AdminUsersPageContent() {
             }
           `}} />
 
-          {/* Desktop Table View */}
           <div className="table-responsive d-none d-md-block">
             <table className="table table-striped table-hover mb-0">
               <thead className="table-light">
@@ -296,7 +294,6 @@ function AdminUsersPageContent() {
             </table>
           </div>
 
-          {/* Mobile Ultra-Compact View */}
           <div className="d-md-none">
             {users.length === 0 ? (
               <div className="text-center py-4 text-muted border-top">Không có user</div>
@@ -350,7 +347,6 @@ function AdminUsersPageContent() {
             ))}
           </div>
 
-          {/* Pagination */}
           {users.length > 0 && (
             <div className="d-flex flex-column flex-sm-row justify-content-between align-items-center p-2 gap-2 border-top bg-light-subtle">
               <div className="text-muted" style={{ fontSize: '0.75rem' }}>
@@ -491,5 +487,3 @@ export default function AdminUsersPage() {
     </AdminRoute>
   );
 }
-
-

@@ -2629,88 +2629,90 @@ export default function DamageReportsPage() {
                         </div>
                         )}
 
-                        {/* Images Section - Both Before & After */}
+                        {/* Images Section - Side by Side (Before | After) */}
                         {((report.images && report.images.length > 0) || (report.afterImages && report.afterImages.length > 0)) && (
                           <div className="mt-3 pt-2 border-top">
-                            {/* Before Images */}
-                            {report.images && report.images.length > 0 && (
-                              <div className={report.afterImages && report.afterImages.length > 0 ? "mb-2" : ""}>
-                                <div className="text-muted mb-1" style={{ fontSize: '0.55rem', fontWeight: '800', textTransform: 'uppercase' }}>Ảnh báo cáo</div>
-                                <div className="d-flex gap-2 overflow-auto pb-1 scrollbar-thin">
-                                  {report.images.slice(0, 5).map((img, idx) => (
-                                    <img
-                                      key={idx}
-                                      src={img}
-                                      alt={`Hình ${idx + 1}`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedImages(report.images!);
-                                        setCurrentImageIndex(idx);
-                                        setShowImageModal(true);
-                                      }}
-                                      style={{
-                                        width: '42px',
-                                        height: '42px',
-                                        objectFit: 'cover',
-                                        borderRadius: '6px',
-                                        border: '1px solid #e2e8f0',
-                                        cursor: 'pointer',
-                                        flexShrink: 0
-                                      }}
-                                    />
-                                  ))}
-                                  {report.images.length > 5 && (
-                                    <div 
-                                      className="d-flex align-items-center justify-content-center" 
-                                      style={{ width: '42px', height: '42px', backgroundColor: '#f1f5f9', borderRadius: '6px', fontSize: '0.65rem', fontWeight: 'bold', cursor: 'pointer', flexShrink: 0 }}
-                                      onClick={(e) => { e.stopPropagation(); setSelectedImages(report.images!); setCurrentImageIndex(5); setShowImageModal(true); }}
-                                    >
-                                      +{report.images.length - 5}
-                                    </div>
-                                  )}
+                            <div className="row g-2">
+                              {/* Left Column: Before Images */}
+                              {report.images && report.images.length > 0 && (
+                                <div className={report.afterImages && report.afterImages.length > 0 ? "col-6 border-end" : "col-12"}>
+                                  <div className="text-muted mb-1" style={{ fontSize: '0.5rem', fontWeight: '800', textTransform: 'uppercase' }}>Ảnh báo cáo</div>
+                                  <div className="d-flex gap-1 overflow-auto pb-1 scrollbar-thin">
+                                    {report.images.slice(0, 3).map((img, idx) => (
+                                      <img
+                                        key={idx}
+                                        src={img}
+                                        alt={`Hình ${idx + 1}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedImages(report.images!);
+                                          setCurrentImageIndex(idx);
+                                          setShowImageModal(true);
+                                        }}
+                                        style={{
+                                          width: '38px',
+                                          height: '38px',
+                                          objectFit: 'cover',
+                                          borderRadius: '4px',
+                                          border: '1px solid #e2e8f0',
+                                          cursor: 'pointer',
+                                          flexShrink: 0
+                                        }}
+                                      />
+                                    ))}
+                                    {report.images.length > 3 && (
+                                      <div 
+                                        className="d-flex align-items-center justify-content-center" 
+                                        style={{ width: '38px', height: '38px', backgroundColor: '#f1f5f9', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 'bold', cursor: 'pointer', flexShrink: 0 }}
+                                        onClick={(e) => { e.stopPropagation(); setSelectedImages(report.images!); setCurrentImageIndex(3); setShowImageModal(true); }}
+                                      >
+                                        +{report.images.length - 3}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              )}
 
-                            {/* After Images */}
-                            {report.afterImages && report.afterImages.length > 0 && (
-                              <div>
-                                <div className="text-success mb-1" style={{ fontSize: '0.55rem', fontWeight: '800', textTransform: 'uppercase' }}>Ảnh hoàn thành</div>
-                                <div className="d-flex gap-2 overflow-auto pb-1 scrollbar-thin">
-                                  {report.afterImages.slice(0, 5).map((img, idx) => (
-                                    <img
-                                      key={idx}
-                                      src={img}
-                                      alt={`Hình hoàn thành ${idx + 1}`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedImages(report.afterImages!);
-                                        setCurrentImageIndex(idx);
-                                        setShowImageModal(true);
-                                      }}
-                                      style={{
-                                        width: '42px',
-                                        height: '42px',
-                                        objectFit: 'cover',
-                                        borderRadius: '6px',
-                                        border: '1px solid #dcfce7',
-                                        cursor: 'pointer',
-                                        flexShrink: 0
-                                      }}
-                                    />
-                                  ))}
-                                  {report.afterImages.length > 5 && (
-                                    <div 
-                                      className="d-flex align-items-center justify-content-center" 
-                                      style={{ width: '42px', height: '42px', backgroundColor: '#f0fdf4', borderRadius: '6px', fontSize: '0.65rem', fontWeight: 'bold', color: '#166534', cursor: 'pointer', flexShrink: 0 }}
-                                      onClick={(e) => { e.stopPropagation(); setSelectedImages(report.afterImages!); setCurrentImageIndex(5); setShowImageModal(true); }}
-                                    >
-                                      +{report.afterImages.length - 5}
-                                    </div>
-                                  )}
+                              {/* Right Column: After Images */}
+                              {report.afterImages && report.afterImages.length > 0 && (
+                                <div className={report.images && report.images.length > 0 ? "col-6" : "col-12"}>
+                                  <div className="text-success mb-1" style={{ fontSize: '0.5rem', fontWeight: '800', textTransform: 'uppercase' }}>Ảnh hoàn thành</div>
+                                  <div className="d-flex gap-1 overflow-auto pb-1 scrollbar-thin">
+                                    {report.afterImages.slice(0, 3).map((img, idx) => (
+                                      <img
+                                        key={idx}
+                                        src={img}
+                                        alt={`Hình hoàn thành ${idx + 1}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedImages(report.afterImages!);
+                                          setCurrentImageIndex(idx);
+                                          setShowImageModal(true);
+                                        }}
+                                        style={{
+                                          width: '38px',
+                                          height: '38px',
+                                          objectFit: 'cover',
+                                          borderRadius: '4px',
+                                          border: '1px solid #dcfce7',
+                                          cursor: 'pointer',
+                                          flexShrink: 0
+                                        }}
+                                      />
+                                    ))}
+                                    {report.afterImages.length > 3 && (
+                                      <div 
+                                        className="d-flex align-items-center justify-content-center" 
+                                        style={{ width: '38px', height: '38px', backgroundColor: '#f0fdf4', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 'bold', color: '#166534', cursor: 'pointer', flexShrink: 0 }}
+                                        onClick={(e) => { e.stopPropagation(); setSelectedImages(report.afterImages!); setCurrentImageIndex(3); setShowImageModal(true); }}
+                                      >
+                                        +{report.afterImages.length - 3}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>

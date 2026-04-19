@@ -39,6 +39,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
+# Install postgresql-client for backup/restore
+RUN apk add --no-cache postgresql-client
+
 # Copy necessary files from builder
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
