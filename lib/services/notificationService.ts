@@ -74,11 +74,7 @@ export class NotificationService {
           WHERE s."ID" = $1
         `;
         params.push(data.staffId);
-        if (data.excludeUserId) {
-          subsQuery += ` AND ps."UserId" != $2`;
-          params.push(data.excludeUserId);
-        }
-        console.log(`[Push] Targeting staff ID: ${data.staffId}${data.excludeUserId ? ` (excluding user ${data.excludeUserId})` : ''}`);
+        console.log(`[Push] Targeting staff ID: ${data.staffId}`);
       } else {
         // Broadcast to all Admins (e.g., new report created)
         subsQuery = `
