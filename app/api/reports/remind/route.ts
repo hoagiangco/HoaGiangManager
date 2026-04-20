@@ -58,7 +58,8 @@ export async function POST(request: NextRequest) {
       category: NotificationCategory.Reminder,
       targetUrl: '/dashboard/damage-reports',
       staffId: report.HandlerID,
-      createdBy: user.email
+      createdBy: user.email,
+      excludeUserId: user.userId
     });
 
     return NextResponse.json({ status: true, message: 'Đã gửi nhắc việc thành công.' });

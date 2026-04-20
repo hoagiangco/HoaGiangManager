@@ -335,7 +335,8 @@ export class EventService {
           type: NotificationType.System,
           category: NotificationCategory.Completed,
           targetUrl: `/dashboard/events`,
-          createdBy: event.updatedBy || undefined
+          createdBy: event.updatedBy || undefined,
+          excludeUserId: event.updatedBy || undefined
         });
       } catch (err) {
         console.error('Error sending event completion notification:', err);

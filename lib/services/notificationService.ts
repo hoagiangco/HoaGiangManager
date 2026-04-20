@@ -27,6 +27,7 @@ export class NotificationService {
     targetUrl?: string;
     staffId?: number | null; // Targeted staff. NULL for all admins.
     createdBy?: string;
+    excludeUserId?: string; // Optional: User to exclude from push (usually the initiator)
   }) {
     try {
       // 1. Save to database
@@ -73,7 +74,11 @@ export class NotificationService {
           WHERE s."ID" = $1
         `;
         params.push(data.staffId);
-        console.log(`[Push] Targeting staff ID: ${data.staffId}`);
+        if (data.excludeUserId) {
+          subsQuery += ` AND ps."UserId" != $2`;
+          params.push(data.excludeUserId);
+        }
+        console.log(`[Push] Targeting staff ID: ${data.staffId}${data.excludeUserId ? ` (excluding user ${data.excludeUserId})` : ''}`);
       } else {
         // Broadcast to all Admins (e.g., new report created)
         subsQuery = `
@@ -83,7 +88,11 @@ export class NotificationService {
           JOIN "AspNetRoles" r ON ur."RoleId" = r."Id"
           WHERE r."Name" = 'Admin'
         `;
-        console.log('[Push] Broadcasting to all Admins');
+        if (data.excludeUserId) {
+          subsQuery += ` AND ps."UserId" != $1`;
+          params.push(data.excludeUserId);
+        }
+        console.log(`[Push] Broadcasting to all Admins${data.excludeUserId ? ` (excluding user ${data.excludeUserId})` : ''}`);
       }
 
       const subsRes = await pool.query(subsQuery, params);

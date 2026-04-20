@@ -605,7 +605,8 @@ export class DamageReportService {
         category: NotificationCategory.New,
         targetUrl: `/dashboard/damage-reports`,
         staffId: handlerId,
-        createdBy: createdBy
+        createdBy: createdBy,
+        excludeUserId: createdBy
       });
     } catch (error) {
       console.error('Error in notifyHandlerAssigned:', error);
@@ -626,7 +627,8 @@ export class DamageReportService {
         type: NotificationType.Report,
         category: NotificationCategory.New,
         targetUrl: `/dashboard/damage-reports`, // You could improve this to point to specific ID if needed
-        createdBy: createdBy
+        createdBy: createdBy,
+        excludeUserId: createdBy
       });
     } catch (error) {
       console.error('Error in notifyNewReport:', error);
