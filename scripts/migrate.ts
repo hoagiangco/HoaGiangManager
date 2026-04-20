@@ -136,7 +136,7 @@ async function migrate() {
       CREATE TABLE IF NOT EXISTS "Device" (
         "ID" SERIAL PRIMARY KEY,
         "Name" VARCHAR(100),
-        "Serial" VARCHAR(20),
+        "Serial" VARCHAR(100),
         "Description" TEXT,
         "Img" TEXT,
         "WarrantyDate" DATE,

@@ -764,8 +764,21 @@ function DevicesPageContent() {
       }
     }
     .table td, .table th {
-      padding: 0.3rem 0.4rem !important;
+      padding: 0.6rem 0.75rem !important;
       vertical-align: middle !important;
+    }
+    .table-responsive::-webkit-scrollbar {
+      height: 8px;
+    }
+    .table-responsive::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+    .table-responsive::-webkit-scrollbar-thumb {
+      background: #ccc;
+      border-radius: 4px;
+    }
+    .table-responsive::-webkit-scrollbar-thumb:hover {
+      background: #aaa;
     }
   `;
 
@@ -1045,7 +1058,7 @@ function DevicesPageContent() {
                     </div>
                   </th>
                   <th 
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    style={{ cursor: 'pointer', userSelect: 'none', minWidth: '180px' }}
                     onClick={() => handleSort('serial')}
                   >
                     <div className="d-flex align-items-center gap-2">
@@ -1126,7 +1139,7 @@ function DevicesPageContent() {
                         />
                       </td>
                       <td>{device.name}</td>
-                      <td>{device.serial || '-'}</td>
+                      <td style={{ wordBreak: 'break-all', minWidth: '150px' }}>{device.serial || '-'}</td>
                       <td>
                         {device.warrantyDate
                           ? formatDateDisplay(device.warrantyDate)
