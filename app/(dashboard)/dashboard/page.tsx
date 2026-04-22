@@ -179,7 +179,7 @@ export default function DashboardPage() {
             {/* Maintenance */}
             {notifications.overduePlans > 0 && (
               <div className="col-lg-3 col-md-6">
-                <Link href="/dashboard/maintenance?tab=plans" className="alert-item-compact border-left-danger h-100">
+                <Link href="/dashboard/maintenance?tab=overdue" className="alert-item-compact border-left-danger h-100">
                   <i className="fas fa-calendar-times text-danger"></i>
                   <div className="alert-item-text text-danger">
                     {notifications.overduePlans} bảo trì quá hạn

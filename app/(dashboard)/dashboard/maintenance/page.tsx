@@ -134,6 +134,7 @@ function MaintenancePageContent() {
   
   // Tab handling
   const [activeTab, setActiveTab] = useState<'create' | 'batches' | 'plans' | 'cancelled'>('plans');
+  const [subFilter, setSubFilter] = useState<'all' | 'overdue' | 'upcoming'>('all');
 
   // Enforce tab access for non-admins
   useEffect(() => {
@@ -365,11 +366,17 @@ function MaintenancePageContent() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get('tab');
-      const validTabs: Array<'create' | 'batches' | 'plans' | 'cancelled'> = ['create', 'batches', 'plans', 'cancelled'];
+      const validTabs: Array<'create' | 'batches' | 'plans' | 'cancelled' | 'overdue' | 'upcoming'> = ['create', 'batches', 'plans', 'cancelled', 'overdue', 'upcoming'];
       if (tabParam && validTabs.includes(tabParam as any)) {
-        // Delay applying if not admin
-        if (isUserAdmin || tabParam === 'plans') {
-           setActiveTab(tabParam as 'create' | 'batches' | 'plans' | 'cancelled');
+        if (tabParam === 'overdue') {
+          setActiveTab('plans');
+          setSubFilter('overdue');
+        } else if (tabParam === 'upcoming') {
+          setActiveTab('plans');
+          setSubFilter('upcoming');
+        } else if (isUserAdmin || tabParam === 'plans') {
+          setActiveTab(tabParam as 'create' | 'batches' | 'plans' | 'cancelled');
+          setSubFilter('all');
         }
       }
     }
@@ -701,6 +708,20 @@ function MaintenancePageContent() {
       : activeTab === 'cancelled'
         ? allPlans.filter(p => !p.isActive)
         : allPlans;
+
+    // Apply overdue/upcoming sub-filters
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+
+    if (activeTab === 'plans' && subFilter !== 'all') {
+      if (subFilter === 'overdue') {
+        filteredPlans = filteredPlans.filter(p => p.nextDueDate && new Date(p.nextDueDate) < todayDate);
+      } else if (subFilter === 'upcoming') {
+        const thirtyDaysFromNow = new Date(todayDate);
+        thirtyDaysFromNow.setDate(todayDate.getDate() + 30);
+        filteredPlans = filteredPlans.filter(p => p.nextDueDate && new Date(p.nextDueDate) >= todayDate && new Date(p.nextDueDate) <= thirtyDaysFromNow);
+      }
+    }
 
     // Phân quyền hiển thị kế hoạch bảo trì nếu không phải là Admin
     if (!isUserAdmin) {
@@ -2220,7 +2241,7 @@ function MaintenancePageContent() {
               <button
                 className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'create' ? 'btn-primary shadow-sm' : 'btn-outline-secondary'}`}
                 style={{ fontSize: '0.8rem', fontWeight: activeTab === 'create' ? 600 : 400 }}
-                onClick={() => setActiveTab('create')}
+                onClick={() => { setActiveTab('create'); setSubFilter('all'); }}
               >
                 <i className="fas fa-plus-circle"></i>
                 <span className="d-none d-sm-inline">Tạo Kế Hoạch</span>
@@ -2229,7 +2250,7 @@ function MaintenancePageContent() {
               <button
                 className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'batches' ? 'btn-primary shadow-sm' : 'btn-outline-secondary'}`}
                 style={{ fontSize: '0.8rem', fontWeight: activeTab === 'batches' ? 600 : 400 }}
-                onClick={() => setActiveTab('batches')}
+                onClick={() => { setActiveTab('batches'); setSubFilter('all'); }}
               >
                 <i className="fas fa-layer-group"></i>
                 <span className="d-none d-sm-inline">Batch Bảo Trì</span>
@@ -2240,7 +2261,7 @@ function MaintenancePageContent() {
           <button
             className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'plans' ? 'btn-primary shadow-sm' : 'btn-outline-secondary'}`}
             style={{ fontSize: '0.8rem', fontWeight: activeTab === 'plans' ? 600 : 400 }}
-            onClick={() => setActiveTab('plans')}
+            onClick={() => { setActiveTab('plans'); setSubFilter('all'); }}
           >
             <i className="fas fa-list-alt"></i>
             <span className="d-none d-sm-inline">Lịch Bảo Trì</span>
@@ -2251,7 +2272,7 @@ function MaintenancePageContent() {
             <button
               className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'cancelled' ? 'btn-danger shadow-sm' : 'btn-outline-secondary'}`}
               style={{ fontSize: '0.8rem', fontWeight: activeTab === 'cancelled' ? 600 : 400 }}
-              onClick={() => setActiveTab('cancelled')}
+              onClick={() => { setActiveTab('cancelled'); setSubFilter('all'); }}
             >
               <i className="fas fa-ban"></i>
               <span className="d-none d-sm-inline">Đã Hủy</span>
@@ -2771,9 +2792,21 @@ function MaintenancePageContent() {
           <div>
             <div className="card">
               <div className="card-header py-2 px-3">
-                <h6 className="mb-0 text-truncate" style={{ fontSize: '0.85rem' }}>
+                <h6 className="mb-0 d-flex align-items-center gap-2" style={{ fontSize: '0.85rem' }}>
                   <i className={`fas ${activeTab === 'plans' ? 'fa-list-alt' : 'fa-ban'} me-2`}></i>
                   {activeTab === 'plans' ? (isUserAdmin ? 'Batch Đang Hoạt Động' : 'Lịch Bảo Trì Của Tôi') : 'Batch Đã Hủy'}
+                  {activeTab === 'plans' && subFilter === 'overdue' && (
+                    <span className="badge bg-danger ms-2 d-flex align-items-center gap-1">
+                      Đang lọc: Quá hạn
+                      <i className="fas fa-times-circle ms-1" style={{ cursor: 'pointer' }} onClick={() => setSubFilter('all')}></i>
+                    </span>
+                  )}
+                  {activeTab === 'plans' && subFilter === 'upcoming' && (
+                    <span className="badge bg-warning text-dark ms-2 d-flex align-items-center gap-1">
+                      Đang lọc: Sắp đến hạn
+                      <i className="fas fa-times-circle ms-1" style={{ cursor: 'pointer' }} onClick={() => setSubFilter('all')}></i>
+                    </span>
+                  )}
                 </h6>
               </div>
               <div className="card-body">

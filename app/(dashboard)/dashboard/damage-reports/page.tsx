@@ -608,7 +608,20 @@ export default function DamageReportsPage() {
       const params = new URLSearchParams(window.location.search);
       const action = params.get('action');
       const batchId = params.get('batchId');
+      const statusParam = params.get('status');
       
+      if (statusParam) {
+        if (statusParam === 'Pending') {
+          setSelectedStatus(DamageReportStatus.Pending);
+        } else if (statusParam === 'In Progress') {
+          setSelectedStatus(DamageReportStatus.InProgress);
+        } else if (statusParam === 'Assigned') {
+          setSelectedStatus(DamageReportStatus.Assigned);
+        } else if (statusParam === 'Completed') {
+          setSelectedStatus(DamageReportStatus.Completed);
+        }
+      }
+
       if (action === 'create' && batchId) {
         // Find current staff to get departmentId
         const currentStaff = staff.find(s => s.id === currentUserStaffId);
