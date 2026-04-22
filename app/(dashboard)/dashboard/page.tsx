@@ -143,7 +143,7 @@ export default function DashboardPage() {
   return (
     <div className="dashboard-page-container">
       {/* Alert Center - Combined Row */}
-      {(isAdmin && (hasPendingReports || hasNotifications)) && (
+      {(hasPendingReports || hasNotifications) && (
         <div className="alert-center-container">
           <div className="section-heading-compact mb-3">
             <i className="fas fa-bolt text-danger"></i>

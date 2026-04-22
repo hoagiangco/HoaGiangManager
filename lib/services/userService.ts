@@ -247,6 +247,11 @@ export class UserService {
   }
 
   async delete(id: string): Promise<boolean> {
+    const user = await this.getById(id);
+    if (user?.roles?.includes('SuperAdmin')) {
+      throw new Error('Không thể xóa user có quyền SuperAdmin');
+    }
+
     if (!(await this.hasAnotherAdmin(id))) {
       throw new Error('Không thể xóa user cuối cùng có quyền Admin');
     }
@@ -264,6 +269,11 @@ export class UserService {
   }
 
   async setLockStatus(id: string, locked: boolean): Promise<void> {
+    const user = await this.getById(id);
+    if (user?.roles?.includes('SuperAdmin')) {
+      throw new Error('Không thể khóa/mở khóa tài khoản SuperAdmin');
+    }
+
     if (locked && !(await this.hasAnotherAdmin(id))) {
       throw new Error('Không thể khóa tài khoản Admin cuối cùng');
     }

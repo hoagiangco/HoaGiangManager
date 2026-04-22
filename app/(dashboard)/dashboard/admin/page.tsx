@@ -264,17 +264,27 @@ function AdminUsersPageContent() {
                     <td>{renderStatusBadge(u)}</td>
                     <td>
                       <div className="d-flex gap-1 justify-content-center">
-                        <button className="btn btn-sm btn-primary" onClick={() => openRolesModal(u)} title="Gán quyền">
+                        <button 
+                          className="btn btn-sm btn-primary" 
+                          onClick={() => openRolesModal(u)} 
+                          title="Gán quyền"
+                          disabled={u.roles?.includes('SuperAdmin') && currentUser?.id !== u.id}
+                        >
                           <i className="fas fa-user-shield"></i>
                         </button>
-                        <button className="btn btn-sm btn-warning" onClick={() => openChangePasswordModal(u)} title="Đổi mật khẩu">
+                        <button 
+                          className="btn btn-sm btn-warning" 
+                          onClick={() => openChangePasswordModal(u)} 
+                          title="Đổi mật khẩu"
+                          disabled={u.roles?.includes('SuperAdmin') && currentUser?.id !== u.id}
+                        >
                           <i className="fas fa-key"></i>
                         </button>
                         <button
                           className={`btn btn-sm ${u.isLocked ? 'btn-success' : 'btn-outline-secondary'}`}
                           onClick={() => handleToggleLock(u)}
                           title={u.isLocked ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
-                          disabled={currentUser?.id === u.id}
+                          disabled={currentUser?.id === u.id || u.roles?.includes('SuperAdmin')}
                         >
                           <i className={`fas ${u.isLocked ? 'fa-lock-open' : 'fa-lock'}`}></i>
                         </button>
@@ -282,7 +292,7 @@ function AdminUsersPageContent() {
                           className="btn btn-sm btn-outline-danger"
                           onClick={() => handleDeleteUser(u)}
                           title="Xóa tài khoản"
-                          disabled={currentUser?.id === u.id}
+                          disabled={currentUser?.id === u.id || u.roles?.includes('SuperAdmin')}
                         >
                           <i className="fas fa-trash"></i>
                         </button>
@@ -316,24 +326,34 @@ function AdminUsersPageContent() {
                   </div>
 
                   <div className="d-flex gap-1 align-items-center ps-2 border-start ms-2">
-                    <button className="btn btn-primary btn-tiny" onClick={() => openRolesModal(u)} title="Gán quyền">
+                    <button 
+                      className="btn btn-primary btn-tiny" 
+                      onClick={() => openRolesModal(u)} 
+                      title="Gán quyền"
+                      disabled={u.roles?.includes('SuperAdmin') && currentUser?.id !== u.id}
+                    >
                       <i className="fas fa-user-shield"></i>
                     </button>
-                    <button className="btn btn-warning btn-tiny" onClick={() => openChangePasswordModal(u)} title="Đổi mật khẩu">
+                    <button 
+                      className="btn btn-warning btn-tiny" 
+                      onClick={() => openChangePasswordModal(u)} 
+                      title="Đổi mật khẩu"
+                      disabled={u.roles?.includes('SuperAdmin') && currentUser?.id !== u.id}
+                    >
                       <i className="fas fa-key"></i>
                     </button>
                     <button
                       className={`btn ${u.isLocked ? 'btn-success' : 'btn-outline-secondary'} btn-tiny`}
                       onClick={() => handleToggleLock(u)}
                       title={u.isLocked ? 'Mở khóa' : 'Khóa'}
-                      disabled={currentUser?.id === u.id}
+                      disabled={currentUser?.id === u.id || u.roles?.includes('SuperAdmin')}
                     >
                       <i className={`fas ${u.isLocked ? 'fa-lock-open' : 'fa-lock'}`}></i>
                     </button>
                     <button
                       className="btn btn-danger btn-tiny"
                       onClick={() => handleDeleteUser(u)}
-                      disabled={currentUser?.id === u.id}
+                      disabled={currentUser?.id === u.id || u.roles?.includes('SuperAdmin')}
                     >
                       <i className="fas fa-trash"></i>
                     </button>
@@ -407,13 +427,21 @@ function AdminUsersPageContent() {
                   <div className="text-muted">Không có role nào</div>
                 ) : (
                   <div className="d-flex flex-column gap-2">
-                    {roles.map(r => (
+                    {roles.filter(r => {
+                      if (r.name === 'SuperAdmin') {
+                        // Only show SuperAdmin option if current user is SuperAdmin
+                        return currentUser?.roles?.includes('SuperAdmin');
+                      }
+                      return true;
+                    }).map(r => (
                       <label key={r.id} className="form-check">
                         <input
                           type="checkbox"
                           className="form-check-input"
                           checked={selectedRoles.includes(r.name)}
                           onChange={() => toggleRole(r.name)}
+                          // Disable SuperAdmin checkbox if target is SuperAdmin to prevent accidental removal
+                          disabled={r.name === 'SuperAdmin' && selectedUser.roles?.includes('SuperAdmin')}
                         />
                         <span className="form-check-label">{r.name}</span>
                       </label>

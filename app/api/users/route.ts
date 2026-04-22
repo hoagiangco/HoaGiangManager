@@ -65,6 +65,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if trying to create a SuperAdmin
+    if (userData.roles?.includes('SuperAdmin')) {
+      const isRequesterSuperAdmin = user.roles && user.roles.includes('SuperAdmin');
+      if (!isRequesterSuperAdmin) {
+        return NextResponse.json(
+          { status: false, error: 'Forbidden: Chỉ SuperAdmin mới có quyền tạo user SuperAdmin' },
+          { status: 403 }
+        );
+      }
+    }
+
     const userService = new UserService();
     const userId = await userService.create(userData);
 

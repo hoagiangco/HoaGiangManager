@@ -23,6 +23,16 @@ export async function PUT(
       );
     }
 
+    const userService = new UserService();
+    const targetUser = await userService.getById(params.id);
+
+    if (targetUser?.roles?.includes('SuperAdmin')) {
+      return NextResponse.json(
+        { status: false, error: 'Forbidden: Không được phép khóa/mở khóa SuperAdmin' },
+        { status: 403 }
+      );
+    }
+
     if (params.id === user.userId) {
       return NextResponse.json(
         { status: false, error: 'Không thể khóa hoặc mở khóa chính tài khoản của bạn' },

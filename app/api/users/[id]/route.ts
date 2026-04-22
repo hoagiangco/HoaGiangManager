@@ -64,17 +64,30 @@ export async function PUT(
 
     const userService = new UserService();
     const targetUser = await userService.getById(params.id);
+    const userData = await request.json();
     
+    // Check if target is SuperAdmin
     if (targetUser?.roles?.includes('SuperAdmin')) {
        // Cannot modify SuperAdmin unless you are the SuperAdmin
        if (params.id !== user.userId) {
          return NextResponse.json(
-            { status: false, error: 'Forbidden: Không được phép sửa SuperAdmin' },
+            { status: false, error: 'Forbidden: Chỉ SuperAdmin mới được tự chỉnh sửa thông tin của mình' },
             { status: 403 }
          );
        }
     }
-    const userData = await request.json();
+
+    // Check if roles are being changed to include SuperAdmin
+    if (userData.roles?.includes('SuperAdmin')) {
+      const isRequesterSuperAdmin = user.roles && user.roles.includes('SuperAdmin');
+      if (!isRequesterSuperAdmin) {
+        return NextResponse.json(
+          { status: false, error: 'Forbidden: Chỉ SuperAdmin mới có quyền gán vai trò SuperAdmin' },
+          { status: 403 }
+        );
+      }
+    }
+
     await userService.update({ ...userData, id: params.id });
 
     return NextResponse.json({
