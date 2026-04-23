@@ -43,7 +43,6 @@ export async function PUT(
     const body = await request.json();
     const locked = Boolean(body?.locked);
 
-    const userService = new UserService();
     await userService.setLockStatus(params.id, locked);
 
     return NextResponse.json({
