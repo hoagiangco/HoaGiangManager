@@ -602,25 +602,40 @@ export default function DamageReportsPage() {
     setLoading(reportsLoading);
   }, [reportsLoading]);
 
+  // Apply initial status filter from URL params — runs ONCE on mount only.
+  // We immediately remove the param from the URL so that subsequent renders
+  // (e.g. SWR polling re-runs) do NOT reset the filter the user has chosen.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const statusParam = params.get('status');
+
+    if (statusParam) {
+      if (statusParam === 'Pending') {
+        setSelectedStatus(DamageReportStatus.Pending);
+      } else if (statusParam === 'In Progress') {
+        setSelectedStatus(DamageReportStatus.InProgress);
+      } else if (statusParam === 'Assigned') {
+        setSelectedStatus(DamageReportStatus.Assigned);
+      } else if (statusParam === 'Completed') {
+        setSelectedStatus(DamageReportStatus.Completed);
+      }
+
+      // Remove the status param from URL so the user can freely change filters afterwards
+      params.delete('status');
+      const newSearch = params.toString();
+      const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '');
+      window.history.replaceState({}, '', newUrl);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty – run once on mount
+
   // Handle query parameters for automated report creation (from maintenance module)
   useEffect(() => {
     if (currentUser && currentUserStaffId && staff.length > 0 && typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const action = params.get('action');
       const batchId = params.get('batchId');
-      const statusParam = params.get('status');
-      
-      if (statusParam) {
-        if (statusParam === 'Pending') {
-          setSelectedStatus(DamageReportStatus.Pending);
-        } else if (statusParam === 'In Progress') {
-          setSelectedStatus(DamageReportStatus.InProgress);
-        } else if (statusParam === 'Assigned') {
-          setSelectedStatus(DamageReportStatus.Assigned);
-        } else if (statusParam === 'Completed') {
-          setSelectedStatus(DamageReportStatus.Completed);
-        }
-      }
 
       if (action === 'create' && batchId) {
         // Find current staff to get departmentId
@@ -648,7 +663,7 @@ export default function DamageReportsPage() {
         window.history.replaceState({}, '', newUrl);
       }
     }
-  }, [currentUser, currentUserStaffId, staff, maintenanceBatches, reportsResponse]); // Wait for currentUser, staff list, batches and initial data load
+  }, [currentUser, currentUserStaffId, staff, maintenanceBatches]); // Wait for currentUser, staff list, and batches
 
   const loadData = async () => {
     mutate();
