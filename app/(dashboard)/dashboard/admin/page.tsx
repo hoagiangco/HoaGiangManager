@@ -68,12 +68,22 @@ function AdminUsersPageContent() {
 
   const openRolesModal = (user: UserVM) => {
     setSelectedUser(user);
-    setSelectedRoles(user.roles || []);
+    
+    // Determine effective single role from legacy multiple roles
+    let initialRole = 'User';
+    if (user.roles && user.roles.length > 0) {
+      if (user.roles.includes('SuperAdmin')) initialRole = 'SuperAdmin';
+      else if (user.roles.includes('Admin')) initialRole = 'Admin';
+      else if (user.roles.includes('Supervisor')) initialRole = 'Supervisor';
+      else initialRole = user.roles[0];
+    }
+    
+    setSelectedRoles([initialRole]);
     setShowRolesModal(true);
   };
 
   const toggleRole = (role: string) => {
-    setSelectedRoles(prev => prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]);
+    setSelectedRoles([role]); // Single role enforcement
   };
 
   const saveRoles = async () => {
@@ -434,17 +444,27 @@ function AdminUsersPageContent() {
                       }
                       return true;
                     }).map(r => (
-                      <label key={r.id} className="form-check">
+                      <div key={r.id} className="form-check border rounded p-3 mb-2 bg-light d-flex align-items-start">
                         <input
-                          type="checkbox"
-                          className="form-check-input"
+                          type="radio"
+                          name="roleSelection"
+                          id={`role-${r.id}`}
+                          className="form-check-input mt-1 me-2"
                           checked={selectedRoles.includes(r.name)}
                           onChange={() => toggleRole(r.name)}
-                          // Disable SuperAdmin checkbox if target is SuperAdmin to prevent accidental removal
                           disabled={r.name === 'SuperAdmin' && selectedUser.roles?.includes('SuperAdmin')}
+                          style={{ cursor: 'pointer' }}
                         />
-                        <span className="form-check-label">{r.name}</span>
-                      </label>
+                        <label className="form-check-label w-100 m-0" htmlFor={`role-${r.id}`} style={{ cursor: 'pointer' }}>
+                          <div className="fw-bold">{r.name}</div>
+                          <div className="text-muted small mt-1">
+                            {r.name === 'SuperAdmin' && 'Toàn quyền hệ thống'}
+                            {r.name === 'Admin' && 'Quản lý đầy đủ (thiết bị, báo cáo, nhân sự...)'}
+                            {r.name === 'Supervisor' && 'Nhân viên + Được quyền xem toàn bộ báo cáo/bảo trì của công ty'}
+                            {r.name === 'User' && 'Nhân viên thông thường (tạo báo cáo, thực hiện bảo trì được giao)'}
+                          </div>
+                        </label>
+                      </div>
                     ))}
                   </div>
                 )}

@@ -48,6 +48,14 @@ export async function PUT(
       );
     }
 
+    const { isAdmin } = await import('@/lib/auth/permissions');
+    if (!isAdmin(user.roles)) {
+      return NextResponse.json(
+        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được cập nhật sự kiện' },
+        { status: 403 }
+      );
+    }
+
     const id = parseInt(params.id);
     const payload = await request.json();
 
@@ -143,6 +151,14 @@ export async function DELETE(
       return NextResponse.json(
         { status: false, error: error || 'Unauthorized' },
         { status: 401 }
+      );
+    }
+
+    const { isAdmin } = await import('@/lib/auth/permissions');
+    if (!isAdmin(user.roles)) {
+      return NextResponse.json(
+        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được xóa sự kiện' },
+        { status: 403 }
       );
     }
 

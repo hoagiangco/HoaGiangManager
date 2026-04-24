@@ -21,8 +21,12 @@ export async function GET(
     const report = await damageReportService.getById(id);
 
     if (report) {
-      const isAdmin = user.roles && user.roles.includes('Admin');
-      if (!isAdmin) {
+      const { isAdmin, isSupervisor } = await import('@/lib/auth/permissions');
+      const isAdminUser = isAdmin(user.roles);
+      const isSupervisorUser = isSupervisor(user.roles);
+      
+      // If not Supervisor/Admin, check if the user is reporter or handler
+      if (!isSupervisorUser) {
         const staffService = new (await import('@/lib/services/staffService')).StaffService();
         const staff = await staffService.getByUserId(user.userId);
         if (!staff || (report.handlerId !== staff.id && report.reporterId !== staff.id)) {
@@ -64,10 +68,11 @@ export async function PUT(
     const id = parseInt(params.id);
     const body = await request.json();
     
-    const isAdmin = user.roles && user.roles.includes('Admin');
+    const { isAdmin } = await import('@/lib/auth/permissions');
+    const isAdminUser = isAdmin(user.roles);
 
     // Only Admin can edit damage reports
-    if (!isAdmin) {
+    if (!isAdminUser) {
       return NextResponse.json(
         { status: false, error: 'Forbidden: Chỉ quản trị viên mới được chỉnh sửa báo cáo hư hỏng' },
         { status: 403 }
@@ -111,7 +116,8 @@ export async function DELETE(
     }
 
     // Only Admin can delete damage reports
-    if (!user.roles || !user.roles.includes('Admin')) {
+    const { isAdmin } = await import('@/lib/auth/permissions');
+    if (!isAdmin(user.roles)) {
       return NextResponse.json(
         { status: false, error: 'Forbidden: Chỉ quản trị viên mới được xóa báo cáo hư hỏng' },
         { status: 403 }

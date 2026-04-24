@@ -44,6 +44,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { isAdmin } = await import('@/lib/auth/permissions');
+    if (!isAdmin(user.roles)) {
+      return NextResponse.json(
+        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được tạo sự kiện' },
+        { status: 403 }
+      );
+    }
+
     const payload = await request.json();
 
     if (!payload || typeof payload !== 'object') {

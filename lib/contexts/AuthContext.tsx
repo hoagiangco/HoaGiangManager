@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     loading,
     isAuthenticated: !!user,
-    isAdmin: hasRole('Admin'),
+    isAdmin: hasRole('Admin') || hasRole('SuperAdmin'),
     hasRole,
     hasAnyRole,
     updateUser,

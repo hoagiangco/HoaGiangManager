@@ -54,14 +54,15 @@ export async function GET(request: NextRequest) {
 
     const damageReportService = new DamageReportService();
     
-    // Check if user is admin
-    const isAdmin = user.roles && user.roles.includes('Admin');
+    // Import helper
+    const { isSupervisor } = await import('@/lib/auth/permissions');
+    const isSupervisorUser = isSupervisor(user.roles);
     
-    // Add currentUserId and isAdmin to filters
+    // Add currentUserId and isAdmin to filters (isAdmin is used by service to bypass filters)
     const filtersWithUser = {
       ...filters,
       currentUserId: user.userId,
-      isAdmin: isAdmin
+      isAdmin: isSupervisorUser // Treat supervisor as admin for reading purposes
     };
     
     const reports = await damageReportService.getAll(filtersWithUser);

@@ -24,7 +24,8 @@ export default function DashboardLayout({
   const [staffName, setStaffName] = useState<string | null>(null);
 
   // Menu items based on role
-  const isAdmin = user?.roles?.includes('Admin');
+  const isAdmin = user?.roles?.includes('Admin') || user?.roles?.includes('SuperAdmin');
+  const isSupervisor = user?.roles?.includes('Supervisor') || isAdmin;
 
   // Poll pending reports globally (10s)
   const { data: pendingReportsData } = useSWR(isAdmin ? '/reports/pending' : null, fetcher, {
@@ -150,6 +151,24 @@ export default function DashboardLayout({
         ]
       }
     );
+  } else if (isSupervisor) {
+    // Supervisor sees Dashboard + Stats + Activities
+    menuGroups.push(
+      {
+        title: 'Tổng quan',
+        items: [
+          { href: '/dashboard', label: 'Trang chủ', icon: 'fas fa-home' },
+          { href: '/dashboard/statistics', label: 'Thống kê tổng hợp', icon: 'fas fa-chart-pie' }
+        ]
+      },
+      {
+        title: 'Hoạt động',
+        items: [
+          { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' },
+          { href: '/dashboard/maintenance', label: 'Bảo trì', icon: 'fas fa-wrench' }
+        ]
+      }
+    );
   } else {
     // User only sees limited items grouped
     menuGroups.push(
@@ -246,7 +265,10 @@ export default function DashboardLayout({
                   </span>
                   {user?.roles && (
                     <span style={{ fontSize: '0.65rem', opacity: '0.7', fontWeight: '500', color: '#6c757d' }}>
-                      {user.roles.join(', ')}
+                      {user.roles.includes('SuperAdmin') ? 'Super Admin' : 
+                       user.roles.includes('Admin') ? 'Quản trị viên' : 
+                       user.roles.includes('Supervisor') ? 'Giám sát' : 
+                       'Nhân viên'}
                     </span>
                   )}
                 </div>

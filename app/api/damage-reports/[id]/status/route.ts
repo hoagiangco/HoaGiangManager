@@ -34,10 +34,11 @@ export async function PUT(
     } = body || {};
 
     // Admin and User can update status
-    const isAdmin = user.roles && user.roles.includes('Admin');
-    const isUser = user.roles && user.roles.includes('User');
+    const { isAdmin, isUser } = await import('@/lib/auth/permissions');
+    const isAdminUser = isAdmin(user.roles);
+    const isUserRole = isUser(user.roles);
     
-    if (!isAdmin && !isUser) {
+    if (!isAdminUser && !isUserRole) {
       return NextResponse.json(
         { status: false, error: 'Forbidden: Bạn không có quyền cập nhật trạng thái' },
         { status: 403 }
@@ -70,7 +71,7 @@ export async function PUT(
       );
     }
 
-    if (!isAdmin) {
+    if (!isAdminUser) {
       const staffService = new StaffService();
       const staff = await staffService.getByUserId(user.userId);
 

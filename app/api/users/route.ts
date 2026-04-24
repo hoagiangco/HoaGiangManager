@@ -65,6 +65,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (userData.roles && userData.roles.length > 1) {
+      return NextResponse.json(
+        { status: false, error: 'Mỗi người dùng chỉ được gán tối đa 1 vai trò (Single-Role)' },
+        { status: 400 }
+      );
+    }
+
     // Check if trying to create a SuperAdmin
     if (userData.roles?.includes('SuperAdmin')) {
       const isRequesterSuperAdmin = user.roles && user.roles.includes('SuperAdmin');

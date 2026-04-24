@@ -65,6 +65,13 @@ export async function PUT(
     const userService = new UserService();
     const targetUser = await userService.getById(params.id);
     const userData = await request.json();
+
+    if (userData.roles && userData.roles.length > 1) {
+      return NextResponse.json(
+        { status: false, error: 'Mỗi người dùng chỉ được gán tối đa 1 vai trò (Single-Role)' },
+        { status: 400 }
+      );
+    }
     
     // Check if target is SuperAdmin
     if (targetUser?.roles?.includes('SuperAdmin')) {

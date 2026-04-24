@@ -11,7 +11,7 @@ import AdminRoute from '@/components/AdminRoute';
 import { DeviceCategory, EventType, DeviceVM, DamageReportVM } from '@/types';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
 import Loading from '@/components/Loading';
-import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
+import { getDamageReportPermissions, isAdmin, isSupervisor } from '@/lib/auth/permissions';
 
 import { useAuth } from '@/lib/contexts/AuthContext';
 
@@ -136,14 +136,14 @@ function MaintenancePageContent() {
   const [activeTab, setActiveTab] = useState<'create' | 'batches' | 'plans' | 'cancelled'>('plans');
   const [subFilter, setSubFilter] = useState<'all' | 'overdue' | 'upcoming'>('all');
 
-  // Enforce tab access for non-admins
+  // Enforce tab access for non-admins (Supervisor can see batches if we allow, but let's stick to plans for now or allow both)
   useEffect(() => {
-    if (!authLoading && currentUser && !isUserAdmin) {
+    if (!authLoading && currentUser && !isSupervisor(currentUser?.roles)) {
       if (activeTab !== 'plans') {
         setActiveTab('plans');
       }
     }
-  }, [activeTab, isUserAdmin, authLoading, currentUser]);
+  }, [activeTab, authLoading, currentUser]);
   const [upcomingPlans, setUpcomingPlans] = useState<UpcomingPlan[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<BatchEvent[]>([]);
   const [batches, setBatches] = useState<MaintenanceBatch[]>([]);
@@ -374,13 +374,13 @@ function MaintenancePageContent() {
         } else if (tabParam === 'upcoming') {
           setActiveTab('plans');
           setSubFilter('upcoming');
-        } else if (isUserAdmin || tabParam === 'plans') {
+        } else if (isSupervisor(currentUser?.roles) || tabParam === 'plans') {
           setActiveTab(tabParam as 'create' | 'batches' | 'plans' | 'cancelled');
           setSubFilter('all');
         }
       }
     }
-  }, [isUserAdmin]);
+  }, [currentUser]);
 
   // Staff data logic to resolve current user's Staff ID and feed the UI dropdown
   const { data: staffData } = useSWR('/staff?departmentId=0', fetcher);
@@ -723,8 +723,8 @@ function MaintenancePageContent() {
       }
     }
 
-    // Phân quyền hiển thị kế hoạch bảo trì nếu không phải là Admin
-    if (!isUserAdmin) {
+    // Phân quyền hiển thị kế hoạch bảo trì nếu không phải là Supervisor
+    if (!isSupervisor(currentUser?.roles)) {
       if (currentUserStaffId) {
         filteredPlans = filteredPlans.filter(p => Number(p.metadata?.assignedStaffId) === currentUserStaffId);
       } else {
@@ -2237,7 +2237,6 @@ function MaintenancePageContent() {
         {/* Tabs - compact pill style */}
         <div className="d-flex flex-wrap gap-2 mb-3">
           {isUserAdmin && (
-            <>
               <button
                 className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'create' ? 'btn-primary shadow-sm' : 'btn-outline-secondary'}`}
                 style={{ fontSize: '0.8rem', fontWeight: activeTab === 'create' ? 600 : 400 }}
@@ -2247,6 +2246,8 @@ function MaintenancePageContent() {
                 <span className="d-none d-sm-inline">Tạo Kế Hoạch</span>
                 <span className="d-sm-none">Tạo</span>
               </button>
+          )}
+          {(isUserAdmin || isSupervisor(currentUser?.roles)) && (
               <button
                 className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'batches' ? 'btn-primary shadow-sm' : 'btn-outline-secondary'}`}
                 style={{ fontSize: '0.8rem', fontWeight: activeTab === 'batches' ? 600 : 400 }}
@@ -2256,7 +2257,6 @@ function MaintenancePageContent() {
                 <span className="d-none d-sm-inline">Batch Bảo Trì</span>
                 <span className="d-sm-none">Batch</span>
               </button>
-            </>
           )}
           <button
             className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'plans' ? 'btn-primary shadow-sm' : 'btn-outline-secondary'}`}
@@ -2268,7 +2268,7 @@ function MaintenancePageContent() {
             <span className="d-sm-none">Lịch</span>
           </button>
           
-          {isUserAdmin && (
+          {(isUserAdmin || isSupervisor(currentUser?.roles)) && (
             <button
               className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'cancelled' ? 'btn-danger shadow-sm' : 'btn-outline-secondary'}`}
               style={{ fontSize: '0.8rem', fontWeight: activeTab === 'cancelled' ? 600 : 400 }}
@@ -2794,7 +2794,7 @@ function MaintenancePageContent() {
               <div className="card-header py-2 px-3">
                 <h6 className="mb-0 d-flex align-items-center gap-2" style={{ fontSize: '0.85rem' }}>
                   <i className={`fas ${activeTab === 'plans' ? 'fa-list-alt' : 'fa-ban'} me-2`}></i>
-                  {activeTab === 'plans' ? (isUserAdmin ? 'Batch Đang Hoạt Động' : 'Lịch Bảo Trì Của Tôi') : 'Batch Đã Hủy'}
+                  {activeTab === 'plans' ? ((isUserAdmin || isSupervisor(currentUser?.roles)) ? 'Batch Đang Hoạt Động' : 'Lịch Bảo Trì Của Tôi') : 'Batch Đã Hủy'}
                   {activeTab === 'plans' && subFilter === 'overdue' && (
                     <span className="badge bg-danger ms-2 d-flex align-items-center gap-1">
                       Đang lọc: Quá hạn
@@ -3166,63 +3166,67 @@ function MaintenancePageContent() {
                                             {plan.isActive ? (
                                               <div className="btn-group btn-group-sm d-inline-flex">
                                                 {/* Event actions */}
-                                                {!hasEvent && (
-                                                  <button
-                                                    className="btn btn-primary"
-                                                    onClick={() => {
-                                                      const mockEvent: any = {
-                                                        id: 0,
-                                                        title: plan.title || `Bảo trì - ${plan.deviceName}`,
-                                                        deviceId: plan.deviceId,
-                                                        deviceName: plan.deviceName,
-                                                        eventTypeId: plan.eventTypeId || 0,
-                                                        maintenanceBatchId: group.batchId !== 'no-batch' ? group.batchId : null,
-                                                        status: 'planned',
-                                                      };
-                                                      setSelectedEvent(mockEvent);
-                                                      setSelectedPlan(plan);
-                                                      setStartStaffId(group.metadata?.assignedStaffId || currentUserStaffId || null);
-                                                      setStartNotes('');
-                                                      loadStaffList();
-                                                      setShowStartModal(true);
-                                                    }}
-                                                    title="Bắt đầu bảo trì"
-                                                  >
-                                                    <i className="fas fa-play"></i>
-                                                  </button>
-                                                )}
-                                                {hasEvent && eventStatus === 'planned' && (
-                                                  <button
-                                                    className="btn btn-primary"
-                                                    onClick={() => {
-                                                      setSelectedEvent(event);
-                                                      setSelectedPlan(plan);
-                                                      setStartStaffId(event.staffId || group.metadata?.assignedStaffId || currentUserStaffId || null);
-                                                      setStartNotes('');
-                                                      loadStaffList();
-                                                      setShowStartModal(true);
-                                                    }}
-                                                    title="Bắt đầu bảo trì"
-                                                  >
-                                                    <i className="fas fa-play"></i>
-                                                  </button>
-                                                )}
-                                                {hasEvent && eventStatus === 'in_progress' && (
-                                                  <button
-                                                    className="btn btn-success"
-                                                    onClick={() => {
-                                                      setSelectedEvent(event);
-                                                      setSelectedPlan(plan);
-                                                      setCompleteDate(formatDateInput(new Date()));
-                                                      setCompleteNotes('');
-                                                      setCompleteStaffId(event.staffId || group.metadata?.assignedStaffId || currentUserStaffId || null);
-                                                      loadStaffList();
-                                                      setShowCompleteModal(true);
-                                                    }}
-                                                    title="Ghi nhận hoàn thành"
-                                                  >
-                                                    <i className="fas fa-check"></i>
-                                                  </button>
+                                                {(isUserAdmin || group.metadata?.assignedStaffId === currentUserStaffId) && (
+                                                  <>
+                                                    {!hasEvent && (
+                                                      <button
+                                                        className="btn btn-primary"
+                                                        onClick={() => {
+                                                          const mockEvent: any = {
+                                                            id: 0,
+                                                            title: plan.title || `Bảo trì - ${plan.deviceName}`,
+                                                            deviceId: plan.deviceId,
+                                                            deviceName: plan.deviceName,
+                                                            eventTypeId: plan.eventTypeId || 0,
+                                                            maintenanceBatchId: group.batchId !== 'no-batch' ? group.batchId : null,
+                                                            status: 'planned',
+                                                          };
+                                                          setSelectedEvent(mockEvent);
+                                                          setSelectedPlan(plan);
+                                                          setStartStaffId(group.metadata?.assignedStaffId || currentUserStaffId || null);
+                                                          setStartNotes('');
+                                                          loadStaffList();
+                                                          setShowStartModal(true);
+                                                        }}
+                                                        title="Bắt đầu bảo trì"
+                                                      >
+                                                        <i className="fas fa-play"></i>
+                                                      </button>
+                                                    )}
+                                                    {hasEvent && eventStatus === 'planned' && (
+                                                      <button
+                                                        className="btn btn-primary"
+                                                        onClick={() => {
+                                                          setSelectedEvent(event);
+                                                          setSelectedPlan(plan);
+                                                          setStartStaffId(event.staffId || group.metadata?.assignedStaffId || currentUserStaffId || null);
+                                                          setStartNotes('');
+                                                          loadStaffList();
+                                                          setShowStartModal(true);
+                                                        }}
+                                                        title="Bắt đầu bảo trì"
+                                                      >
+                                                        <i className="fas fa-play"></i>
+                                                      </button>
+                                                    )}
+                                                    {hasEvent && eventStatus === 'in_progress' && (
+                                                      <button
+                                                        className="btn btn-success"
+                                                        onClick={() => {
+                                                          setSelectedEvent(event);
+                                                          setSelectedPlan(plan);
+                                                          setCompleteDate(formatDateInput(new Date()));
+                                                          setCompleteNotes('');
+                                                          setCompleteStaffId(event.staffId || group.metadata?.assignedStaffId || currentUserStaffId || null);
+                                                          loadStaffList();
+                                                          setShowCompleteModal(true);
+                                                        }}
+                                                        title="Ghi nhận hoàn thành"
+                                                      >
+                                                        <i className="fas fa-check"></i>
+                                                      </button>
+                                                    )}
+                                                  </>
                                                 )}
 
                                                 {/* Plan actions */}

@@ -12,6 +12,7 @@ import DateInput from '@/components/DateInput';
 import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
 import Loading from '@/components/Loading';
+import { isSupervisor } from '@/lib/auth/permissions';
 
 // Handler Notes Editor Component
 const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false, canEdit = true }: {
@@ -541,7 +542,7 @@ export default function DamageReportsPage() {
             setCurrentUser(user);
             const permissions = getDamageReportPermissions(user?.roles || []);
             setUserPermissions(permissions);
-            if (!isAdmin(user?.roles)) {
+            if (!isSupervisor(user?.roles)) {
               setMyWorkFilter(true);
             }
           }
@@ -1753,7 +1754,7 @@ export default function DamageReportsPage() {
                   setSelectedPriority(0);
                   setSelectedDepartment(0);
                   setSelectedDevice(0);
-                  if (!isAdmin(currentUser?.roles)) {
+                  if (!isSupervisor(currentUser?.roles)) {
                     setMyWorkFilter(true);
                     setMyReportFilter(false);
                   } else {

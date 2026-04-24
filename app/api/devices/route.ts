@@ -71,6 +71,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { isAdmin } = await import('@/lib/auth/permissions');
+    if (!isAdmin(user.roles)) {
+      return NextResponse.json(
+        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được tạo thiết bị' },
+        { status: 403 }
+      );
+    }
+
     const deviceData = await request.json();
     console.log('Creating device with data:', deviceData);
     
