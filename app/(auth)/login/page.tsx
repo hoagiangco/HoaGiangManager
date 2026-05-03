@@ -75,16 +75,28 @@ export default function LoginPage() {
       if (error.response) {
         // Server trả về lỗi
         if (error.response.data) {
-          errorMessage = error.response.data.error || error.response.data.message || `Lỗi: ${error.response.status} ${error.response.statusText}`;
+          const serverError = error.response.data.error || error.response.data.message;
+          // Tự động dịch một số lỗi tiếng Anh phổ biến từ backend trong môi trường dev
+          if (serverError && typeof serverError === 'string') {
+            if (serverError.includes('Database connection error') || serverError.includes('ECONNREFUSED')) {
+              errorMessage = 'Không thể kết nối đến cơ sở dữ liệu. Vui lòng kiểm tra lại cấu hình server.';
+            } else if (serverError.toLowerCase().includes('network')) {
+              errorMessage = 'Lỗi kết nối mạng. Vui lòng thử lại.';
+            } else {
+              errorMessage = serverError;
+            }
+          } else {
+            errorMessage = `Lỗi: ${error.response.status} - Không thể xử lý yêu cầu`;
+          }
         } else {
-          errorMessage = `Lỗi kết nối: ${error.response.status} ${error.response.statusText}`;
+          errorMessage = `Lỗi hệ thống (${error.response.status}). Vui lòng liên hệ quản trị viên.`;
         }
       } else if (error.request) {
         // Request được gửi nhưng không nhận được response
-        errorMessage = 'Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.';
+        errorMessage = 'Máy chủ không phản hồi. Vui lòng kiểm tra lại đường truyền mạng hoặc liên hệ IT.';
       } else {
         // Lỗi khác
-        errorMessage = error.message || 'Đã xảy ra lỗi không xác định';
+        errorMessage = 'Đã xảy ra sự cố phần mềm. Vui lòng thử tải lại trang.';
       }
       
       setError(errorMessage);
@@ -140,7 +152,7 @@ export default function LoginPage() {
                   <img src="/icons/logo.png" alt="HoaGiang Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 </div>
                 <h2 className="login-title">HoaGiang Manager</h2>
-                <p className="login-subtitle">Hệ thống quản lý vật tư và thiết bị</p>
+                <p className="login-subtitle">Hệ thống quản lý vật tư và Báo cáo</p>
               </div>
 
               {/* Form Section */}

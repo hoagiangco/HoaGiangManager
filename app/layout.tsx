@@ -9,7 +9,7 @@ const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'HoaGiang Manager - Quản lý vật tư',
-  description: 'Hệ thống quản lý vật tư và thiết bị',
+  description: 'Hệ thống quản lý vật tư và Báo cáo',
   manifest: '/manifest.webmanifest',
   icons: {
     icon: [
