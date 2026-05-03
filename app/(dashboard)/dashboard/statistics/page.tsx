@@ -139,7 +139,7 @@ export default function StatisticsPage() {
       const columns = visibleColIds.map(id => ({
         id: id,
         label: id, // Since backend already sends friendly names as keys
-        width: id === 'Ghi chú' || id === 'Hư hỏng' ? 40 : 20
+        width: id === 'Ghi chú' || id === 'Lỗi/Hỏng' ? 40 : 20
       }));
 
       await exportToExcel({
@@ -241,9 +241,9 @@ export default function StatisticsPage() {
                     <option value="0">Tất cả</option>
                     <option value="1">Đang sử dụng</option>
                     <option value="2">Đang sửa chữa</option>
-                    <option value="3">Hư hỏng</option>
+                    <option value="3">Lỗi/Ngưng hoạt động</option>
                     <option value="4">Đã thanh lý</option>
-                    <option value="5">Có hư hỏng</option>
+                    <option value="5">Có sự cố</option>
                   </select>
                 </div>
                 <div className="col-12 col-md-4">
@@ -288,8 +288,8 @@ export default function StatisticsPage() {
                   { label: 'Tổng số', value: deviceSummary?.data?.devices?.total, color: 'primary', icon: 'fa-box' },
                   { label: 'Đang dùng', value: deviceSummary?.data?.devices?.dangSuDung, color: 'success', icon: 'fa-check-circle' },
                   { label: 'Đang sửa chữa', value: deviceSummary?.data?.devices?.dangSuaChua, color: 'warning', icon: 'fa-wrench' },
-                  { label: 'Có hư hỏng', value: deviceSummary?.data?.devices?.coHuHong, color: 'info', icon: 'fa-exclamation-triangle' },
-                  { label: 'Hư hỏng', value: deviceSummary?.data?.devices?.huHong, color: 'danger', icon: 'fa-times-circle' },
+                  { label: 'Có sự cố', value: deviceSummary?.data?.devices?.coHuHong, color: 'info', icon: 'fa-exclamation-triangle' },
+                  { label: 'Lỗi/Ngưng h.động', value: deviceSummary?.data?.devices?.huHong, color: 'danger', icon: 'fa-times-circle' },
                   { label: 'Thanh lý', value: deviceSummary?.data?.devices?.daThanhLy, color: 'secondary', icon: 'fa-trash-alt' },
                 ].map((stat, idx) => (
                   <div key={idx} className="col-6 col-md-4 col-lg-2">

@@ -634,11 +634,11 @@ export class DeviceService {
       case DeviceStatus.DangSuaChua:
         return 'Đang sửa chữa';
       case DeviceStatus.HuHong:
-        return 'Hư hỏng không dùng được';
+        return 'Lỗi/Ngưng hoạt động';
       case DeviceStatus.DaThanhLy:
         return 'Đã thanh lý';
       case DeviceStatus.CoHuHong:
-        return 'Có hư hỏng';
+        return 'Có sự cố';
       default:
         return 'Không xác định';
     }

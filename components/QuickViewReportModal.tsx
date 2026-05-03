@@ -186,7 +186,7 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
                 </div>
                 <div>
                   <h6 className="modal-title fw-bold text-dark m-0">Chi tiết #{reportId}</h6>
-                  <p className="text-muted m-0" style={{ fontSize: '0.7rem' }}>Báo cáo hư hỏng</p>
+                  <p className="text-muted m-0" style={{ fontSize: '0.7rem' }}>Báo cáo công việc / sự cố</p>
                 </div>
               </div>
               <button type="button" className="btn-close" onClick={onClose} aria-label="Close" style={{ padding: '0.5rem' }}></button>
@@ -302,7 +302,7 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
                                 src={img}
-                                alt={`Hư hỏng ${idx + 1}`}
+                                alt={`Hình ảnh ${idx + 1}`}
                                 onClick={() => onViewImages?.(newImages, idx)}
                                 onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/400x300?text=No+Image'; }}
                               />

@@ -598,9 +598,9 @@ function DevicesPageContent() {
     const statusMap: Record<DeviceStatus, { label: string; color: string; bgColor: string }> = {
       [DeviceStatus.DangSuDung]: { label: 'Đang sử dụng', color: '#ffffff', bgColor: '#198754' },
       [DeviceStatus.DangSuaChua]: { label: 'Đang sửa chữa', color: '#212529', bgColor: '#ffc107' },
-      [DeviceStatus.HuHong]: { label: 'Hư hỏng', color: '#ffffff', bgColor: '#dc3545' },
+      [DeviceStatus.HuHong]: { label: 'Lỗi/Ngưng hoạt động', color: '#ffffff', bgColor: '#dc3545' },
       [DeviceStatus.DaThanhLy]: { label: 'Đã thanh lý', color: '#ffffff', bgColor: '#6c757d' },
-      [DeviceStatus.CoHuHong]: { label: 'Có hư hỏng', color: '#ffffff', bgColor: '#fd7e14' },
+      [DeviceStatus.CoHuHong]: { label: 'Có sự cố', color: '#ffffff', bgColor: '#fd7e14' },
     };
 
     const statusInfo = statusMap[status] || { label: 'N/A', color: '#ffffff', bgColor: '#6c757d' };
@@ -936,8 +936,8 @@ function DevicesPageContent() {
                       <option value="0">Tất cả</option>
                       <option value={DeviceStatus.DangSuDung}>Đang sử dụng</option>
                       <option value={DeviceStatus.DangSuaChua}>Đang sửa chữa</option>
-                      <option value={DeviceStatus.CoHuHong}>Có hư hỏng</option>
-                      <option value={DeviceStatus.HuHong}>Hư hỏng không dùng được</option>
+                      <option value={DeviceStatus.CoHuHong}>Có sự cố</option>
+                      <option value={DeviceStatus.HuHong}>Lỗi/Ngưng hoạt động</option>
                       <option value={DeviceStatus.DaThanhLy}>Đã thanh lý</option>
                     </select>
                   </div>
@@ -1493,8 +1493,8 @@ function DevicesPageContent() {
                       >
                         <option value={DeviceStatus.DangSuDung}>Đang sử dụng</option>
                         <option value={DeviceStatus.DangSuaChua}>Đang sửa chữa</option>
-                        <option value={DeviceStatus.CoHuHong}>Có hư hỏng</option>
-                        <option value={DeviceStatus.HuHong}>Hư hỏng không dùng được</option>
+                        <option value={DeviceStatus.CoHuHong}>Có sự cố</option>
+                        <option value={DeviceStatus.HuHong}>Lỗi/Ngưng hoạt động</option>
                         <option value={DeviceStatus.DaThanhLy}>Đã thanh lý</option>
                       </select>
                     </div>

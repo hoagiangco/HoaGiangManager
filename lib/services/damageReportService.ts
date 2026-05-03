@@ -537,7 +537,7 @@ export class DamageReportService {
   async create(report: Omit<DamageReport, 'id'>): Promise<number> {
     // Validate: Must have deviceId OR damageLocation OR maintenanceBatchId
     if (!report.deviceId && (!report.damageLocation || report.damageLocation.trim() === '') && !report.maintenanceBatchId) {
-      throw new Error('Phải chọn thiết bị hoặc nhập vị trí hư hỏng');
+      throw new Error('Phải chọn thiết bị hoặc nhập vị trí sự cố');
     }
 
     const result = await pool.query(
@@ -636,7 +636,7 @@ export class DamageReportService {
       const reporterName = reporterRes.rows[0]?.Name || 'Một nhân viên';
 
       await notificationService.createNotification({
-        title: 'Báo cáo hư hỏng mới ⚠️',
+        title: 'Báo cáo sự cố mới ⚠️',
         content: `${reporterName}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
         type: NotificationType.Report,
         category: NotificationCategory.New,
@@ -652,7 +652,7 @@ export class DamageReportService {
   async update(report: DamageReport): Promise<number> {
     // Validate: Must have deviceId OR damageLocation OR maintenanceBatchId
     if (!report.deviceId && (!report.damageLocation || report.damageLocation.trim() === '') && !report.maintenanceBatchId) {
-      throw new Error('Phải chọn thiết bị hoặc nhập vị trí hư hỏng');
+      throw new Error('Phải chọn thiết bị hoặc nhập vị trí sự cố');
     }
 
     // Get current values to track changes

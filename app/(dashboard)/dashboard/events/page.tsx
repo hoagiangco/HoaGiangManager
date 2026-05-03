@@ -879,7 +879,7 @@ function EventsPageContent() {
                   </div>
                 </div>
                 <div className="col-12">
-                  <label className="form-label small text-muted">Mô tả hư hỏng</label>
+                  <label className="form-label small text-muted">Mô tả sự cố/báo cáo</label>
                   <div className="border rounded p-2 bg-light">
                     {reportModal.report.damageContent || 'Không có mô tả'}
                   </div>

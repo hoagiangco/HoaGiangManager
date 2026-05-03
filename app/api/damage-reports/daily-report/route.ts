@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     const sections = [
       {
         title: 'Việc mới báo báo hôm nay',
-        headers: ['ID', 'Thời gian', 'Thiết bị/Vị trí', 'Nội dung hư hỏng', 'Người báo', 'Mức độ'],
+        headers: ['ID', 'Thời gian', 'Thiết bị/Vị trí', 'Nội dung báo cáo', 'Người báo', 'Mức độ'],
         rows: data.newReports.map(r => [
           r.id,
           formatDateDisplay(r.reportDate),

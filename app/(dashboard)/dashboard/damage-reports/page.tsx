@@ -263,7 +263,7 @@ export default function DamageReportsPage() {
     { id: 'serial', label: 'Serial', visible: true },
     { id: 'location', label: 'Khu vực/Vị trí', visible: true },
     { id: 'category', label: 'Danh mục', visible: true },
-    { id: 'damageContent', label: 'Nội dung hư hỏng', visible: true },
+    { id: 'damageContent', label: 'Nội dung báo cáo', visible: true },
     { id: 'priority', label: 'Mức độ', visible: true },
     { id: 'reporter', label: 'Người báo', visible: true },
     { id: 'handler', label: 'Người xử lý', visible: true },
@@ -3372,8 +3372,8 @@ export default function DamageReportsPage() {
                     disabled={completionModal.submitting}
                   >
                     <option value={DeviceStatus.DangSuDung}>Đang sử dụng (Bình thường)</option>
-                    <option value={DeviceStatus.HuHong}>Hư hỏng không dùng được</option>
-                    <option value={DeviceStatus.CoHuHong}>Có hư hỏng (Cần theo dõi thêm)</option>
+                    <option value={DeviceStatus.HuHong}>Lỗi/Ngưng hoạt động</option>
+                    <option value={DeviceStatus.CoHuHong}>Có sự cố (Cần theo dõi thêm)</option>
                   </select>
                 </div>
                 )}

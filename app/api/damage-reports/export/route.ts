@@ -178,7 +178,7 @@ export async function GET(request: NextRequest) {
         'Ngày xử lý': formatDateDisplay(report.handlingDate) || '',
         'Ngày hoàn thành': formatDateDisplay(report.completedDate) || '',
         'Thiết bị/Vị trí': deviceName,
-        'Nội dung hư hỏng': stripHtml(report.damageContent || ''),
+        'Nội dung báo cáo': stripHtml(report.damageContent || ''),
         'Trạng thái': statusMap[report.status] || '',
         'Mức độ ưu tiên': priorityMap[report.priority] || '',
         'Ghi chú người xử lý': stripHtml(report.handlerNotes || ''),

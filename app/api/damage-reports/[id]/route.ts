@@ -74,7 +74,7 @@ export async function PUT(
     // Only Admin can edit damage reports
     if (!isAdminUser) {
       return NextResponse.json(
-        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được chỉnh sửa báo cáo hư hỏng' },
+        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được chỉnh sửa báo cáo' },
         { status: 403 }
       );
     }
@@ -95,7 +95,7 @@ export async function PUT(
   } catch (error: any) {
     console.error('Update damage report error:', error);
     return NextResponse.json(
-      { status: false, error: error.message || 'Đã xảy ra lỗi khi cập nhật báo cáo hư hỏng' },
+      { status: false, error: error.message || 'Đã xảy ra lỗi khi cập nhật báo cáo' },
       { status: 500 }
     );
   }
@@ -119,7 +119,7 @@ export async function DELETE(
     const { isAdmin } = await import('@/lib/auth/permissions');
     if (!isAdmin(user.roles)) {
       return NextResponse.json(
-        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được xóa báo cáo hư hỏng' },
+        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được xóa báo cáo' },
         { status: 403 }
       );
     }
@@ -134,7 +134,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error('Delete damage report error:', error);
     return NextResponse.json(
-      { status: false, error: 'Đã xảy ra lỗi khi xóa báo cáo hư hỏng' },
+      { status: false, error: 'Đã xảy ra lỗi khi xóa báo cáo' },
       { status: 500 }
     );
   }

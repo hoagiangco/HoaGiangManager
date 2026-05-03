@@ -72,9 +72,9 @@ export async function GET(request: NextRequest) {
     const statusMap: Record<number, string> = {
       1: 'Đang sử dụng',
       2: 'Đang sửa chữa',
-      3: 'Hư hỏng',
+      3: 'Lỗi/Ngưng hoạt động',
       4: 'Đã thanh lý',
-      5: 'Có hư hỏng'
+      5: 'Có sự cố'
     };
 
     const exportData = result.rows.map(row => ({
