@@ -1174,8 +1174,11 @@ export class DamageReportService {
 
     // 6. Create missing events for devices in the batch that still have no event for this report
     const missingPlans = plans.filter(p => !finalHasEventDeviceIds.has(p.deviceId));
+    
+    // Deduplicate missingPlans by deviceId to prevent duplicate events if plans contains duplicates
+    const uniqueMissingPlans = Array.from(new Map(missingPlans.map((p: any) => [p.deviceId, p])).values());
 
-    if (missingPlans.length > 0) {
+    if (uniqueMissingPlans.length > 0) {
       const metadata: any = {
         source: 'damage-report-sync',
         damageReportId: reportId,
@@ -1183,7 +1186,7 @@ export class DamageReportService {
         syncAt: now.toISOString(),
       };
       
-      const eventPromises = missingPlans.map((plan: any) => {
+      const eventPromises = uniqueMissingPlans.map((plan: any) => {
         return eventService.create({
           title: options?.eventTitle || (plan.deviceName 
             ? `Bảo trì định kỳ - ${plan.deviceName}` 

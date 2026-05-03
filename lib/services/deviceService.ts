@@ -610,14 +610,30 @@ export class DeviceService {
         }
       }
 
+      // Deduplicate events to avoid multiple entries for the same report in history
+      const finalEvents: DeviceHistoryEvent[] = [];
+      const seenReportIds = new Set<number>();
+      
+      for (const event of events) {
+        if (event.relatedReportId) {
+          if (seenReportIds.has(event.relatedReportId)) continue;
+          seenReportIds.add(event.relatedReportId);
+        }
+        finalEvents.push(event);
+      }
+
+      // Filter reports: if a report already has a corresponding event, don't show it in the reports table
+      // to avoid redundancy, as it's already shown in the events table
+      const finalReports = Array.from(reportMap.values()).filter(r => !seenReportIds.has(r.reportId));
+
       return {
         deviceId,
         deviceName: deviceRow?.Name || deviceRow?.name || null,
         deviceSerial: deviceRow?.Serial || deviceRow?.serial || null,
         totalReports: reportMap.size,
-        totalEvents: events.length,
-        reports: Array.from(reportMap.values()),
-        events,
+        totalEvents: finalEvents.length,
+        reports: finalReports,
+        events: finalEvents,
       };
     } catch (error: any) {
       console.error('DeviceService.getDamageHistory error:', error);

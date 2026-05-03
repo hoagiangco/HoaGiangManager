@@ -6,7 +6,7 @@ import api from '@/lib/utils/api';
 import useSWR from 'swr';
 import { fetcher } from '@/lib/utils/swr-fetcher';
 import { toast } from 'react-toastify';
-import { DeviceVM, DeviceStatus, DeviceCategory, Department, Location, DeviceHistorySummary, EventStatus, DamageReportStatus } from '@/types';
+import { DeviceVM, DeviceStatus, DeviceCategory, Department, Location, DeviceHistorySummary, DeviceHistoryEvent, EventStatus, DamageReportStatus } from '@/types';
 import { formatDateDisplay, formatDateInput, formatDateTime } from '@/lib/utils/dateFormat';
 import DateInput from '@/components/DateInput';
 import dynamic from 'next/dynamic';
@@ -359,7 +359,34 @@ function DevicesPageContent() {
     try {
       const response = await api.get(`/devices/${deviceId}/history`);
       if (response.data?.status) {
-        setHistoryData(response.data.data || null);
+        const data = response.data.data as DeviceHistorySummary;
+        
+        if (data) {
+          // 1. Deduplicate events by relatedReportId (keep first/most recent)
+          if (data.events) {
+            const seenEventReportIds = new Set<number>();
+            data.events = data.events.filter(event => {
+              if (event.relatedReportId) {
+                if (seenEventReportIds.has(event.relatedReportId)) return false;
+                seenEventReportIds.add(event.relatedReportId);
+              }
+              return true;
+            });
+            data.totalEvents = data.events.length;
+          }
+
+          // 2. Filter out reports that already have a corresponding event
+          if (data.reports && data.events) {
+            const eventReportIds = new Set(
+              data.events
+                .map(e => e.relatedReportId)
+                .filter((id): id is number => id !== null && id !== undefined)
+            );
+            data.reports = data.reports.filter(r => !eventReportIds.has(r.reportId));
+          }
+        }
+        
+        setHistoryData(data || null);
       } else {
         toast.error(response.data?.error || 'Không thể tải lịch sử thiết bị');
         setShowHistoryModal(false);
@@ -408,14 +435,18 @@ function DevicesPageContent() {
       ];
 
       // Prepare merged timeline data
-      const linkedReportIds = historyData.events
-        .filter(e => e.relatedReportId)
-        .map(e => e.relatedReportId);
-        
-      const unlinkedReports = historyData.reports.filter(r => !linkedReportIds.includes(r.reportId));
-      
       const timeline: any[] = [];
+      const seenTimelineSignatures = new Set<string>();
+
+      // 1. Process events with deduplication
       historyData.events.forEach(event => {
+        const sig = event.relatedReportId 
+          ? `rep-${event.relatedReportId}`
+          : `evt-${event.id}`;
+          
+        if (seenTimelineSignatures.has(sig)) return;
+        seenTimelineSignatures.add(sig);
+
         timeline.push({
           date: event.reportedAt || event.eventDate,
           type: event.eventTypeName || 'Sửa chữa',
@@ -423,9 +454,17 @@ function DevicesPageContent() {
           description: (event.description || '').replace(/<[^>]*>?/gm, ''),
           status: event.statusLabel,
           ref: event.relatedReportId ? `#Báo cáo ${event.relatedReportId}` : (event.id ? `#Sự kiện ${event.id}` : '—'),
-          sortDate: new Date(event.reportedAt || event.eventDate || 0).getTime()
+          sortDate: new Date(event.reportedAt || event.eventDate || 0).getTime(),
+          reportId: event.relatedReportId
         });
       });
+
+      // 2. Identify linked reports from the deduplicated events
+      const linkedReportIds = new Set(timeline.filter(t => t.reportId).map(t => t.reportId));
+        
+      // 3. Process unlinked reports
+      const unlinkedReports = historyData.reports.filter(r => !linkedReportIds.has(r.reportId));
+      
       unlinkedReports.forEach(report => {
         timeline.push({
           date: report.reportDate,

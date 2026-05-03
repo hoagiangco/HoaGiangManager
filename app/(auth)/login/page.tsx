@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const [view, setView] = useState<'login' | 'forgot-password' | 'forgot-success'>('login');
   const [forgotEmail, setForgotEmail] = useState('');
@@ -189,15 +190,27 @@ export default function LoginPage() {
                             Quên mật khẩu?
                           </a>
                         </label>
-                        <input
-                          type="password"
-                          className="form-control form-control-lg"
-                          id="password"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          required
-                          placeholder="Nhập mật khẩu"
-                        />
+                        <div className="position-relative">
+                          <input
+                            type={showPassword ? "text" : "password"}
+                            className="form-control form-control-lg"
+                            id="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            required
+                            placeholder="Nhập mật khẩu"
+                            style={{ paddingRight: '2.5rem' }}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-link position-absolute end-0 top-50 translate-middle-y text-muted text-decoration-none shadow-none"
+                            onClick={() => setShowPassword(!showPassword)}
+                            style={{ zIndex: 10 }}
+                            tabIndex={-1}
+                          >
+                            <i className={`fas ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                          </button>
+                        </div>
                       </div>
                       <div className="form-group mb-4">
                         <div className="form-check">
