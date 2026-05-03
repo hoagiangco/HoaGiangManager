@@ -152,13 +152,12 @@ export default function DashboardLayout({
       }
     );
   } else if (isSupervisor) {
-    // Supervisor sees Dashboard + Stats + Activities
+    // Supervisor sees Dashboard + Activities
     menuGroups.push(
       {
         title: 'Tổng quan',
         items: [
-          { href: '/dashboard', label: 'Trang chủ', icon: 'fas fa-home' },
-          { href: '/dashboard/statistics', label: 'Thống kê tổng hợp', icon: 'fas fa-chart-pie' }
+          { href: '/dashboard', label: 'Trang chủ', icon: 'fas fa-home' }
         ]
       },
       {

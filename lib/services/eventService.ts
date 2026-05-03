@@ -261,8 +261,8 @@ export class EventService {
         event.title || null,
         event.deviceId || null,
         event.eventTypeId,
-        event.description || null,
-        event.notes || '', // Notes column is NOT NULL, so use empty string instead of null
+        event.description != null ? event.description : '', // Description is NOT NULL, fallback to empty string
+        event.notes != null ? event.notes : '', // Notes column is NOT NULL, so use empty string instead of null
         event.status || EventStatus.Completed,
         event.eventDate || null,
         event.startDate || null,
@@ -308,8 +308,8 @@ export class EventService {
         event.title || null,
         event.deviceId || null,
         event.eventTypeId,
-        event.description || null,
-        event.notes || '', // Notes column is NOT NULL, so use empty string instead of null
+        event.description != null ? event.description : '', // Description is NOT NULL, fallback to empty string
+        event.notes != null ? event.notes : '', // Notes column is NOT NULL, so use empty string instead of null
         event.status || 'completed',
         event.eventDate || null,
         event.startDate || null,

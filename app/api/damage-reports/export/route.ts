@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
     const deviceId = searchParams.get('deviceId');
     const locationId = searchParams.get('locationId');
     const keyword = searchParams.get('keyword');
+    const maintenanceBatchId = searchParams.get('maintenanceBatchId');
     const isPreview = searchParams.get('preview') === 'true';
 
     // Get all reports with filters
@@ -74,7 +75,10 @@ export async function GET(request: NextRequest) {
       filters.locationId = parseInt(locationId);
     }
     if (keyword) {
-      filters.keyword = keyword;
+      filters.search = keyword;
+    }
+    if (maintenanceBatchId) {
+      filters.maintenanceBatchId = maintenanceBatchId;
     }
 
     let allReports = await damageReportService.getAll(filters);

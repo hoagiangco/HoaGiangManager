@@ -25,6 +25,8 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const fromDate = searchParams.get('fromDate');
     const toDate = searchParams.get('toDate');
+    const categoryId = searchParams.get('categoryId');
+    const keyword = searchParams.get('search');
 
     if (type === 'devices') {
       let query = `
@@ -58,6 +60,18 @@ export async function GET(request: NextRequest) {
       if (status && status !== '0') {
         query += ` AND d."Status" = $${paramCount}`;
         params.push(status);
+        paramCount++;
+      }
+
+      if (categoryId && categoryId !== '0') {
+        query += ` AND d."DeviceCategoryID" = $${paramCount}`;
+        params.push(categoryId);
+        paramCount++;
+      }
+
+      if (keyword) {
+        query += ` AND (LOWER(d."Name") LIKE LOWER($${paramCount}) OR LOWER(d."Serial") LIKE LOWER($${paramCount}))`;
+        params.push(`%${keyword}%`);
         paramCount++;
       }
 

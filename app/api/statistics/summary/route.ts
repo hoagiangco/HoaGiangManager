@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
 import { authenticate } from '@/lib/auth/middleware';
 import pool from '@/lib/db';
 
@@ -17,6 +18,10 @@ export async function GET(request: NextRequest) {
     const locationId = searchParams.get('locationId');
     const fromDate = searchParams.get('fromDate');
     const toDate = searchParams.get('toDate');
+    const categoryId = searchParams.get('categoryId');
+    const status = searchParams.get('status');
+    const keyword = searchParams.get('search');
+    const maintenanceBatchId = searchParams.get('maintenanceBatchId');
 
     // 1. Damage Reports Summary
     const reportsParams: any[] = [];
@@ -35,6 +40,21 @@ export async function GET(request: NextRequest) {
     if (locationId && locationId !== '0') {
       reportsParams.push(locationId);
       reportsFilter += ` AND "DeviceID" IN (SELECT "ID" FROM "Device" WHERE "LocationID" = $${reportsParams.length})`;
+    }
+
+    if (status && status !== '0') {
+      reportsParams.push(status);
+      reportsFilter += ` AND "Status" = $${reportsParams.length}`;
+    }
+
+    if (keyword) {
+      reportsParams.push(`%${keyword}%`);
+      reportsFilter += ` AND (LOWER("DamageContent") LIKE LOWER($${reportsParams.length}) OR LOWER("DamageLocation") LIKE LOWER($${reportsParams.length}))`;
+    }
+
+    if (maintenanceBatchId) {
+      reportsParams.push(maintenanceBatchId);
+      reportsFilter += ` AND "MaintenanceBatchId" = $${reportsParams.length}`;
     }
 
     const reportsQuery = `
@@ -81,6 +101,21 @@ export async function GET(request: NextRequest) {
     if (locationId && locationId !== '0') {
       devicesParams.push(locationId);
       devicesFilter += ` AND "LocationID" = $${devicesParams.length}`;
+    }
+
+    if (categoryId && categoryId !== '0') {
+      devicesParams.push(categoryId);
+      devicesFilter += ` AND "DeviceCategoryID" = $${devicesParams.length}`;
+    }
+
+    if (status && status !== '0') {
+      devicesParams.push(status);
+      devicesFilter += ` AND "Status" = $${devicesParams.length}`;
+    }
+
+    if (keyword) {
+      devicesParams.push(`%${keyword}%`);
+      devicesFilter += ` AND (LOWER("Name") LIKE LOWER($${devicesParams.length}) OR LOWER("Serial") LIKE LOWER($${devicesParams.length}))`;
     }
 
     const devicesQuery = `

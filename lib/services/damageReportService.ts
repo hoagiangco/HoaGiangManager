@@ -57,6 +57,7 @@ export class DamageReportService {
     departmentId?: number;
     locationId?: number;
     search?: string;
+    maintenanceBatchId?: string;
     currentUserId?: string; // For filtering by current user's staffId
     isAdmin?: boolean; // If false, only show reports created by current user
   }): Promise<DamageReportVM[]> {
@@ -184,6 +185,12 @@ export class DamageReportService {
         params.push(`%${filters.search}%`);
         paramIndex++;
       }
+
+      if (filters.maintenanceBatchId) {
+        query += ` AND dr."MaintenanceBatchId" = $${paramIndex}`;
+        params.push(filters.maintenanceBatchId);
+        paramIndex++;
+      }
     }
 
     query += ` ORDER BY dr."ReportDate" DESC, dr."ID" DESC`;
@@ -204,6 +211,7 @@ export class DamageReportService {
     departmentId?: number;
     locationId?: number;
     search?: string;
+    maintenanceBatchId?: string;
     sortField?: string;
     sortOrder?: 'asc' | 'desc';
     isAdmin?: boolean;
@@ -220,6 +228,7 @@ export class DamageReportService {
       departmentId, 
       locationId,
       search, 
+      maintenanceBatchId,
       sortField = 'reportDate', 
       sortOrder = 'desc',
       isAdmin = false,
@@ -284,6 +293,11 @@ export class DamageReportService {
         reporter."Name" ILIKE $${i} OR
         handler."Name" ILIKE $${i}
       )`;
+    }
+
+    if (maintenanceBatchId) {
+      params.push(maintenanceBatchId);
+      whereClause += ` AND dr."MaintenanceBatchId" = $${params.length}`;
     }
 
     // Sort field mapping
@@ -1083,12 +1097,22 @@ export class DamageReportService {
 
     const metadataFilter = `%"maintenanceBatchId":"${batchId}"%`;
 
+    // Prepare notes update if provided
+    let notesUpdateClause = '';
+    let notesParamIndex = -1;
+    const updateParams1: any[] = [mappedStatus, reportId];
+    if (options?.handlerNotes !== undefined) {
+      updateParams1.push(options.handlerNotes);
+      notesParamIndex = updateParams1.length;
+      notesUpdateClause = `, "Notes" = $${notesParamIndex}`;
+    }
+
     // 1. Update events ALREADY linked to this report (strict match)
     await pool.query(
       `UPDATE "Event" 
-       SET "Status" = $1, "UpdatedAt" = CURRENT_TIMESTAMP ${startDateUpdate} ${endDateUpdate}
+       SET "Status" = $1, "UpdatedAt" = CURRENT_TIMESTAMP ${startDateUpdate} ${endDateUpdate} ${notesUpdateClause}
        WHERE "RelatedReportID" = $2`,
-      [mappedStatus, reportId]
+      updateParams1
     );
 
     // 2. Identify devices in the batch that already have an event for THIS report
@@ -1098,15 +1122,23 @@ export class DamageReportService {
     );
     const hasEventDeviceIds = new Set(hasEventDeviceIdsRes.rows.map(r => r.DeviceID));
 
+    // Prepare params for step 3
+    const updateParams3: any[] = [mappedStatus, reportId, metadataFilter, batchId];
+    let notesUpdateClause3 = '';
+    if (options?.handlerNotes !== undefined) {
+      updateParams3.push(options.handlerNotes);
+      notesUpdateClause3 = `, "Notes" = $${updateParams3.length}`;
+    }
+
     // 3. Update existing UNLINKED non-completed events for this batch (loose match)
     // This handles cases where events were created by the scheduler but not yet linked to a report
     await pool.query(
       `UPDATE "Event" 
-       SET "Status" = $1, "UpdatedAt" = CURRENT_TIMESTAMP ${startDateUpdate} ${endDateUpdate},
+       SET "Status" = $1, "UpdatedAt" = CURRENT_TIMESTAMP ${startDateUpdate} ${endDateUpdate} ${notesUpdateClause3},
            "RelatedReportID" = $2
        WHERE ("Metadata"::text LIKE $3 OR ("Metadata"->>'maintenanceBatchId') = $4)
          AND "RelatedReportID" IS NULL`,
-      [mappedStatus, reportId, metadataFilter, batchId]
+      updateParams3
     );
 
     // 4. Find plans belonging to this batch to identify missing events

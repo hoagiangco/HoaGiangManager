@@ -249,9 +249,15 @@ function MaintenancePageContent() {
   const findExistingReportForBatch = (batchId: string) => {
     if (!batchId || batchId === 'no-batch') return null;
     
+    // Chỉ lấy các báo cáo chưa hoàn thành (Pending, Assigned, InProgress)
+    // Các báo cáo đã hoàn thành hoặc hủy (4, 5, 6) thuộc về chu kỳ bảo trì trước đó
+    const activeReports = maintenanceReports.filter(r => 
+      String(r.maintenanceBatchId) === String(batchId) && 
+      [1, 2, 3].includes(r.status)
+    );
+
     // Sort to prioritize InProgress (3), then Pending (1), then Assigned (2)
-    // Completed (4) and others come last
-    const sortedReports = [...maintenanceReports].sort((a, b) => {
+    const sortedReports = [...activeReports].sort((a, b) => {
       const getPriority = (s: number) => {
         if (s === 3) return 0; // Highest priority: InProgress
         if (s === 1 || s === 2) return 1; // Then other active states
@@ -260,9 +266,7 @@ function MaintenancePageContent() {
       return getPriority(a.status) - getPriority(b.status);
     });
 
-    return sortedReports.find(report =>
-      String(report.maintenanceBatchId) === String(batchId)
-    ) || null;
+    return sortedReports.length > 0 ? sortedReports[0] : null;
   };
 
   // Helper to create or update a report in the background
@@ -304,7 +308,10 @@ function MaintenancePageContent() {
         reportingDepartmentId: departmentId,
       };
 
-      if (statusParam === 4) {
+      if (statusParam === 3) {
+        reportPayload.handlingDate = date;
+      } else if (statusParam === 4) {
+        reportPayload.handlingDate = date;
         reportPayload.completedDate = date;
       }
 
@@ -312,8 +319,23 @@ function MaintenancePageContent() {
       const existingReport = findExistingReportForBatch(batch.batchId);
 
       if (existingReport) {
-        // UPDATE báo cáo đã có
-        await api.put(`/damage-reports/${existingReport.id}`, { ...reportPayload, id: existingReport.id });
+        // Tự động tìm ID Bảo trì để pass vào status API
+        let resolvedEventTypeId = 1;
+        const maintenanceType = eventTypes.find((t: any) => 
+          t.name.toLowerCase().includes('bảo trì') || 
+          t.name.toLowerCase() === 'maintenance'
+        );
+        if (maintenanceType) {
+          resolvedEventTypeId = maintenanceType.id;
+        }
+
+        // UPDATE báo cáo đã có thông qua API status để kích hoạt đồng bộ 2 chiều và tránh lỗi 403
+        await api.put(`/damage-reports/${existingReport.id}/status`, {
+          status: statusParam,
+          handlerNotes: notes ? notes : undefined,
+          eventTypeId: resolvedEventTypeId,
+          eventTitle: `Hoàn thành đợt bảo trì: ${batch.title}`,
+        });
         const statusText = statusParam === 4 ? 'Hoàn thành' : 'Đang xử lý';
         toast.success(`Đã cập nhật báo cáo công việc hiện có (Trạng thái: ${statusText})`);
       } else {
@@ -433,7 +455,7 @@ function MaintenancePageContent() {
 
   // Static data for form
   const { data: catData } = useSWR(activeTab === 'create' ? '/device-categories' : null, fetcher);
-  const { data: eventTypeData } = useSWR(activeTab === 'create' ? '/event-types' : null, fetcher);
+  const { data: eventTypeData } = useSWR('/event-types', fetcher);
 
   useEffect(() => {
     if (catData?.status) setCategories(catData.data || []);
@@ -1332,17 +1354,30 @@ function MaintenancePageContent() {
 
         try {
           const existingEvent = planEvents[plan.id];
-          let eventId = existingEvent?.id;
+          // Nếu event đã hoàn thành, chúng ta cần tạo event mới cho chu kỳ này
+          let eventId = existingEvent && existingEvent.status !== 'completed' && existingEvent.status !== 'cancelled' ? existingEvent.id : null;
 
           if (!eventId) {
             const eventMetadata = {
               ...(plan.metadata || {}),
               maintenanceBatchId: plan.metadata?.maintenanceBatchId || (selectedGroup.batchId !== 'no-batch' ? selectedGroup.batchId : null),
             };
+
+            let defaultEventTypeId = 1;
+            if (!plan.eventTypeId) {
+              const maintenanceType = eventTypes.find((t: any) => 
+                t.name.toLowerCase().includes('bảo trì') || 
+                t.name.toLowerCase() === 'maintenance'
+              );
+              if (maintenanceType) {
+                defaultEventTypeId = maintenanceType.id;
+              }
+            }
+
             const eventData = {
               title: plan.title || `Bảo trì - ${plan.deviceName}`,
               deviceId: plan.deviceId,
-              eventTypeId: plan.eventTypeId || 0,
+              eventTypeId: plan.eventTypeId || defaultEventTypeId,
               description: plan.description || null,
               status: 'in_progress',
               eventDate: batchStartDate,
@@ -1358,10 +1393,21 @@ function MaintenancePageContent() {
               continue;
             }
           } else {
+            let defaultEventTypeId = 1;
+            if (!existingEvent.eventTypeId && !plan.eventTypeId) {
+              const maintenanceType = eventTypes.find((t: any) => 
+                t.name.toLowerCase().includes('bảo trì') || 
+                t.name.toLowerCase() === 'maintenance'
+              );
+              if (maintenanceType) {
+                defaultEventTypeId = maintenanceType.id;
+              }
+            }
+
             const response = await api.put(`/events/${eventId}`, {
               title: existingEvent.title || plan.title || `Bảo trì - ${plan.deviceName}`,
               deviceId: existingEvent.deviceId || plan.deviceId,
-              eventTypeId: existingEvent.eventTypeId || plan.eventTypeId || 0,
+              eventTypeId: existingEvent.eventTypeId || plan.eventTypeId || defaultEventTypeId,
               description: existingEvent.description || plan.description || null,
               status: 'in_progress',
               eventDate: existingEvent.eventDate || batchStartDate,
@@ -1444,7 +1490,8 @@ function MaintenancePageContent() {
         try {
           // Check if event already exists
           const existingEvent = planEvents[plan.id];
-          let eventId = existingEvent?.id;
+          // Nếu event đã hoàn thành, chúng ta cần tạo event mới cho chu kỳ này
+          let eventId = existingEvent && existingEvent.status !== 'completed' && existingEvent.status !== 'cancelled' ? existingEvent.id : null;
 
           // If event doesn't exist, create it directly with status 'completed'
           if (!eventId) {
@@ -1452,10 +1499,22 @@ function MaintenancePageContent() {
               ...(plan.metadata || {}),
               maintenanceBatchId: plan.metadata?.maintenanceBatchId || (selectedGroup.batchId !== 'no-batch' ? selectedGroup.batchId : null),
             };
+
+            let defaultEventTypeId = 1;
+            if (!plan.eventTypeId) {
+              const maintenanceType = eventTypes.find((t: any) => 
+                t.name.toLowerCase().includes('bảo trì') || 
+                t.name.toLowerCase() === 'maintenance'
+              );
+              if (maintenanceType) {
+                defaultEventTypeId = maintenanceType.id;
+              }
+            }
+
             const eventData = {
               title: plan.title || `Bảo trì - ${plan.deviceName}`,
               deviceId: plan.deviceId,
-              eventTypeId: plan.eventTypeId || 0,
+              eventTypeId: plan.eventTypeId || defaultEventTypeId,
               description: plan.description || null,
               status: 'completed',
               eventDate: batchCompleteDate,
@@ -1475,10 +1534,21 @@ function MaintenancePageContent() {
             }
           } else {
             // Update existing event - cần gửi đầy đủ thông tin bao gồm eventTypeId
+            let defaultEventTypeId = 1;
+            if (!existingEvent.eventTypeId && !plan.eventTypeId) {
+              const maintenanceType = eventTypes.find((t: any) => 
+                t.name.toLowerCase().includes('bảo trì') || 
+                t.name.toLowerCase() === 'maintenance'
+              );
+              if (maintenanceType) {
+                defaultEventTypeId = maintenanceType.id;
+              }
+            }
+
             const response = await api.put(`/events/${eventId}`, {
               title: existingEvent.title || plan.title || `Bảo trì - ${plan.deviceName}`,
               deviceId: existingEvent.deviceId || plan.deviceId,
-              eventTypeId: existingEvent.eventTypeId || plan.eventTypeId || 0,
+              eventTypeId: existingEvent.eventTypeId || plan.eventTypeId || defaultEventTypeId,
               description: existingEvent.description || plan.description || null,
               status: 'completed',
               eventDate: batchCompleteDate,
@@ -1871,6 +1941,20 @@ function MaintenancePageContent() {
 
       if (response.data.status) {
         toast.success('Đã bắt đầu bảo trì');
+
+        // Tự động tạo báo cáo (Trạng thái đang xử lý - 3)
+        if (selectedEvent.maintenanceBatchId && selectedEvent.maintenanceBatchId !== 'no-batch') {
+          const batchTitle = selectedPlan?.title || `Bảo trì - ${selectedEvent.deviceName}`;
+          await handleGenerateReport(
+            { batchId: selectedEvent.maintenanceBatchId, title: batchTitle },
+            startStaffId,
+            startNotes,
+            formatDateInput(new Date()),
+            3,
+            `- ${selectedEvent.deviceName}`
+          );
+        }
+
         setShowStartModal(false);
         setSelectedEvent(null);
         setSelectedPlan(null);
@@ -1995,6 +2079,20 @@ function MaintenancePageContent() {
       }
 
       toast.success('Đã ghi nhận bảo trì hoàn thành');
+
+      // Tự động tạo báo cáo (Trạng thái hoàn thành - 4)
+      if (selectedEvent.maintenanceBatchId && selectedEvent.maintenanceBatchId !== 'no-batch') {
+        const batchTitle = selectedPlan?.title || `Bảo trì - ${selectedEvent.deviceName}`;
+        await handleGenerateReport(
+          { batchId: selectedEvent.maintenanceBatchId, title: batchTitle },
+          completeStaffId,
+          completeNotes,
+          completeDate,
+          4,
+          `- ${selectedEvent.deviceName}`
+        );
+      }
+
       setShowCompleteModal(false);
       setSelectedEvent(null);
       setSelectedPlan(null);

@@ -12,8 +12,8 @@ export default function StatisticsPage() {
   const [activeTab, setActiveTab] = useState<'devices' | 'reports'>('devices');
   
   // States for local filters
-  const [deviceFilters, setDeviceFilters] = useState({ deptId: 0, locId: 0 });
-  const [reportFilters, setReportFilters] = useState({ deptId: 0, locId: 0, fromDate: '', toDate: '' });
+  const [deviceFilters, setDeviceFilters] = useState({ deptId: 0, locId: 0, categoryId: 0, status: 0, search: '' });
+  const [reportFilters, setReportFilters] = useState({ deptId: 0, locId: 0, fromDate: '', toDate: '', status: 0, search: '', maintenanceBatchId: '' });
 
   // Preview toggle states
   const [showPreview, setShowPreview] = useState<Record<string, boolean>>({});
@@ -24,6 +24,10 @@ export default function StatisticsPage() {
   const departments = deptData?.data || [];
   const { data: locData } = useSWR('/locations', fetcher);
   const locations = locData?.data || [];
+  const { data: catData } = useSWR('/device-categories', fetcher);
+  const categories = catData?.data || [];
+  const { data: batchesData } = useSWR('/events/maintenance-batches?all=true', fetcher);
+  const maintenanceBatches = batchesData?.data || [];
 
   // Summary Data fetch logic
   const getSummaryUrl = (tab: string, filters: any) => {
@@ -32,6 +36,10 @@ export default function StatisticsPage() {
     if (filters.locId > 0) params.append('locationId', filters.locId.toString());
     if (filters.fromDate) params.append('fromDate', filters.fromDate);
     if (filters.toDate) params.append('toDate', filters.toDate);
+    if (filters.categoryId > 0) params.append('categoryId', filters.categoryId.toString());
+    if (filters.status > 0) params.append('status', filters.status.toString());
+    if (filters.search) params.append('search', filters.search);
+    if (tab === 'reports' && filters.maintenanceBatchId) params.append('maintenanceBatchId', filters.maintenanceBatchId);
     return `/statistics/summary?${params.toString()}`;
   };
 
@@ -47,6 +55,15 @@ export default function StatisticsPage() {
     if (filters.locId > 0) params.append('locationId', filters.locId.toString());
     if (filters.fromDate) params.append('fromDate', filters.fromDate);
     if (filters.toDate) params.append('toDate', filters.toDate);
+    if (filters.categoryId > 0) params.append('categoryId', filters.categoryId.toString());
+    if (filters.status > 0) params.append('status', filters.status.toString());
+    if (filters.search) {
+      params.append('search', filters.search);
+      if (tab === 'reports') params.append('keyword', filters.search);
+    }
+    if (tab === 'reports' && filters.maintenanceBatchId) {
+      params.append('maintenanceBatchId', filters.maintenanceBatchId);
+    }
     
     // Different endpoint for reports
     const endpoint = tab === 'reports' ? '/damage-reports/export' : '/statistics/export';
@@ -93,6 +110,15 @@ export default function StatisticsPage() {
       if (filters.locId > 0) params.append('locationId', filters.locId.toString());
       if (filters.fromDate) params.append('fromDate', filters.fromDate);
       if (filters.toDate) params.append('toDate', filters.toDate);
+      if (filters.categoryId > 0) params.append('categoryId', filters.categoryId.toString());
+      if (filters.status > 0) params.append('status', filters.status.toString());
+      if (filters.search) {
+        params.append('search', filters.search);
+        if (tab === 'reports') params.append('keyword', filters.search);
+      }
+      if (tab === 'reports' && filters.maintenanceBatchId) {
+        params.append('maintenanceBatchId', filters.maintenanceBatchId);
+      }
       params.append('preview', 'true'); 
       
       const endpoint = tab === 'reports' ? '/damage-reports/export' : '/statistics/export';
@@ -172,7 +198,7 @@ export default function StatisticsPage() {
           {activeTab === 'devices' && (
             <div>
               <div className="row g-2 align-items-end mb-4 bg-light p-2 rounded-3 mx-0 border">
-                <div className="col-12 col-md-4">
+                <div className="col-12 col-md-2">
                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Phòng ban</label>
                   <select 
                     className="form-select form-select-sm border shadow-none"
@@ -183,7 +209,7 @@ export default function StatisticsPage() {
                     {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
                   </select>
                 </div>
-                <div className="col-12 col-md-4">
+                <div className="col-12 col-md-2">
                    <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Vị trí</label>
                    <select 
                     className="form-select form-select-sm border shadow-none"
@@ -194,8 +220,44 @@ export default function StatisticsPage() {
                     {locations.map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}
                   </select>
                 </div>
-                <div className="col-12 col-md-4 d-flex gap-2 justify-content-end">
-                   <div className="d-flex gap-2 position-relative w-100">
+                <div className="col-12 col-md-2">
+                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Danh mục</label>
+                   <select 
+                    className="form-select form-select-sm border shadow-none"
+                    value={deviceFilters.categoryId}
+                    onChange={e => setDeviceFilters(prev => ({ ...prev, categoryId: Number(e.target.value) }))}
+                  >
+                    <option value="0">Tất cả</option>
+                    {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div className="col-12 col-md-2">
+                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Trạng thái</label>
+                   <select 
+                    className="form-select form-select-sm border shadow-none"
+                    value={deviceFilters.status}
+                    onChange={e => setDeviceFilters(prev => ({ ...prev, status: Number(e.target.value) }))}
+                  >
+                    <option value="0">Tất cả</option>
+                    <option value="1">Đang sử dụng</option>
+                    <option value="2">Đang sửa chữa</option>
+                    <option value="3">Hư hỏng</option>
+                    <option value="4">Đã thanh lý</option>
+                    <option value="5">Có hư hỏng</option>
+                  </select>
+                </div>
+                <div className="col-12 col-md-4">
+                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Tìm kiếm (Tên/Serial)</label>
+                   <input 
+                    type="text" 
+                    className="form-control form-control-sm border shadow-none" 
+                    placeholder="Nhập tên hoặc serial..."
+                    value={deviceFilters.search}
+                    onChange={e => setDeviceFilters(prev => ({ ...prev, search: e.target.value }))}
+                  />
+                </div>
+                <div className="col-12 mt-2 d-flex justify-content-end">
+                   <div className="d-flex gap-2 position-relative w-100" style={{ maxWidth: '400px' }}>
                      <button className="btn btn-sm btn-outline-primary flex-grow-1 fw-bold" onClick={() => togglePreview('devices')}>
                        <i className={`fas ${showPreview.devices ? 'fa-eye-slash' : 'fa-list-ul'} me-2`}></i>
                        {showPreview.devices ? 'Đóng ds' : 'Xem danh sách'}
@@ -256,7 +318,7 @@ export default function StatisticsPage() {
           {activeTab === 'reports' && (
             <div>
               <div className="row g-2 align-items-end mb-4 bg-light p-2 rounded-3 mx-0 border">
-                <div className="col-12 col-md-3">
+                <div className="col-12 col-md-2">
                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Phòng ban</label>
                   <select 
                     className="form-select form-select-sm border shadow-none"
@@ -268,6 +330,22 @@ export default function StatisticsPage() {
                   </select>
                 </div>
                 <div className="col-12 col-md-2">
+                  <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Trạng thái</label>
+                  <select 
+                    className="form-select form-select-sm border shadow-none"
+                    value={reportFilters.status}
+                    onChange={e => setReportFilters(prev => ({ ...prev, status: Number(e.target.value) }))}
+                  >
+                    <option value="0">Tất cả</option>
+                    <option value="1">Chờ xử lý</option>
+                    <option value="2">Đã phân công</option>
+                    <option value="3">Đang xử lý</option>
+                    <option value="4">Hoàn thành</option>
+                    <option value="5">Đã hủy</option>
+                    <option value="6">Từ chối</option>
+                  </select>
+                </div>
+                <div className="col-12 col-md-2">
                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Từ ngày</label>
                   <input type="date" className="form-control form-control-sm border shadow-none" value={reportFilters.fromDate} onChange={e => setReportFilters(prev => ({ ...prev, fromDate: e.target.value }))} />
                 </div>
@@ -275,8 +353,29 @@ export default function StatisticsPage() {
                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Đến ngày</label>
                   <input type="date" className="form-control form-control-sm border shadow-none" value={reportFilters.toDate} onChange={e => setReportFilters(prev => ({ ...prev, toDate: e.target.value }))} />
                 </div>
-                <div className="col-12 col-md-5 d-flex gap-2 justify-content-end">
-                   <div className="d-flex gap-2 position-relative w-100">
+                <div className="col-12 col-md-2">
+                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Tìm kiếm</label>
+                   <input 
+                    type="text" 
+                    className="form-control form-control-sm border shadow-none" 
+                    placeholder="Nhập nội dung/vị trí..."
+                    value={reportFilters.search}
+                    onChange={e => setReportFilters(prev => ({ ...prev, search: e.target.value }))}
+                  />
+                </div>
+                <div className="col-12 col-md-2">
+                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Đợt bảo trì</label>
+                   <select 
+                    className="form-select form-select-sm border shadow-none"
+                    value={reportFilters.maintenanceBatchId}
+                    onChange={e => setReportFilters(prev => ({ ...prev, maintenanceBatchId: e.target.value }))}
+                  >
+                    <option value="">Tất cả</option>
+                    {maintenanceBatches.map((b: any) => <option key={b.batchId} value={b.batchId}>{b.title} ({b.batchId})</option>)}
+                  </select>
+                </div>
+                <div className="col-12 mt-2 d-flex justify-content-end">
+                   <div className="d-flex gap-2 position-relative w-100" style={{ maxWidth: '400px' }}>
                      <button className="btn btn-sm btn-outline-success flex-grow-1 fw-bold" onClick={() => togglePreview('reports')}>
                        <i className={`fas ${showPreview.reports ? 'fa-eye-slash' : 'fa-list-ul'} me-2`}></i>
                        {showPreview.reports ? 'Đóng ds' : 'Xem danh sách'}

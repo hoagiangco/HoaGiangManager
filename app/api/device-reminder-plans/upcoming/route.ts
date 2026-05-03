@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
 import { authenticate } from '@/lib/auth/middleware';
 import { DeviceReminderPlanService } from '@/lib/services/deviceReminderPlanService';
 import pool from '@/lib/db';

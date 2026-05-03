@@ -3540,6 +3540,17 @@ export default function DamageReportsPage() {
                     </div>
                   )}
                 </div>
+                <div className="mb-3">
+                  <label className="form-label">Ghi chú người xử lý</label>
+                  <textarea
+                    className="form-control"
+                    rows={3}
+                    placeholder="Nhập ghi chú hoặc công việc đã thực hiện..."
+                    value={pendingMaintenanceReport.handlerNotes || ''}
+                    onChange={(e) => setPendingMaintenanceReport(prev => prev ? { ...prev, handlerNotes: e.target.value } : null)}
+                  />
+                  <small className="text-muted d-block mt-1">Ghi chú này sẽ được lưu lại làm nội dung sự kiện hoàn thành.</small>
+                </div>
               </div>
               <div className="modal-footer">
                 <button

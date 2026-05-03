@@ -44,15 +44,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { isAdmin } = await import('@/lib/auth/permissions');
-    if (!isAdmin(user.roles)) {
+    const { isAdmin, getMaintenancePermissions } = await import('@/lib/auth/permissions');
+    let isAllowed = isAdmin(user.roles);
+
+    const payload = await request.json();
+
+    if (!isAllowed) {
+      // Check if it's a maintenance execution
+      const metadataStr = typeof payload.metadata === 'string' ? payload.metadata : JSON.stringify(payload.metadata || {});
+      if (metadataStr.includes('maintenanceBatchId')) {
+         const perms = getMaintenancePermissions(user.roles);
+         isAllowed = perms.canExecute || false;
+      }
+    }
+
+    if (!isAllowed) {
       return NextResponse.json(
         { status: false, error: 'Forbidden: Chỉ quản trị viên mới được tạo sự kiện' },
         { status: 403 }
       );
     }
-
-    const payload = await request.json();
 
     if (!payload || typeof payload !== 'object') {
       return NextResponse.json(
@@ -104,8 +115,8 @@ export async function POST(request: NextRequest) {
       title: payload.title?.trim() || null,
       deviceId: payload.deviceId ? Number(payload.deviceId) : null,
       eventTypeId,
-      description: payload.description?.trim() || null,
-      notes: payload.notes?.trim() || null,
+      description: payload.description?.trim() || '', // NOT NULL in DB
+      notes: payload.notes?.trim() || '',  // NOT NULL in DB
       status: (payload.status as EventStatus) || EventStatus.Planned,
       eventDate: parseDate(payload.eventDate),
       startDate: parseDate(payload.startDate),
