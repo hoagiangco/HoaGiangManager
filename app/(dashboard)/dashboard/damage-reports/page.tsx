@@ -1161,7 +1161,7 @@ export default function DamageReportsPage() {
         damageContent: formData.damageContent.trim(),
         images: formData.images.length > 0 ? formData.images : null,
         afterImages: formData.afterImages.length > 0 ? formData.afterImages : null,
-        status: (shouldOpenCompletion && formData.deviceSelection === 'other') ? DamageReportStatus.InProgress : formData.status,
+        status: (shouldOpenCompletion && formData.deviceSelection === 'other') ? DamageReportStatus.Completed : formData.status,
         priority: formData.priority,
         notes: null, // Bỏ ghi chú chung
         handlerNotes: formData.handlerNotes || null,
@@ -1226,11 +1226,8 @@ export default function DamageReportsPage() {
           handlerNotes: savedReport.handlerNotes || formData.handlerNotes,
         };
 
-        if (formData.deviceSelection === 'maintenance') {
-          // Streamlined maintenance completion (per user request)
-          executeMaintenanceBatchCompletion(enrichedReport);
-        } else {
-          // Standard device-style or general report completion modal
+        if (formData.deviceSelection === 'device' || formData.deviceSelection === 'maintenance') {
+          // Standard device-style or maintenance completion modal
           setTimeout(() => {
             openStatusUpdateModal(enrichedReport, DamageReportStatus.Completed);
           }, 300);
@@ -1487,6 +1484,25 @@ export default function DamageReportsPage() {
     if (newStatus === DamageReportStatus.Completed || 
         newStatus === DamageReportStatus.Cancelled || 
         newStatus === DamageReportStatus.Rejected) {
+      
+      const isDeviceOrMaintenance = !!(report.deviceId || report.maintenanceBatchId);
+      
+      if (newStatus === DamageReportStatus.Completed && !isDeviceOrMaintenance) {
+        // If completing a general report (no device, no batch), update status directly
+        try {
+          const response = await api.put(`/damage-reports/${reportId}/status`, { status: newStatus });
+          if (response.data.status) {
+            toast.success('Cập nhật trạng thái thành công');
+            loadData();
+          } else {
+            toast.error(response.data.error || 'Lỗi khi cập nhật trạng thái');
+          }
+        } catch (error: any) {
+          toast.error(error.response?.data?.error || 'Lỗi khi cập nhật trạng thái');
+        }
+        return;
+      }
+
       await openStatusUpdateModal(report, newStatus);
       return;
     }
@@ -3174,7 +3190,13 @@ export default function DamageReportsPage() {
                       type="button" 
                       className="btn btn-success rounded-pill btn-sm shadow-sm flex-fill d-flex align-items-center justify-content-center gap-1" 
                       style={{ fontWeight: '700' }} 
-                      onClick={() => setShowDoneConfirm(true)}
+                      onClick={() => {
+                        if (formData.deviceSelection === 'other') {
+                          handleSave(true);
+                        } else {
+                          setShowDoneConfirm(true);
+                        }
+                      }}
                     >
                       <i className="fas fa-check"></i>
                       <span>Xong</span>
