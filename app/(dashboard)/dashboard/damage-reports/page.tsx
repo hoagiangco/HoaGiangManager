@@ -5,7 +5,7 @@ import api from '@/lib/utils/api';
 import useSWR, { mutate as globalMutate } from 'swr';
 import { fetcher } from '@/lib/utils/swr-fetcher';
 import { toast } from 'react-toastify';
-import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, StaffVM, Department, DeviceCategory, EventType, DeviceStatus } from '@/types';
+import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, StaffVM, Department, DeviceCategory, EventType, DeviceStatus, TimelineEntry } from '@/types';
 import { formatDateDisplay, formatDateInput, formatDateRange, formatDateFilename } from '@/lib/utils/dateFormat';
 import FileManager from '@/components/FileManager';
 import DateInput from '@/components/DateInput';
@@ -13,6 +13,24 @@ import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
 import Loading from '@/components/Loading';
 import { isSupervisor } from '@/lib/auth/permissions';
+
+// Helper to parse timeline
+const parseTimeline = (value: string | undefined | null): TimelineEntry[] => {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].hasOwnProperty('timestamp')) {
+      return parsed;
+    }
+  } catch (e) {}
+  return [{
+    id: 'legacy-' + Math.random().toString(36).substring(2, 9),
+    timestamp: new Date().toISOString(),
+    author: 'Hệ thống',
+    content: value,
+    type: 'legacy'
+  }];
+};
 
 // Handler Notes Editor Component
 const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false, canEdit = true }: {
@@ -23,171 +41,422 @@ const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false
   isCard?: boolean;
   canEdit?: boolean;
 }) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(value);
+  const [isAdding, setIsAdding] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [newNote, setNewNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
-  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  const timeline = useMemo(() => parseTimeline(value), [value]);
+  const userTimeline = useMemo(() => timeline.filter(e => e.type !== 'auto'), [timeline]);
+  const latestNote = userTimeline.length > 0 ? userTimeline[userTimeline.length - 1] : null;
 
   useEffect(() => {
-    setEditValue(value);
-  }, [value]);
-
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
+    if (isAdding && inputRef.current) {
       inputRef.current.focus();
-      inputRef.current.setSelectionRange(inputRef.current.value.length, inputRef.current.value.length);
     }
-  }, [isEditing]);
+  }, [isAdding]);
 
   const handleSave = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (editValue !== value && !isSaving) {
-      setIsSaving(true);
-      try {
-        await onChange(editValue);
-        setIsEditing(false);
-      } catch (error) {
-        // Error handled by parent
-      } finally {
-        setIsSaving(false);
-      }
-    } else {
-      setIsEditing(false);
+    if (!newNote.trim() || isSaving) return;
+    setIsSaving(true);
+    try {
+      await onChange(newNote.trim());
+      setNewNote('');
+      setIsAdding(false);
+    } catch (error) {
+      // Error handled by parent
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleCancel = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    setEditValue(value);
-    setIsEditing(false);
+    setNewNote('');
+    setIsAdding(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
-      handleCancel();
+      handleCancel(e as any);
     } else if (e.key === 'Enter' && e.ctrlKey) {
-      handleSave();
+      handleSave(e as any);
     }
   };
 
-  const handleClick = (e: React.MouseEvent) => {
-    // Stop propagation to prevent row selection
-    if (onClick) {
-      onClick(e);
-    }
-    // Only allow editing if canEdit is true
-    if (!isEditing && canEdit) {
-      setIsEditing(true);
+  const formatDateLabel = (dateString: string) => {
+    try {
+      const d = new Date(dateString);
+      return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+    } catch {
+      return '';
     }
   };
 
-  if (isEditing) {
-    return (
-      <div 
-        onClick={(e) => e.stopPropagation()} 
-        className="d-flex flex-column gap-2"
-        style={{ width: '100%', minWidth: isCard ? '100%' : '220px' }}
-      >
-        <textarea
-        ref={inputRef}
-        className="form-control form-control-sm"
-        value={editValue}
-        onChange={(e) => setEditValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onClick={(e) => e.stopPropagation()}
-        disabled={isSaving}
-        style={{
-          fontSize: isCard ? '0.8rem' : '0.75rem',
-          padding: isCard ? '0.5rem' : '0.25rem 0.5rem',
-          minHeight: isCard ? '3rem' : '2.25rem',
-          maxHeight: isCard ? '6rem' : '4rem',
-          resize: 'vertical',
-          width: '100%',
-          minWidth: isCard ? '100%' : '200px',
-          lineHeight: '1.5',
-          pointerEvents: 'auto',
-          marginBottom: '2px'
-        }}
-        />
-        <div className="d-flex justify-content-end gap-2">
-          <button 
-            type="button"
-            className="btn btn-primary btn-sm px-3" 
-            onClick={handleSave}
-            disabled={isSaving || editValue === value}
-            style={{ 
-              fontSize: '0.75rem', 
-              height: '1.8rem', 
-              display: 'flex', 
-              alignItems: 'center',
-              fontWeight: '500'
-            }}
-            title="Lưu (Ctrl+Enter)"
-          >
-            <i className="fas fa-save me-1"></i> Lưu
-          </button>
-          <button 
-            type="button"
-            className="btn btn-light btn-sm px-3 border" 
-            onClick={handleCancel}
-            disabled={isSaving}
-            style={{ 
-              fontSize: '0.75rem', 
-              height: '1.8rem', 
-              display: 'flex', 
-              alignItems: 'center',
-              fontWeight: '500',
-              backgroundColor: '#fff'
-            }}
-            title="Hủy (Esc)"
-          >
-            <i className="fas fa-times me-1"></i> Hủy
-          </button>
+  return (
+    <div className="d-flex flex-column" onClick={(e) => { e.stopPropagation(); if (onClick) onClick(e); }} style={{ width: '100%', position: 'relative' }}>
+      {/* Latest note display */}
+      <div className="d-flex align-items-center justify-content-between p-1 rounded" style={{ minHeight: isCard ? '2.5rem' : '2rem', backgroundColor: canEdit ? '#f8f9fa' : 'transparent', border: canEdit ? '1px solid #e9ecef' : '1px solid transparent', cursor: canEdit ? 'text' : 'default' }} onClick={() => canEdit && !isAdding && setIsAdding(true)}>
+        <div style={{ flex: 1 }}>
+          {latestNote ? (
+            <div style={{ fontSize: isCard ? '0.85rem' : '0.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              <span className="text-muted" style={{ fontSize: '0.7rem', marginRight: '4px' }}>
+                {formatDateLabel(latestNote.timestamp)}
+              </span>
+              <span className="text-dark" style={{ whiteSpace: 'pre-wrap' }}>
+                {latestNote.content}
+              </span>
+            </div>
+          ) : (
+            <span className="text-muted fst-italic" style={{ fontSize: '0.8rem' }}>Chưa có ghi chú</span>
+          )}
         </div>
+        
+        {/* Actions */}
+        <div className="d-flex gap-1 ms-2" onClick={(e) => e.stopPropagation()}>
+          {timeline.length > 1 && (
+            <button 
+              type="button" 
+              className="btn btn-sm p-1 text-primary" 
+              onClick={(e) => { e.stopPropagation(); setShowHistory(true); }}
+              title="Xem lịch sử ghi chú"
+              style={{ background: '#e0f2fe', border: 'none', borderRadius: '4px', lineHeight: 1 }}
+            >
+              <i className="fas fa-list-ul" style={{ fontSize: '0.7rem' }}></i>
+            </button>
+          )}
+          {canEdit && (
+            <button 
+              type="button" 
+              className="btn btn-sm p-1 text-success" 
+              onClick={(e) => { e.stopPropagation(); setIsAdding(!isAdding); }}
+              title="Thêm ghi chú"
+              style={{ background: '#dcfce7', border: 'none', borderRadius: '4px', lineHeight: 1 }}
+            >
+              <i className="fas fa-plus" style={{ fontSize: '0.7rem' }}></i>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Add new note inline box */}
+      {isAdding && (
+        <div className="mt-1 p-2 bg-white border rounded shadow-sm position-absolute w-100" style={{ zIndex: 10, top: '100%', left: 0, minWidth: '250px' }} onClick={e => e.stopPropagation()}>
+          <textarea
+            ref={inputRef}
+            className="form-control form-control-sm mb-2"
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Nhập ghi chú (Ctrl+Enter để lưu)..."
+            disabled={isSaving}
+            style={{ fontSize: '0.8rem', resize: 'vertical', minHeight: '60px' }}
+          />
+          <div className="d-flex justify-content-end gap-2">
+            <button 
+              type="button"
+              className="btn btn-success btn-sm px-3 py-1" 
+              onClick={handleSave}
+              disabled={isSaving || !newNote.trim()}
+              style={{ fontSize: '0.75rem', fontWeight: '500' }}
+            >
+              <i className="fas fa-save me-1"></i> Lưu
+            </button>
+            <button 
+              type="button"
+              className="btn btn-light btn-sm px-3 py-1 border" 
+              onClick={handleCancel}
+              disabled={isSaving}
+              style={{ fontSize: '0.75rem', fontWeight: '500' }}
+            >
+              <i className="fas fa-times me-1"></i> Hủy
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* History Modal */}
+      {showHistory && (
+        <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={(e) => { e.stopPropagation(); setShowHistory(false); }}>
+          <div className="bg-white rounded shadow-lg d-flex flex-column" style={{ width: '90%', maxWidth: '500px', maxHeight: '80vh' }} onClick={e => e.stopPropagation()}>
+            <div className="p-3 border-bottom d-flex justify-content-between align-items-center">
+              <h6 className="mb-0 fw-bold"><i className="fas fa-history text-primary me-2"></i>Lịch sử ghi chú xử lý</h6>
+              <button type="button" className="btn-close" onClick={() => setShowHistory(false)}></button>
+            </div>
+            <div className="p-3 overflow-auto flex-grow-1" style={{ backgroundColor: '#f8fafc' }}>
+              <div className="timeline-container">
+                {timeline.map((entry, idx) => (
+                  <div key={entry.id || idx} className="mb-3 p-2 rounded border bg-white shadow-sm position-relative">
+                    <div className="d-flex justify-content-between align-items-center mb-1">
+                      <span className="fw-bold" style={{ fontSize: '0.8rem', color: entry.type === 'auto' ? '#059669' : '#1e293b' }}>
+                        {entry.type === 'auto' && <i className="fas fa-robot me-1 text-success"></i>}
+                        {entry.author}
+                      </span>
+                      <span className="text-muted" style={{ fontSize: '0.7rem' }}>
+                        {formatDateLabel(entry.timestamp)}
+                      </span>
+                    </div>
+                    <div className={entry.type === 'auto' ? 'text-success fst-italic' : 'text-dark'} style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>
+                      {entry.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Daily Check-in Button Component
+const DailyCheckinButton = ({ 
+  reportId, 
+  initialData,
+  onCheckinChange,
+  compact = false,
+  cardHeader = false
+}: { 
+  reportId: number; 
+  initialData?: { checkedIn: boolean; notes: string };
+  onCheckinChange?: (checkedIn: boolean) => void;
+  compact?: boolean;
+  cardHeader?: boolean;
+}) => {
+  const [isCheckedIn, setIsCheckedIn] = useState(initialData?.checkedIn || false);
+  const [isLoading, setIsLoading] = useState(!initialData);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+  const [notes, setNotes] = useState(initialData?.notes || '');
+
+  useEffect(() => {
+    if (initialData) {
+      setIsCheckedIn(initialData.checkedIn);
+      setNotes(initialData.notes);
+      setIsLoading(false);
+    }
+  }, [initialData]);
+
+  useEffect(() => {
+    if (!initialData) {
+      const checkStatus = async () => {
+        try {
+          const response = await api.get(`/damage-reports/${reportId}/daily-checkin`);
+          if (response.data.status) {
+            setIsCheckedIn(response.data.data.checkedIn);
+            if (response.data.data.todayLog) {
+              setNotes(response.data.data.todayLog.Notes || '');
+            }
+          }
+        } catch (error) {
+          console.error('Error checking check-in status:', error);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      checkStatus();
+    }
+  }, [reportId, initialData]);
+
+  const handleCheckin = async (e?: React.MouseEvent, skipNotes: boolean = false) => {
+    if (e) e.stopPropagation();
+    setIsSubmitting(true);
+    try {
+      const response = await api.post(`/damage-reports/${reportId}/daily-checkin`, { notes: skipNotes ? '' : notes });
+      if (response.data.status) {
+        setIsCheckedIn(true);
+        setShowNotes(false);
+        toast.success('Đã ghi nhận đang xử lý hôm nay');
+        if (onCheckinChange) onCheckinChange(true);
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Lỗi khi ghi nhận');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelCheckin = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!window.confirm('Bạn muốn hủy ghi nhận xử lý hôm nay?')) return;
+    setIsSubmitting(true);
+    try {
+      const response = await api.delete(`/damage-reports/${reportId}/daily-checkin`);
+      if (response.data.status) {
+        setIsCheckedIn(false);
+        toast.info(' Đã hủy ghi nhận');
+        if (onCheckinChange) onCheckinChange(false);
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Lỗi khi hủy');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (compact) {
+    // Card header style: 32x32 rounded circle matching other header buttons
+    if (cardHeader) {
+      return (
+        <button
+          type="button"
+          title={isCheckedIn ? 'Hủy ghi nhận xử lý hôm nay' : 'Ghi nhận xử lý hôm nay'}
+          onClick={isCheckedIn ? handleCancelCheckin : (e) => handleCheckin(e, true)}
+          disabled={isSubmitting || isLoading}
+          style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            border: 'none',
+            padding: 0,
+            cursor: isSubmitting || isLoading ? 'wait' : 'pointer',
+            backgroundColor: isCheckedIn ? 'rgba(16,185,129,0.25)' : 'rgba(255,255,255,0.1)',
+            color: isCheckedIn ? '#10b981' : 'rgba(255,255,255,0.6)',
+            fontSize: '0.8rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.2s',
+            opacity: isSubmitting || isLoading ? 0.5 : 1,
+            flexShrink: 0,
+          }}
+          onMouseEnter={e => {
+            if (!isSubmitting && !isLoading) {
+              e.currentTarget.style.backgroundColor = isCheckedIn ? 'rgba(5,150,105,0.35)' : 'rgba(16,185,129,0.25)';
+              e.currentTarget.style.color = '#10b981';
+            }
+          }}
+          onMouseLeave={e => {
+            if (!isSubmitting && !isLoading) {
+              e.currentTarget.style.backgroundColor = isCheckedIn ? 'rgba(16,185,129,0.25)' : 'rgba(255,255,255,0.1)';
+              e.currentTarget.style.color = isCheckedIn ? '#10b981' : 'rgba(255,255,255,0.6)';
+            }
+          }}
+        >
+          <i className={`fa-calendar-check ${isCheckedIn ? 'fas' : 'far'}`}></i>
+        </button>
+      );
+    }
+    // Table view style: minimal icon, original UI
+    return (
+      <button
+        type="button"
+        title={isCheckedIn ? 'Hủy ghi nhận xử lý hôm nay' : 'Ghi nhận xử lý hôm nay'}
+        onClick={isCheckedIn ? handleCancelCheckin : (e) => handleCheckin(e, true)}
+        disabled={isSubmitting || isLoading}
+        style={{
+          background: 'none',
+          border: 'none',
+          padding: '3px 4px',
+          cursor: isSubmitting || isLoading ? 'wait' : 'pointer',
+          color: isCheckedIn ? '#10b981' : '#94a3b8',
+          fontSize: '0.85rem',
+          lineHeight: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'all 0.2s',
+          opacity: isSubmitting || isLoading ? 0.5 : 1
+        }}
+        onMouseEnter={e => {
+          if (!isSubmitting && !isLoading) {
+            e.currentTarget.style.color = isCheckedIn ? '#059669' : '#10b981';
+            e.currentTarget.style.transform = 'scale(1.1)';
+          }
+        }}
+        onMouseLeave={e => {
+          if (!isSubmitting && !isLoading) {
+            e.currentTarget.style.color = isCheckedIn ? '#10b981' : '#94a3b8';
+            e.currentTarget.style.transform = 'scale(1)';
+          }
+        }}
+      >
+        <i className={`fa-calendar-check ${isCheckedIn ? 'fas' : 'far'}`}></i>
+      </button>
+    );
+  }
+
+  if (isCheckedIn) {
+    return (
+      <div className="d-flex align-items-center gap-2" onClick={e => e.stopPropagation()}>
+        <span className="badge bg-success text-white border-0 shadow-sm px-2 py-1 d-inline-flex align-items-center" style={{ fontSize: '0.7rem', fontWeight: '600' }}>
+          <i className="fas fa-check-circle me-1"></i> Đã ghi nhận xử lý
+        </span>
+        <button 
+          className="btn btn-link btn-sm p-0 text-muted text-decoration-none hover-danger" 
+          onClick={handleCancelCheckin}
+          disabled={isSubmitting}
+          style={{ fontSize: '0.65rem' }}
+          title="Hủy ghi nhận"
+        >
+          Hủy
+        </button>
       </div>
     );
   }
 
   return (
-    <div
-      ref={containerRef}
-      onClick={handleClick}
-      style={{
-        cursor: canEdit ? 'text' : 'default',
-        padding: isCard ? '0.5rem' : '0.25rem 0.5rem',
-        minHeight: isCard ? '3rem' : '2rem',
-        fontSize: isCard ? '0.85rem' : '0.8rem',
-        color: value ? '#212529' : '#adb5bd',
-        fontStyle: 'normal',
-        border: '1px solid transparent',
-        borderRadius: '4px',
-        transition: 'background-color 0.2s, border-color 0.2s',
-        maxWidth: isCard ? '100%' : '250px',
-        minWidth: isCard ? '100%' : '180px',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-word',
-        lineHeight: '1.5',
-        backgroundColor: 'transparent',
-        pointerEvents: canEdit ? 'auto' : 'none',
-        userSelect: 'text',
-        opacity: 1
-      }}
-      onMouseEnter={(e) => {
-        if (canEdit) {
-          e.currentTarget.style.backgroundColor = '#f8f9fa';
-          e.currentTarget.style.borderColor = '#dee2e6';
+    <div className="daily-checkin-container position-relative" onClick={e => e.stopPropagation()}>
+      {showNotes ? (
+        <div className="d-flex flex-column gap-2 mt-1 p-2 bg-white rounded border shadow-sm position-absolute" style={{ minWidth: '200px', zIndex: 100, left: 0, top: '100%' }}>
+          <textarea 
+            className="form-control form-control-sm border-0 bg-light" 
+            placeholder="Ghi chú công việc hôm nay..."
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            style={{ fontSize: '0.75rem', resize: 'none' }}
+            rows={2}
+          />
+          <div className="d-flex gap-2">
+            <button 
+              className="btn btn-success btn-sm flex-grow-1 shadow-sm" 
+              onClick={(e) => handleCheckin(e)}
+              disabled={isSubmitting}
+              style={{ fontSize: '0.7rem', fontWeight: '600' }}
+            >
+              {isSubmitting ? '...' : 'Xác nhận'}
+            </button>
+            <button 
+              className="btn btn-light btn-sm border shadow-sm" 
+              onClick={(e) => { e.stopPropagation(); setShowNotes(false); }}
+              disabled={isSubmitting}
+              style={{ fontSize: '0.7rem' }}
+            >
+              Hủy
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button 
+          className="btn btn-sm py-1 px-3 d-inline-flex align-items-center shadow-sm daily-btn-premium" 
+          onClick={(e) => { e.stopPropagation(); setShowNotes(true); }}
+          style={{ 
+            fontSize: '0.7rem', 
+            borderRadius: '20px',
+            backgroundColor: '#ecfdf5',
+            color: '#059669',
+            border: '1px solid #10b981',
+            fontWeight: '600',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <i className="fas fa-calendar-check me-1"></i> Ghi nhận xử lý hôm nay
+        </button>
+      )}
+      <style jsx>{`
+        .daily-btn-premium:hover {
+          background-color: #10b981 !important;
+          color: white !important;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
         }
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = isCard ? '#ffffff' : 'transparent';
-        e.currentTarget.style.borderColor = 'transparent';
-      }}
-      title={canEdit ? (value || 'Click để thêm ghi chú') : 'Chỉ người xử lý mới có thể chỉnh sửa'}
-    >
-      {isSaving ? 'Đang lưu...' : (value || 'Click để thêm ghi chú...')}
+        .hover-danger:hover {
+          color: #dc3545 !important;
+        }
+      `}</style>
     </div>
   );
 };
@@ -503,6 +772,20 @@ export default function DamageReportsPage() {
       vertical-align: middle !important;
     }
 
+    /* TABLE ROW STYLING */
+    .dr-table-row:nth-child(even) {
+      background-color: #f1f5f9;
+    }
+    .dr-table-row:nth-child(odd) {
+      background-color: #ffffff;
+    }
+    .dr-table-row:hover {
+      background-color: #e2e8f0 !important;
+    }
+    .dr-row-selected {
+      background-color: #eff6ff !important;
+    }
+
     /* MODERN CARD STYLES */
     .modern-status-card:hover {
       transform: translateY(-4px);
@@ -576,11 +859,24 @@ export default function DamageReportsPage() {
     return params.toString();
   }, [selectedStatus, selectedPriority, selectedDevice, selectedDepartment]);
 
-  const { data: reportsResponse, isLoading: reportsLoading, mutate } = useSWR(
+  const { data: reportsResponse, isLoading: reportsLoading, mutate: mutateReports } = useSWR(
     `/damage-reports?${currentParams}`, 
     fetcher, 
     { refreshInterval: 10000 }
   );
+
+  const { data: checkinsResponse, mutate: mutateCheckins } = useSWR(
+    '/damage-reports/daily-checkin/today', 
+    fetcher, 
+    { refreshInterval: 15000 }
+  );
+
+  // Helper to get checkin status for a specific report
+  const getCheckinStatus = (reportId: number) => {
+    if (!checkinsResponse?.status) return undefined;
+    const checkin = checkinsResponse.data.find((c: any) => c.DamageReportID === reportId);
+    return checkin ? { checkedIn: true, notes: checkin.Notes || '' } : { checkedIn: false, notes: '' };
+  };
 
   // Update allReports when SWR data changes
   useEffect(() => {
@@ -667,7 +963,8 @@ export default function DamageReportsPage() {
   }, [currentUser, currentUserStaffId, staff, maintenanceBatches]); // Wait for currentUser, staff list, and batches
 
   const loadData = async () => {
-    mutate();
+    mutateReports();
+    mutateCheckins();
     globalMutate('/reports/pending');
   };
 
@@ -2099,7 +2396,7 @@ export default function DamageReportsPage() {
                 <table className="table align-middle dr-desktop-table" style={{ marginBottom: 0, minWidth: '1200px', borderCollapse: 'collapse' }}>
                   <thead className="sticky-top dashboard-table-header" style={{ zIndex: 5, position: 'sticky', top: 0 }}>
                     <tr style={{ fontWeight: '600', color: '#ffffff', fontSize: '0.75rem', letterSpacing: '0.03em' }}>
-                      <th style={{ width: '76px', textAlign: 'center', padding: '0.6rem 0.5rem' }}>
+                      <th style={{ width: '110px', textAlign: 'center', padding: '0.6rem 0.5rem' }}>
                         <input
                           type="checkbox"
                           checked={currentReports.length > 0 && selectedIds.length === currentReports.length}
@@ -2158,7 +2455,7 @@ export default function DamageReportsPage() {
                             transition: 'background-color 0.12s ease'
                           }}
                         >
-                          <td style={{ padding: '0.3rem 0.4rem', width: '76px' }}>
+                          <td style={{ padding: '0.3rem 0.4rem', width: '110px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center' }}>
                               {/* Checkbox */}
                               <input
@@ -2230,13 +2527,21 @@ export default function DamageReportsPage() {
                                     <span style={{ width: '100%', display: 'block' }} />
                                   )}
                                 </div>
+                                {/* Daily check-in button icon */}
+                                <div style={{ width: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: '1px solid #e2e8f0' }}>
+                                  {report.status !== DamageReportStatus.Completed && report.status !== DamageReportStatus.Cancelled && report.status !== DamageReportStatus.Rejected && (isAdmin(currentUser?.roles) || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) ? (
+                                    <DailyCheckinButton reportId={report.id} initialData={getCheckinStatus(report.id)} onCheckinChange={() => mutateCheckins()} compact={true} />
+                                  ) : (
+                                    <span style={{ width: '100%', display: 'block' }} />
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </td>
                           {/* Vị trí/Thiết bị */}
-                          <td style={{ padding: '0.45rem 0.75rem', maxWidth: '170px' }}>
+                          <td style={{ padding: '0.45rem 0.75rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                              <span style={{ fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                              <span style={{ fontWeight: 600, color: '#1e293b', whiteSpace: 'normal', wordBreak: 'break-word', display: 'block' }}>
                                 {report.displayLocation || 'Không xác định'}
                               </span>
                               {report.isOverdue && (
@@ -2246,7 +2551,7 @@ export default function DamageReportsPage() {
                           </td>
                           {/* Nội dung */}
                           <td style={{ padding: '0.45rem 0.75rem' }}>
-                            <div style={{ minWidth: '150px', maxWidth: '400px', whiteSpace: 'normal', wordBreak: 'break-word', color: '#374151' }}>
+                            <div style={{ minWidth: '150px', whiteSpace: 'normal', wordBreak: 'break-word', color: '#374151' }}>
                               {report.damageContent || 'N/A'}
                             </div>
                           </td>
@@ -2347,6 +2652,7 @@ export default function DamageReportsPage() {
                               <option value={DamageReportPriority.Urgent}>Khẩn</option>
                             </select>
                           </td>
+
                           {/* Ghi chú xử lý */}
                           <td style={{ padding: '0.45rem 0.75rem' }} onClick={(e) => e.stopPropagation()}>
                             <HandlerNotesEditor
@@ -2488,6 +2794,15 @@ export default function DamageReportsPage() {
                             >
                               <i className="fas fa-bell fa-sm"></i>
                             </button>
+                          )}
+                          {/* Daily check-in button in header */}
+                          {report.status !== DamageReportStatus.Completed &&
+                           report.status !== DamageReportStatus.Cancelled &&
+                           report.status !== DamageReportStatus.Rejected &&
+                           (isAdmin(currentUser?.roles) || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && (
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <DailyCheckinButton reportId={report.id} initialData={getCheckinStatus(report.id)} onCheckinChange={() => mutateCheckins()} compact={true} cardHeader={true} />
+                            </div>
                           )}
                           <div className="form-check m-0 p-0" style={{ minHeight: 'auto' }}>
                             <input

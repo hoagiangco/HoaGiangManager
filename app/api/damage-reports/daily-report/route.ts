@@ -3,6 +3,7 @@ import { authenticate } from '@/lib/auth/middleware';
 import { DamageReportService } from '@/lib/services/damageReportService';
 import { formatDateDisplay, formatDateFilename } from '@/lib/utils/dateFormat';
 import { generateDailyReportExcel } from '@/lib/utils/excelGenerator.server';
+import { formatTimelineForExcel } from '@/lib/utils/formatTimeline';
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
     // Prepare sections for Excel
     const sections = [
       {
-        title: 'Việc mới báo báo hôm nay',
+        title: 'Việc mới báo cáo hôm nay',
         headers: ['ID', 'Thời gian', 'Thiết bị/Vị trí', 'Nội dung báo cáo', 'Người báo', 'Mức độ'],
         rows: data.newReports.map(r => [
           r.id,
@@ -46,6 +47,19 @@ export async function GET(request: NextRequest) {
         ])
       },
       {
+        title: 'Việc đang xử lý hôm nay',
+        headers: ['ID', 'Ngày báo', 'Thiết bị/Vị trí', 'Nội dung', 'Người xử lý', 'Trạng thái', 'Ghi chú hôm nay'],
+        rows: data.activeReports.map(r => [
+          r.id,
+          formatDateDisplay(r.reportDate),
+          r.deviceName || r.damageLocation || 'N/A',
+          r.damageContent,
+          (r as any).checkinStaffName || r.handlerName || 'Chưa phân công',
+          r.statusName,
+          (r as any).workNotes || ''
+        ])
+      },
+      {
         title: 'Việc đã hoàn thành hôm nay',
         headers: ['ID', 'Thiết bị/Vị trí', 'Nội dung', 'Người xử lý', 'Ngày hoàn thành', 'Ghi chú'],
         rows: data.completedReports.map(r => [
@@ -54,7 +68,7 @@ export async function GET(request: NextRequest) {
           r.damageContent,
           r.handlerName,
           formatDateDisplay(r.completedDate),
-          r.handlerNotes || ''
+          formatTimelineForExcel(r.handlerNotes || '')
         ])
       },
       {

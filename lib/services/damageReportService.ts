@@ -1,6 +1,6 @@
 import pool from '../db';
 import { PoolClient } from 'pg';
-import { DamageReport, DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceStatus, EventStatus } from '@/types';
+import { DamageReport, DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceStatus, EventStatus, TimelineEntry } from '@/types';
 import { EventService } from './eventService';
 import { NotificationService, NotificationType, NotificationCategory } from './notificationService';
 
@@ -953,8 +953,26 @@ export class DamageReportService {
     return id;
   }
 
-  async updateHandlerNotes(id: number, handlerNotes: string, updatedBy: string): Promise<number> {
-    // Get current handler notes
+  private parseTimelineNotes(notes: string | null | undefined): TimelineEntry[] {
+    if (!notes) return [];
+    try {
+      const parsed = JSON.parse(notes);
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].hasOwnProperty('timestamp')) {
+        return parsed as TimelineEntry[];
+      }
+    } catch (e) {
+      // Not JSON, wrap as legacy
+    }
+    return [{
+      id: Math.random().toString(36).substring(2, 9),
+      timestamp: new Date().toISOString(),
+      author: 'Hệ thống',
+      content: notes,
+      type: 'legacy'
+    }];
+  }
+
+  async appendTimelineNote(id: number, content: string, type: 'manual' | 'auto' | 'legacy', authorName: string, updatedBy: string): Promise<number> {
     const currentResult = await pool.query(
       `SELECT "HandlerNotes" FROM "DamageReport" WHERE "ID" = $1`,
       [id]
@@ -964,24 +982,46 @@ export class DamageReportService {
       throw new Error('Báo cáo không tồn tại');
     }
 
-    const currentHandlerNotes = currentResult.rows[0].HandlerNotes || '';
+    const currentHandlerNotes = currentResult.rows[0].HandlerNotes;
+    const timeline = this.parseTimelineNotes(currentHandlerNotes);
 
-    // Update handler notes
+    const newEntry: TimelineEntry = {
+      id: Math.random().toString(36).substring(2, 9) + Date.now().toString(36),
+      timestamp: new Date().toISOString(),
+      author: authorName,
+      content,
+      type
+    };
+
+    timeline.push(newEntry);
+    const newNotesJson = JSON.stringify(timeline);
+
     await pool.query(
       `UPDATE "DamageReport" SET "HandlerNotes" = $1, "UpdatedBy" = $2, "UpdatedAt" = CURRENT_TIMESTAMP WHERE "ID" = $3`,
-      [handlerNotes || null, updatedBy, id]
+      [newNotesJson, updatedBy, id]
     );
 
     // Track change in history if notes actually changed
-    if (currentHandlerNotes !== (handlerNotes || '')) {
-      await pool.query(
-        `INSERT INTO "DamageReportHistory" ("DamageReportID", "FieldName", "OldValue", "NewValue", "ChangedBy")
-         VALUES ($1, 'HandlerNotes', $2, $3, $4)`,
-        [id, currentHandlerNotes || '', handlerNotes || '', updatedBy]
-      );
-    }
+    await pool.query(
+      `INSERT INTO "DamageReportHistory" ("DamageReportID", "FieldName", "OldValue", "NewValue", "ChangedBy")
+       VALUES ($1, 'HandlerNotes', $2, $3, $4)`,
+      [id, currentHandlerNotes || '', newNotesJson, updatedBy]
+    );
 
     return id;
+  }
+
+  async updateHandlerNotes(id: number, handlerNotes: string, updatedBy: string): Promise<number> {
+    // This method is now legacy, it will just replace the content directly but we should ideally use appendTimelineNote
+    // However, if the old API is still called, we will just parse and append as 'manual'
+    // To ensure compatibility, we'll fetch staff name if possible
+    let authorName = 'Người xử lý';
+    try {
+      const staffRes = await pool.query('SELECT "Name" FROM "Staff" WHERE "UserId" = $1', [updatedBy]);
+      if (staffRes.rows.length > 0) authorName = staffRes.rows[0].Name;
+    } catch(e) {}
+    
+    return this.appendTimelineNote(id, handlerNotes, 'manual', authorName, updatedBy);
   }
 
   async updateImages(id: number, images: string[] | null, updatedBy: string): Promise<number> {
@@ -1310,13 +1350,16 @@ export class DamageReportService {
 
   /**
    * Get data for daily summary report
+   * Uses DailyWorkLog for accurate "active today" section
    */
   async getDailyReportData(date: Date): Promise<{
     newReports: DamageReportVM[];
+    activeReports: DamageReportVM[];
     completedReports: DamageReportVM[];
     pendingReports: DamageReportVM[];
     summary: {
       totalNew: number;
+      totalActive: number;
       totalCompleted: number;
       totalPending: number;
     }
@@ -1325,37 +1368,167 @@ export class DamageReportService {
     from.setHours(0, 0, 0, 0);
     const to = new Date(date);
     to.setHours(23, 59, 59, 999);
+    const workDateStr = date.toISOString().split('T')[0]; // 'YYYY-MM-DD'
 
-    // Get all reports in one go 
-    const allReports = await this.getAll({ isAdmin: true });
-    
-    // 1. New reports today
-    const filteredNew = allReports.filter(r => {
-      if (!r.reportDate) return false;
-      const d = new Date(r.reportDate);
-      return d >= from && d <= to;
-    });
-
-    // 2. Completed reports today
-    const filteredCompleted = allReports.filter(r => {
-      if (!r.completedDate || r.status !== DamageReportStatus.Completed) return false;
-      const d = new Date(r.completedDate);
-      return d >= from && d <= to;
-    });
-
-    // 3. All pending/in-progress reports (snapshot of current state)
-    const pendingReports = allReports.filter(r => 
-      [DamageReportStatus.Pending, DamageReportStatus.Assigned, DamageReportStatus.InProgress].includes(r.status)
+    // 1. New reports: created today
+    const newReportsRes = await pool.query(
+      `SELECT 
+         dr."ID" as id, dr."DeviceID" as "deviceId", dr."DamageLocation" as "damageLocation",
+         dr."ReporterID" as "reporterId", dr."ReportingDepartmentID" as "reportingDepartmentId",
+         dr."HandlerID" as "handlerId", dr."ReportDate" as "reportDate",
+         dr."HandlingDate" as "handlingDate", dr."CompletedDate" as "completedDate",
+         dr."DamageContent" as "damageContent",
+         CAST(dr."Status"::text AS INTEGER) as status,
+         CAST(dr."Priority"::text AS INTEGER) as priority,
+         dr."Notes" as notes, dr."HandlerNotes" as "handlerNotes",
+         d."Name" as "deviceName",
+         reporter."Name" as "reporterName",
+         handler."Name" as "handlerName",
+         loc."Name" as "deviceLocationName",
+         cat."Name" as "deviceCategoryName"
+       FROM "DamageReport" dr
+       LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
+       LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
+       LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
+       LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
+       LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
+       WHERE dr."ReportDate" >= $1 AND dr."ReportDate" <= $2
+       ORDER BY dr."ReportDate" DESC`,
+      [from, to]
     );
 
+    // 2. Active reports: checked-in today (not completed/cancelled)
+    const activeReportsRes = await pool.query(
+      `SELECT 
+         dr."ID" as id, dr."DeviceID" as "deviceId", dr."DamageLocation" as "damageLocation",
+         dr."ReporterID" as "reporterId", dr."ReportingDepartmentID" as "reportingDepartmentId",
+         dr."HandlerID" as "handlerId", dr."ReportDate" as "reportDate",
+         dr."HandlingDate" as "handlingDate", dr."CompletedDate" as "completedDate",
+         dr."DamageContent" as "damageContent",
+         CAST(dr."Status"::text AS INTEGER) as status,
+         CAST(dr."Priority"::text AS INTEGER) as priority,
+         dr."Notes" as notes, dr."HandlerNotes" as "handlerNotes",
+         d."Name" as "deviceName",
+         reporter."Name" as "reporterName",
+         handler."Name" as "handlerName",
+         loc."Name" as "deviceLocationName",
+         cat."Name" as "deviceCategoryName",
+         dwl."Notes" as "workNotes",
+         s."Name" as "checkinStaffName"
+       FROM "DamageReport" dr
+       INNER JOIN "DailyWorkLog" dwl ON dwl."DamageReportID" = dr."ID" AND dwl."WorkDate" = $1::date
+       INNER JOIN "Staff" s ON dwl."StaffID" = s."ID"
+       LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
+       LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
+       LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
+       LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
+       LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
+       WHERE CAST(dr."Status"::text AS INTEGER) NOT IN (4, 5, 6)
+         AND (dr."ReportDate" < $2 OR dr."ReportDate" > $3)
+       ORDER BY dr."ReportDate" ASC`,
+      [workDateStr, from, to]
+    );
+
+    // 3. Completed reports: completed today
+    const completedReportsRes = await pool.query(
+      `SELECT 
+         dr."ID" as id, dr."DeviceID" as "deviceId", dr."DamageLocation" as "damageLocation",
+         dr."ReporterID" as "reporterId", dr."ReportingDepartmentID" as "reportingDepartmentId",
+         dr."HandlerID" as "handlerId", dr."ReportDate" as "reportDate",
+         dr."HandlingDate" as "handlingDate", dr."CompletedDate" as "completedDate",
+         dr."DamageContent" as "damageContent",
+         CAST(dr."Status"::text AS INTEGER) as status,
+         CAST(dr."Priority"::text AS INTEGER) as priority,
+         dr."Notes" as notes, dr."HandlerNotes" as "handlerNotes",
+         d."Name" as "deviceName",
+         reporter."Name" as "reporterName",
+         handler."Name" as "handlerName",
+         loc."Name" as "deviceLocationName",
+         cat."Name" as "deviceCategoryName"
+       FROM "DamageReport" dr
+       LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
+       LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
+       LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
+       LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
+       LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
+       WHERE CAST(dr."Status"::text AS INTEGER) = 4
+         AND dr."CompletedDate" >= $1 AND dr."CompletedDate" <= $2
+       ORDER BY dr."CompletedDate" DESC`,
+      [from, to]
+    );
+
+    // 4. Pending reports: all non-completed/cancelled, not checked-in today, not new today
+    const activeIds = activeReportsRes.rows.map((r: any) => r.id);
+    const newIds = newReportsRes.rows.map((r: any) => r.id);
+    const completedIds = completedReportsRes.rows.map((r: any) => r.id);
+    const excludeIds = Array.from(new Set([...activeIds, ...newIds, ...completedIds]));
+
+    const excludeClause = excludeIds.length > 0
+      ? `AND dr."ID" NOT IN (${excludeIds.join(',')})`
+      : '';
+
+    const pendingReportsRes = await pool.query(
+      `SELECT 
+         dr."ID" as id, dr."DeviceID" as "deviceId", dr."DamageLocation" as "damageLocation",
+         dr."ReporterID" as "reporterId", dr."ReportingDepartmentID" as "reportingDepartmentId",
+         dr."HandlerID" as "handlerId", dr."ReportDate" as "reportDate",
+         dr."HandlingDate" as "handlingDate", dr."CompletedDate" as "completedDate",
+         dr."DamageContent" as "damageContent",
+         CAST(dr."Status"::text AS INTEGER) as status,
+         CAST(dr."Priority"::text AS INTEGER) as priority,
+         dr."Notes" as notes, dr."HandlerNotes" as "handlerNotes",
+         d."Name" as "deviceName",
+         reporter."Name" as "reporterName",
+         handler."Name" as "handlerName",
+         loc."Name" as "deviceLocationName",
+         cat."Name" as "deviceCategoryName"
+       FROM "DamageReport" dr
+       LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
+       LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
+       LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
+       LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
+       LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
+       WHERE CAST(dr."Status"::text AS INTEGER) IN (1, 2, 3)
+         ${excludeClause}
+       ORDER BY dr."ReportDate" ASC`
+    );
+
+    const mapRow = (r: any): DamageReportVM => ({
+      id: r.id,
+      deviceId: r.deviceId,
+      damageLocation: r.damageLocation,
+      reporterId: r.reporterId,
+      reportingDepartmentId: r.reportingDepartmentId,
+      handlerId: r.handlerId,
+      reportDate: r.reportDate,
+      handlingDate: r.handlingDate,
+      completedDate: r.completedDate,
+      damageContent: r.damageContent,
+      status: r.status,
+      priority: r.priority,
+      notes: r.notes,
+      handlerNotes: r.handlerNotes,
+      deviceName: r.deviceName,
+      reporterName: r.reporterName,
+      handlerName: r.handlerName,
+      deviceLocationName: r.deviceLocationName,
+      deviceCategoryName: r.deviceCategoryName,
+      workNotes: r.workNotes,
+      checkinStaffName: r.checkinStaffName,
+      statusName: this.getStatusName(r.status),
+      priorityName: this.getPriorityName(r.priority),
+    } as any);
+
     return {
-      newReports: filteredNew,
-      completedReports: filteredCompleted,
-      pendingReports: pendingReports,
+      newReports: newReportsRes.rows.map(mapRow),
+      activeReports: activeReportsRes.rows.map(mapRow),
+      completedReports: completedReportsRes.rows.map(mapRow),
+      pendingReports: pendingReportsRes.rows.map(mapRow),
       summary: {
-        totalNew: filteredNew.length,
-        totalCompleted: filteredCompleted.length,
-        totalPending: pendingReports.length
+        totalNew: newReportsRes.rows.length,
+        totalActive: activeReportsRes.rows.length,
+        totalCompleted: completedReportsRes.rows.length,
+        totalPending: pendingReportsRes.rows.length,
       }
     };
   }

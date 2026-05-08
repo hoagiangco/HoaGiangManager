@@ -7,6 +7,7 @@ import { DeviceService } from '@/lib/services/deviceService';
 import { DamageReportStatus, DamageReportPriority } from '@/types';
 import { formatDateDisplay, formatDateTime, formatDateRange, formatDateFilename } from '@/lib/utils/dateFormat';
 import { generateExcelFile } from '@/lib/utils/excelGenerator.server';
+import { formatTimelineForExcel } from '@/lib/utils/formatTimeline';
 
 export async function GET(request: NextRequest) {
   try {
@@ -181,7 +182,7 @@ export async function GET(request: NextRequest) {
         'Nội dung báo cáo': stripHtml(report.damageContent || ''),
         'Trạng thái': statusMap[report.status] || '',
         'Mức độ ưu tiên': priorityMap[report.priority] || '',
-        'Ghi chú người xử lý': stripHtml(report.handlerNotes || ''),
+        'Ghi chú người xử lý': formatTimelineForExcel(report.handlerNotes || ''),
         'Ngày tạo': formatDateTime(report.createdAt) || '',
         'Người cập nhật': report.updatedByName || '',
       };

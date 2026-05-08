@@ -297,6 +297,28 @@ async function migrate() {
       CREATE INDEX IF NOT EXISTS idx_damage_report_department ON "DamageReport"("ReportingDepartmentID");
     `);
 
+    // Create DailyWorkLog table for daily check-in feature
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "DailyWorkLog" (
+        "ID"             SERIAL PRIMARY KEY,
+        "DamageReportID" INTEGER NOT NULL,
+        "StaffID"        INTEGER NOT NULL,
+        "WorkDate"       DATE NOT NULL,
+        "Notes"          TEXT,
+        "CreatedAt"      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        "UpdatedAt"      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY ("DamageReportID") REFERENCES "DamageReport"("ID") ON DELETE CASCADE,
+        FOREIGN KEY ("StaffID") REFERENCES "Staff"("ID") ON DELETE CASCADE,
+        UNIQUE ("DamageReportID", "StaffID", "WorkDate")
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_daily_work_log_date ON "DailyWorkLog"("WorkDate");
+      CREATE INDEX IF NOT EXISTS idx_daily_work_log_report ON "DailyWorkLog"("DamageReportID");
+      CREATE INDEX IF NOT EXISTS idx_daily_work_log_staff ON "DailyWorkLog"("StaffID");
+    `);
+
     await client.query('COMMIT');
     console.log('✅ Database migration completed successfully!');
   } catch (error) {

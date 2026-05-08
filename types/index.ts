@@ -286,3 +286,10 @@ export interface ApiResponse<T = any> {
   message?: string;
 }
 
+export interface TimelineEntry {
+  id: string;
+  timestamp: string;
+  author: string;
+  content: string;
+  type: 'manual' | 'auto' | 'legacy';
+}

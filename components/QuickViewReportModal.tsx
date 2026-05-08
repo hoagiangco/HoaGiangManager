@@ -1,12 +1,31 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { DamageReportVM, DamageReportStatus, DamageReportPriority } from '@/types';
+import { DamageReportVM, DamageReportStatus, DamageReportPriority, TimelineEntry } from '@/types';
 import { formatDateDisplay } from '@/lib/utils/dateFormat';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
 import FileManager from '@/components/FileManager';
 import { isAdmin } from '@/lib/auth/permissions';
+
+// Parse handlerNotes JSON to timeline entries
+const parseTimeline = (value: string | undefined | null): TimelineEntry[] => {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].hasOwnProperty('timestamp')) {
+      return parsed;
+    }
+  } catch (e) {}
+  return [{ id: 'legacy', timestamp: new Date().toISOString(), author: 'Hệ thống', content: value, type: 'legacy' }];
+};
+
+const formatDateLabel = (dateString: string) => {
+  try {
+    const d = new Date(dateString);
+    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+  } catch { return ''; }
+};
 
 interface QuickViewReportModalProps {
   reportId: number;
@@ -264,10 +283,19 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
                            <h6 className="text-success fw-bold text-uppercase mb-2 d-flex align-items-center" style={{ fontSize: '0.65rem', letterSpacing: '0.05em' }}>
                             <i className="fas fa-clipboard-check me-2"></i>Ghi chú xử lý
                           </h6>
-                          <div className="border-start border-3 border-warning bg-warning bg-opacity-10 p-2 rounded-3 mb-2 flex-grow-1" style={{ maxHeight: '80px', overflowY: 'auto' }}>
-                             <p className="mb-0 text-dark" style={{ lineHeight: '1.4', whiteSpace: 'pre-wrap', fontSize: '0.8rem' }}>
-                                {report.handlerNotes || 'Chưa có cập nhật'}
-                             </p>
+                          <div className="flex-grow-1 d-flex flex-column gap-1" style={{ maxHeight: '120px', overflowY: 'auto' }}>
+                            {(() => {
+                              const entries = parseTimeline(report.handlerNotes).filter(e => e.type !== 'auto');
+                              if (entries.length === 0) {
+                                return <p className="mb-0 text-muted fst-italic" style={{ fontSize: '0.8rem' }}>Chưa có cập nhật</p>;
+                              }
+                              return entries.map((entry, idx) => (
+                                <div key={entry.id || idx} className="d-flex align-items-start gap-2 py-1 border-bottom border-opacity-10" style={{ fontSize: '0.8rem' }}>
+                                  <span className="text-muted flex-shrink-0" style={{ fontSize: '0.65rem', paddingTop: '2px', minWidth: '55px' }}>{formatDateLabel(entry.timestamp)}</span>
+                                  <p className="mb-0 text-dark" style={{ lineHeight: '1.4', whiteSpace: 'pre-wrap' }}>{entry.content}</p>
+                                </div>
+                              ));
+                            })()}
                           </div>
                           <div className="pt-1 mt-auto border-top d-flex justify-content-between align-items-center" style={{ fontSize: '0.7rem' }}>
                              <span className="text-muted"><i className="fas fa-user-cog me-1"></i>{report.handlerName || '---'}</span>

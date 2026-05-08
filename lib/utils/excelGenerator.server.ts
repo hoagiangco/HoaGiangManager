@@ -67,6 +67,7 @@ export async function generateDailyReportExcel(data: {
   date: string;
   summary: {
     totalNew: number;
+    totalActive?: number;
     totalCompleted: number;
     totalPending: number;
   };
@@ -113,10 +114,11 @@ export async function generateDailyReportExcel(data: {
   worksheet.mergeCells(summaryHeader.number, 1, summaryHeader.number, 3);
 
   const sRow1 = worksheet.addRow(['Việc mới báo cáo:', data.summary.totalNew]);
-  const sRow2 = worksheet.addRow(['Việc đã hoàn thành:', data.summary.totalCompleted]);
-  const sRow3 = worksheet.addRow(['Việc đang tồn đọng:', data.summary.totalPending]);
+  const sRow2 = worksheet.addRow(['Việc đang xử lý:', data.summary.totalActive ?? 0]);
+  const sRow3 = worksheet.addRow(['Việc đã hoàn thành:', data.summary.totalCompleted]);
+  const sRow4 = worksheet.addRow(['Việc tồn đọng:', data.summary.totalPending]);
 
-  [sRow1, sRow2, sRow3].forEach(row => {
+  [sRow1, sRow2, sRow3, sRow4].forEach(row => {
     row.getCell(1).font = { bold: true };
     row.getCell(2).alignment = { horizontal: 'left' };
   });

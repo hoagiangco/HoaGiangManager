@@ -61,6 +61,9 @@ export default function DashboardPage() {
   const { data: staffData } = useSWR('/staff?departmentId=0', fetcher, { refreshInterval: 30000 });
   const { data: eventsData } = useSWR('/events?eventTypeId=0', fetcher, { refreshInterval: 30000 });
   const { data: damageReportsData } = useSWR('/damage-reports', fetcher, { refreshInterval: 30000 });
+  const { data: checkinsTodayData } = useSWR('/damage-reports/daily-checkin/today', fetcher, { refreshInterval: 30000 });
+
+  const checkinsTodayCount = checkinsTodayData?.data?.length || 0;
 
   const notifications = notificationsData?.data || { overduePlans: 0, upcomingPlans: 0, pendingEvents: 0 };
   const pendingReports = pendingReportsData?.data || {
@@ -172,6 +175,19 @@ export default function DashboardPage() {
                   <i className="fas fa-spinner fa-spin text-info"></i>
                   <div className="alert-item-text">
                     {pendingReports.inProgress.totalCount} báo cáo đang xử lý
+                  </div>
+                </Link>
+              </div>
+            )}
+            {checkinsTodayCount > 0 && (
+              <div className="col-lg-3 col-md-6">
+                <Link href="/dashboard/damage-reports" className="alert-item-compact border-left-success h-100">
+                  <i className="fas fa-check-double text-success"></i>
+                  <div className="alert-item-text">
+                    {checkinsTodayCount} việc đã ghi nhận xử lý hôm nay
+                    <div className="alert-item-sub text-success">
+                      Công việc đang thực hiện
+                    </div>
                   </div>
                 </Link>
               </div>
