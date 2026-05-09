@@ -83,6 +83,25 @@ const getStatusLabel = (status: EventStatus | undefined | null): string => {
   return STATUS_LABELS[status] ?? status;
 };
 
+// Parse handlerNotes JSON to timeline entries
+const parseTimeline = (value: string | undefined | null): Array<{ id: string, timestamp: string, author: string, content: string, type: string }> => {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].hasOwnProperty('timestamp')) {
+      return parsed;
+    }
+  } catch (e) {}
+  return [{ id: 'legacy', timestamp: new Date().toISOString(), author: 'Người xử lý', content: value || '', type: 'legacy' }];
+};
+
+const formatDateLabel = (dateString: string) => {
+  try {
+    const d = new Date(dateString);
+    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+  } catch { return ''; }
+};
+
 function EventsPageContent() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [allEvents, setAllEvents] = useState<EventVM[]>([]);
@@ -895,8 +914,19 @@ function EventsPageContent() {
                 {reportModal.report.handlerNotes && (
                   <div className="col-12">
                     <label className="form-label small text-muted">Ghi chú người xử lý</label>
-                    <div className="border rounded p-2 bg-light">
-                      {reportModal.report.handlerNotes}
+                    <div className="border rounded p-2 bg-light d-flex flex-column gap-1" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                      {(() => {
+                        const entries = parseTimeline(reportModal.report.handlerNotes).filter(e => e.type !== 'auto');
+                        if (entries.length === 0) {
+                          return <div className="text-muted small italic">Chưa có ghi chú</div>;
+                        }
+                        return entries.map((entry, idx) => (
+                          <div key={entry.id || idx} className="d-flex align-items-start gap-2 py-1 border-bottom border-opacity-10" style={{ fontSize: '0.85rem' }}>
+                            <span className="text-muted flex-shrink-0" style={{ fontSize: '0.7rem', paddingTop: '2px', minWidth: '60px' }}>{formatDateLabel(entry.timestamp)}</span>
+                            <p className="mb-0 text-dark" style={{ lineHeight: '1.4', whiteSpace: 'pre-wrap' }}>{entry.content}</p>
+                          </div>
+                        ));
+                      })()}
                     </div>
                   </div>
                 )}

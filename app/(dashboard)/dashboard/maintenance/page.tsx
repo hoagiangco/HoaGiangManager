@@ -293,7 +293,7 @@ function MaintenancePageContent() {
         return false;
       }
 
-      const damageContentText = `Bảo trì định kỳ: ${batch.title} [Batch: ${batch.batchId}]`;
+      const damageContentText = `${batch.title} - ${batch.batchId}`;
 
       const reportPayload: any = {
         deviceSelection: 'maintenance',

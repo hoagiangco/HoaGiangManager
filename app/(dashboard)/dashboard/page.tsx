@@ -236,17 +236,17 @@ export default function DashboardPage() {
         {isAdmin && (
           <div className="col-xl-2 col-lg-4 col-md-6">
             <div 
-              className={`stat-tile-compact ${isExporting ? 'opacity-50' : ''}`} 
-              onClick={handleExportDailyReport} 
-              style={{ cursor: isExporting ? 'wait' : 'pointer', border: '1px solid #e2e8f0' }}
+              className="stat-tile-compact" 
+              onClick={() => router.push('/dashboard/statistics?tab=reports&mode=daily')} 
+              style={{ cursor: 'pointer', border: '1px solid #e2e8f0' }}
             >
-              <div className="stat-tile-accent" style={{ backgroundColor: '#2563eb' }}></div>
+              <div className="stat-tile-accent" style={{ backgroundColor: '#10b981' }}></div>
               <div className="stat-tile-content">
                 <div className="stat-tile-title">Báo cáo ngày</div>
                 <div className="stat-tile-value">
-                  <i className={`fas ${isExporting ? 'fa-spinner fa-spin' : 'fa-file-excel'} text-primary`}></i>
+                  <i className="fas fa-calendar-check text-success"></i>
                 </div>
-                <div className="stat-tile-footer text-primary text-decoration-none">Xuất Excel</div>
+                <div className="stat-tile-footer text-success text-decoration-none">Xem chi tiết</div>
               </div>
             </div>
           </div>

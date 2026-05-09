@@ -27,10 +27,24 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get('date');
-    const targetDate = dateParam ? new Date(dateParam) : new Date();
+    // Use date string directly to avoid UTC timezone shift
+    // If no date param, use today in local time (YYYY-MM-DD)
+    let targetDateStr: string;
+    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      targetDateStr = dateParam;
+    } else {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      targetDateStr = `${y}-${m}-${d}`;
+    }
+    // Parse for display purposes (formatDateDisplay)
+    const [py, pm, pd] = targetDateStr.split('-').map(Number);
+    const targetDate = new Date(py, pm - 1, pd);
 
     const damageReportService = new DamageReportService();
-    const data = await damageReportService.getDailyReportData(targetDate);
+    const data = await damageReportService.getDailyReportData(targetDateStr);
 
     // Prepare sections for Excel
     const sections = [

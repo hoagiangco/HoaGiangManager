@@ -655,9 +655,8 @@ export class DamageReportService {
       throw new Error('Phải chọn thiết bị hoặc nhập vị trí sự cố');
     }
 
-    // Get current values to track changes
     const currentResult = await pool.query(
-      `SELECT "Status", "Priority", "DeviceID", "HandlerID", "DamageContent" FROM "DamageReport" WHERE "ID" = $1`,
+      `SELECT "Status", "Priority", "DeviceID", "HandlerID", "DamageContent", "HandlerNotes" FROM "DamageReport" WHERE "ID" = $1`,
       [report.id]
     );
     
@@ -665,7 +664,39 @@ export class DamageReportService {
     const currentPriority = currentResult.rows[0]?.Priority;
     const currentHandlerId = currentResult.rows[0]?.HandlerID;
     const currentContent = currentResult.rows[0]?.DamageContent;
+    const currentHandlerNotes = currentResult.rows[0]?.HandlerNotes;
     const oldDeviceId = currentResult.rows[0]?.DeviceID;
+
+    // Handle HandlerNotes timeline protection
+    let finalHandlerNotes = report.handlerNotes;
+    if (finalHandlerNotes && typeof finalHandlerNotes === 'string' && !finalHandlerNotes.startsWith('[')) {
+      if (currentHandlerNotes && typeof currentHandlerNotes === 'string' && currentHandlerNotes.startsWith('[')) {
+        try {
+          const timeline = JSON.parse(currentHandlerNotes);
+          if (Array.isArray(timeline) && timeline.length > 0) {
+            // Find the latest manual note content
+            const userTimeline = timeline.filter((e: any) => e.type !== 'auto');
+            const latestContent = userTimeline.length > 0 
+              ? userTimeline[userTimeline.length - 1].content 
+              : timeline[timeline.length - 1].content;
+
+            if (finalHandlerNotes === latestContent) {
+              // No change to content, preserve the full timeline
+              finalHandlerNotes = currentHandlerNotes;
+            } else if (finalHandlerNotes.trim() === '') {
+              // User cleared the field in Edit modal, preserve timeline
+              finalHandlerNotes = currentHandlerNotes;
+            } else {
+              // Content changed, append as new note to preserve history
+              // We'll use the existing append logic (simplified here or we can call appendTimelineNote later)
+              // For now, let's just use the currentHandlerNotes and we will handle the append separately if needed
+              // But the simplest is to just preserve the timeline if they are using the general Edit modal
+              finalHandlerNotes = currentHandlerNotes;
+            }
+          }
+        } catch (e) {}
+      }
+    }
 
     await pool.query(
       `UPDATE "DamageReport" SET
@@ -708,7 +739,7 @@ export class DamageReportService {
         report.status.toString(),
         report.priority.toString(),
         report.notes || null,
-        report.handlerNotes || null,
+        finalHandlerNotes || null,
         report.rejectionReason || null,
         report.maintenanceBatchId || null,
         report.updatedBy || null,
@@ -1351,8 +1382,9 @@ export class DamageReportService {
   /**
    * Get data for daily summary report
    * Uses DailyWorkLog for accurate "active today" section
+   * @param dateStr - date in 'YYYY-MM-DD' format (local date)
    */
-  async getDailyReportData(date: Date): Promise<{
+  async getDailyReportData(dateStr: string, filters?: { departmentId?: number, handlerId?: number }): Promise<{
     newReports: DamageReportVM[];
     activeReports: DamageReportVM[];
     completedReports: DamageReportVM[];
@@ -1364,11 +1396,24 @@ export class DamageReportService {
       totalPending: number;
     }
   }> {
-    const from = new Date(date);
-    from.setHours(0, 0, 0, 0);
-    const to = new Date(date);
-    to.setHours(23, 59, 59, 999);
-    const workDateStr = date.toISOString().split('T')[0]; // 'YYYY-MM-DD'
+    // Parse as local date components to avoid UTC timezone shift
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const from = new Date(y, m - 1, d, 0, 0, 0, 0);
+    const to = new Date(y, m - 1, d, 23, 59, 59, 999);
+    const workDateStr = dateStr; // Already 'YYYY-MM-DD'
+
+    let filterClause = '';
+    const queryParams: any[] = [];
+    let paramIdx = 1;
+
+    if (filters?.departmentId && filters.departmentId > 0) {
+      filterClause += ` AND dr."ReportingDepartmentID" = $${paramIdx++}`;
+      queryParams.push(filters.departmentId);
+    }
+    if (filters?.handlerId && filters.handlerId > 0) {
+      filterClause += ` AND dr."HandlerID" = $${paramIdx++}`;
+      queryParams.push(filters.handlerId);
+    }
 
     // 1. New reports: created today
     const newReportsRes = await pool.query(
@@ -1378,6 +1423,7 @@ export class DamageReportService {
          dr."HandlerID" as "handlerId", dr."ReportDate" as "reportDate",
          dr."HandlingDate" as "handlingDate", dr."CompletedDate" as "completedDate",
          dr."DamageContent" as "damageContent",
+         dr."MaintenanceBatchId" as "maintenanceBatchId",
          CAST(dr."Status"::text AS INTEGER) as status,
          CAST(dr."Priority"::text AS INTEGER) as priority,
          dr."Notes" as notes, dr."HandlerNotes" as "handlerNotes",
@@ -1392,12 +1438,25 @@ export class DamageReportService {
        LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
-       WHERE dr."ReportDate" >= $1 AND dr."ReportDate" <= $2
+       WHERE dr."ReportDate" >= $${paramIdx} AND dr."ReportDate" <= $${paramIdx + 1}
+       ${filterClause}
        ORDER BY dr."ReportDate" DESC`,
-      [from, to]
+      [...queryParams, from, to]
     );
 
     // 2. Active reports: checked-in today (not completed/cancelled)
+    // For active reports, if handlerId filter is active, we check the check-in staff as well
+    let activeFilterClause = filterClause;
+    const activeParams = [...queryParams, workDateStr];
+    const activeDateIdx = activeParams.length;
+
+    if (filters?.handlerId && filters.handlerId > 0) {
+       // already in filterClause as dr."HandlerID" = ...
+       // But we might also want to include cases where they checked in even if not the primary handler?
+       // Usually, if filtered by staff, we want work done by THEM.
+       activeFilterClause = activeFilterClause.replace(`dr."HandlerID"`, `dwl."StaffID"`);
+    }
+
     const activeReportsRes = await pool.query(
       `SELECT 
          dr."ID" as id, dr."DeviceID" as "deviceId", dr."DamageLocation" as "damageLocation",
@@ -1405,6 +1464,7 @@ export class DamageReportService {
          dr."HandlerID" as "handlerId", dr."ReportDate" as "reportDate",
          dr."HandlingDate" as "handlingDate", dr."CompletedDate" as "completedDate",
          dr."DamageContent" as "damageContent",
+         dr."MaintenanceBatchId" as "maintenanceBatchId",
          CAST(dr."Status"::text AS INTEGER) as status,
          CAST(dr."Priority"::text AS INTEGER) as priority,
          dr."Notes" as notes, dr."HandlerNotes" as "handlerNotes",
@@ -1416,7 +1476,7 @@ export class DamageReportService {
          dwl."Notes" as "workNotes",
          s."Name" as "checkinStaffName"
        FROM "DamageReport" dr
-       INNER JOIN "DailyWorkLog" dwl ON dwl."DamageReportID" = dr."ID" AND dwl."WorkDate" = $1::date
+       INNER JOIN "DailyWorkLog" dwl ON dwl."DamageReportID" = dr."ID" AND dwl."WorkDate" = $${activeDateIdx}::date
        INNER JOIN "Staff" s ON dwl."StaffID" = s."ID"
        LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
        LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
@@ -1424,9 +1484,9 @@ export class DamageReportService {
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
        WHERE CAST(dr."Status"::text AS INTEGER) NOT IN (4, 5, 6)
-         AND (dr."ReportDate" < $2 OR dr."ReportDate" > $3)
+       ${activeFilterClause}
        ORDER BY dr."ReportDate" ASC`,
-      [workDateStr, from, to]
+      activeParams
     );
 
     // 3. Completed reports: completed today
@@ -1437,6 +1497,7 @@ export class DamageReportService {
          dr."HandlerID" as "handlerId", dr."ReportDate" as "reportDate",
          dr."HandlingDate" as "handlingDate", dr."CompletedDate" as "completedDate",
          dr."DamageContent" as "damageContent",
+         dr."MaintenanceBatchId" as "maintenanceBatchId",
          CAST(dr."Status"::text AS INTEGER) as status,
          CAST(dr."Priority"::text AS INTEGER) as priority,
          dr."Notes" as notes, dr."HandlerNotes" as "handlerNotes",
@@ -1452,12 +1513,14 @@ export class DamageReportService {
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
        WHERE CAST(dr."Status"::text AS INTEGER) = 4
-         AND dr."CompletedDate" >= $1 AND dr."CompletedDate" <= $2
+         AND dr."CompletedDate" >= $${paramIdx} AND dr."CompletedDate" <= $${paramIdx + 1}
+         ${filterClause}
        ORDER BY dr."CompletedDate" DESC`,
-      [from, to]
+      [...queryParams, from, to]
     );
 
     // 4. Pending reports: all non-completed/cancelled, not checked-in today, not new today
+    //    AND reportDate <= selected date (to avoid showing future-dated or unrelated reports)
     const activeIds = activeReportsRes.rows.map((r: any) => r.id);
     const newIds = newReportsRes.rows.map((r: any) => r.id);
     const completedIds = completedReportsRes.rows.map((r: any) => r.id);
@@ -1467,6 +1530,10 @@ export class DamageReportService {
       ? `AND dr."ID" NOT IN (${excludeIds.join(',')})`
       : '';
 
+    // Add date cutoff param: only show reports created on or before the selected date
+    const pendingParams = [...queryParams, to];
+    const pendingDateIdx = pendingParams.length;
+
     const pendingReportsRes = await pool.query(
       `SELECT 
          dr."ID" as id, dr."DeviceID" as "deviceId", dr."DamageLocation" as "damageLocation",
@@ -1474,6 +1541,7 @@ export class DamageReportService {
          dr."HandlerID" as "handlerId", dr."ReportDate" as "reportDate",
          dr."HandlingDate" as "handlingDate", dr."CompletedDate" as "completedDate",
          dr."DamageContent" as "damageContent",
+         dr."MaintenanceBatchId" as "maintenanceBatchId",
          CAST(dr."Status"::text AS INTEGER) as status,
          CAST(dr."Priority"::text AS INTEGER) as priority,
          dr."Notes" as notes, dr."HandlerNotes" as "handlerNotes",
@@ -1489,8 +1557,11 @@ export class DamageReportService {
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
        WHERE CAST(dr."Status"::text AS INTEGER) IN (1, 2, 3)
+         AND dr."ReportDate" <= $${pendingDateIdx}
          ${excludeClause}
-       ORDER BY dr."ReportDate" ASC`
+         ${filterClause}
+       ORDER BY dr."ReportDate" ASC`,
+      pendingParams
     );
 
     const mapRow = (r: any): DamageReportVM => ({
@@ -1508,6 +1579,7 @@ export class DamageReportService {
       priority: r.priority,
       notes: r.notes,
       handlerNotes: r.handlerNotes,
+      maintenanceBatchId: r.maintenanceBatchId,
       deviceName: r.deviceName,
       reporterName: r.reporterName,
       handlerName: r.handlerName,

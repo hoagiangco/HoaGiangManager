@@ -26,22 +26,31 @@ const parseTimeline = (value: string | undefined | null): TimelineEntry[] => {
   return [{
     id: 'legacy-' + Math.random().toString(36).substring(2, 9),
     timestamp: new Date().toISOString(),
-    author: 'Hệ thống',
-    content: value,
+    author: 'Người xử lý',
+    content: value || '',
     type: 'legacy'
   }];
 };
 
+const getLatestNoteContent = (value: string | undefined | null): string => {
+  const timeline = parseTimeline(value);
+  const userTimeline = timeline.filter(e => e.type !== 'auto');
+  if (userTimeline.length > 0) return userTimeline[userTimeline.length - 1].content || '';
+  if (timeline.length > 0) return timeline[timeline.length - 1].content || '';
+  return '';
+};
+
 // Handler Notes Editor Component
-const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false, canEdit = true }: {
+const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false, canEdit = true, isAdding, setIsAdding }: {
   reportId: number;
   value: string;
   onChange: (value: string) => void;
   onClick?: (e: React.MouseEvent) => void;
   isCard?: boolean;
   canEdit?: boolean;
+  isAdding: boolean;
+  setIsAdding: (isAdding: boolean) => void;
 }) => {
-  const [isAdding, setIsAdding] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [newNote, setNewNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -98,7 +107,18 @@ const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false
   return (
     <div className="d-flex flex-column" onClick={(e) => { e.stopPropagation(); if (onClick) onClick(e); }} style={{ width: '100%', position: 'relative' }}>
       {/* Latest note display */}
-      <div className="d-flex align-items-center justify-content-between p-1 rounded" style={{ minHeight: isCard ? '2.5rem' : '2rem', backgroundColor: canEdit ? '#f8f9fa' : 'transparent', border: canEdit ? '1px solid #e9ecef' : '1px solid transparent', cursor: canEdit ? 'text' : 'default' }} onClick={() => canEdit && !isAdding && setIsAdding(true)}>
+      <div 
+        className="d-flex align-items-center justify-content-between p-1 rounded" 
+        style={{ 
+          minHeight: isCard ? '2.5rem' : '2rem', 
+          backgroundColor: canEdit ? (isAdding ? '#eff6ff' : '#f8f9fa') : 'transparent', 
+          border: canEdit ? (isAdding ? '1px solid #3b82f6' : '1px solid #e9ecef') : '1px solid transparent', 
+          cursor: canEdit ? 'text' : 'default',
+          transition: 'all 0.2s ease',
+          boxShadow: isAdding ? '0 0 0 2px rgba(59, 130, 246, 0.1)' : 'none'
+        }} 
+        onClick={() => canEdit && !isAdding && setIsAdding(true)}
+      >
         <div style={{ flex: 1 }}>
           {latestNote ? (
             <div style={{ fontSize: isCard ? '0.85rem' : '0.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -130,50 +150,94 @@ const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false
           {canEdit && (
             <button 
               type="button" 
-              className="btn btn-sm p-1 text-success" 
+              className={`btn btn-sm p-1 ${isAdding ? 'text-danger' : 'text-success'}`} 
               onClick={(e) => { e.stopPropagation(); setIsAdding(!isAdding); }}
-              title="Thêm ghi chú"
-              style={{ background: '#dcfce7', border: 'none', borderRadius: '4px', lineHeight: 1 }}
+              title={isAdding ? "Hủy" : "Thêm ghi chú"}
+              style={{ background: isAdding ? '#fee2e2' : '#dcfce7', border: 'none', borderRadius: '4px', lineHeight: 1, transition: 'all 0.2s' }}
             >
-              <i className="fas fa-plus" style={{ fontSize: '0.7rem' }}></i>
+              <i className={`fas ${isAdding ? 'fa-times' : 'fa-plus'}`} style={{ fontSize: '0.7rem' }}></i>
             </button>
           )}
         </div>
       </div>
 
-      {/* Add new note inline box */}
+      {/* Add new note modal - Fixed and Centered to avoid being cut off */}
       {isAdding && (
-        <div className="mt-1 p-2 bg-white border rounded shadow-sm position-absolute w-100" style={{ zIndex: 10, top: '100%', left: 0, minWidth: '250px' }} onClick={e => e.stopPropagation()}>
-          <textarea
-            ref={inputRef}
-            className="form-control form-control-sm mb-2"
-            value={newNote}
-            onChange={(e) => setNewNote(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Nhập ghi chú (Ctrl+Enter để lưu)..."
-            disabled={isSaving}
-            style={{ fontSize: '0.8rem', resize: 'vertical', minHeight: '60px' }}
-          />
-          <div className="d-flex justify-content-end gap-2">
-            <button 
-              type="button"
-              className="btn btn-success btn-sm px-3 py-1" 
-              onClick={handleSave}
-              disabled={isSaving || !newNote.trim()}
-              style={{ fontSize: '0.75rem', fontWeight: '500' }}
-            >
-              <i className="fas fa-save me-1"></i> Lưu
-            </button>
-            <button 
-              type="button"
-              className="btn btn-light btn-sm px-3 py-1 border" 
-              onClick={handleCancel}
+        <div 
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3" 
+          style={{ zIndex: 1100, backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)' }} 
+          onClick={handleCancel}
+        >
+          <div 
+            className="bg-white rounded shadow-lg p-3 w-100" 
+            style={{ 
+              maxWidth: '450px',
+              border: '1px solid #e2e8f0',
+              animation: 'modalFadeIn 0.25s ease-out',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)'
+            }} 
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="d-flex align-items-center justify-content-between mb-3 pb-2 border-bottom">
+              <span className="fw-bold text-primary d-flex align-items-center" style={{ fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                <i className="fas fa-edit me-2 bg-primary text-white p-1 rounded" style={{ fontSize: '0.7rem' }}></i> 
+                Ghi chú xử lý mới
+              </span>
+              <button type="button" className="btn-close" style={{ fontSize: '0.7rem' }} onClick={handleCancel}></button>
+            </div>
+            
+            <div className="mb-1 text-muted small fw-bold">NỘI DUNG XỬ LÝ:</div>
+            <textarea
+              ref={inputRef}
+              className="form-control mb-4 border-0 bg-light"
+              value={newNote}
+              onChange={(e) => setNewNote(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Nhập nội dung chi tiết việc đã thực hiện..."
               disabled={isSaving}
-              style={{ fontSize: '0.75rem', fontWeight: '500' }}
-            >
-              <i className="fas fa-times me-1"></i> Hủy
-            </button>
+              style={{ 
+                fontSize: '0.9rem', 
+                resize: 'vertical', 
+                minHeight: '120px', 
+                borderRadius: '8px', 
+                padding: '12px',
+                backgroundColor: '#f8fafc',
+                border: '1px solid #e2e8f0 !important'
+              }}
+            />
+            
+            <div className="d-flex justify-content-end gap-2">
+              <button 
+                type="button"
+                className="btn btn-primary px-4 py-2 rounded-pill d-flex align-items-center" 
+                onClick={handleSave}
+                disabled={isSaving || !newNote.trim()}
+                style={{ fontSize: '0.8rem', fontWeight: '600', transition: 'all 0.2s' }}
+              >
+                {isSaving ? (
+                  <span className="spinner-border spinner-border-sm me-2" role="status"></span>
+                ) : (
+                  <i className="fas fa-save me-2"></i>
+                )}
+                Lưu ghi chú
+              </button>
+              <button 
+                type="button"
+                className="btn btn-light px-4 py-2 rounded-pill border" 
+                onClick={handleCancel}
+                disabled={isSaving}
+                style={{ fontSize: '0.8rem', fontWeight: '500' }}
+              >
+                Hủy
+              </button>
+            </div>
           </div>
+          <style jsx>{`
+            @keyframes modalFadeIn {
+              from { opacity: 0; transform: scale(0.95) translateY(10px); }
+              to { opacity: 1; transform: scale(1) translateY(0); }
+            }
+          `}</style>
         </div>
       )}
 
@@ -506,6 +570,7 @@ export default function DamageReportsPage() {
   const [showModal, setShowModal] = useState(false);
   const [showDoneConfirm, setShowDoneConfirm] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [editingNoteReportId, setEditingNoteReportId] = useState<number | null>(null);
 
   // View mode state: 'table' or 'card', default to 'card' on mobile
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
@@ -522,6 +587,7 @@ export default function DamageReportsPage() {
   const [showFileManager, setShowFileManager] = useState(false);
   const [fileManagerMode, setFileManagerMode] = useState<'image' | 'all'>('image');
   const [fileManagerTarget, setFileManagerTarget] = useState<'images' | 'afterImages'>('images');
+  const [selectedReportForImages, setSelectedReportForImages] = useState<number | null>(null);
 
   // File Manager state
   const [visibleColumns, setVisibleColumns] = useState([
@@ -697,6 +763,23 @@ export default function DamageReportsPage() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  // Close note editor when clicking outside
+  useEffect(() => {
+    if (editingNoteReportId !== null) {
+      const handleGlobalClick = () => {
+        setEditingNoteReportId(null);
+      };
+      // Use a small timeout to avoid immediate closing when clicking the toggle button
+      const timeout = setTimeout(() => {
+        document.addEventListener('click', handleGlobalClick);
+      }, 0);
+      return () => {
+        clearTimeout(timeout);
+        document.removeEventListener('click', handleGlobalClick);
+      };
+    }
+  }, [editingNoteReportId]);
 
   const openQuickView = (reportId: number) => {
     setSelectedQuickReportId(reportId);
@@ -947,7 +1030,7 @@ export default function DamageReportsPage() {
           ...prev,
           deviceSelection: 'maintenance',
           maintenanceBatchId: batchId,
-          damageContent: `Thực hiện bảo trì cho đợt ${batchTitle}`,
+          damageContent: `${batchTitle} - ${batchId}`,
           reportDate: formatDateInput(new Date()),
           reporterId: currentUserStaffId,
           reportingDepartmentId: currentStaff?.departmentId || 0,
@@ -1337,7 +1420,7 @@ export default function DamageReportsPage() {
         status: Number(selectedReport.status) || DamageReportStatus.Pending,
         priority: Number(selectedReport.priority) || DamageReportPriority.Normal,
         notes: selectedReport.notes || '',
-        handlerNotes: selectedReport.handlerNotes || '',
+        handlerNotes: getLatestNoteContent(selectedReport.handlerNotes),
         rejectionReason: selectedReport.rejectionReason || '',
         maintenanceBatchId: selectedReport.maintenanceBatchId || undefined,
       };
@@ -1736,6 +1819,11 @@ export default function DamageReportsPage() {
       await loadCompletionEventTypes();
     }
     
+    // Get displayable text from potentially JSON handlerNotes
+    const timeline = parseTimeline(report.handlerNotes);
+    const userTimeline = timeline.filter(e => e.type !== 'auto');
+    const latestNoteContent = userTimeline.length > 0 ? userTimeline[userTimeline.length - 1].content : (timeline.length > 0 ? timeline[timeline.length - 1].content : '');
+
     setCompletionModal({
       show: true,
       report,
@@ -1745,8 +1833,8 @@ export default function DamageReportsPage() {
         : targetStatus === DamageReportStatus.Cancelled
           ? `Hủy báo cáo - ${report.deviceName || 'Mô tả chung'}`
           : `Từ chối báo cáo - ${report.deviceName || 'Mô tả chung'}`,
-      eventDescription: report.damageContent || report.handlerNotes || '',
-      handlerNotes: report.handlerNotes || '',
+      eventDescription: report.damageContent || getLatestNoteContent(report.handlerNotes) || '',
+      handlerNotes: '', // Start with empty note for the new status change
       deviceId: report.deviceId,
       afterImages: report.afterImages || [],
       submitting: false,
@@ -1771,7 +1859,8 @@ export default function DamageReportsPage() {
 
     // If completing a maintenance report, show confirmation dialog
     if (newStatus === DamageReportStatus.Completed && report?.maintenanceBatchId) {
-      setPendingMaintenanceReport(report);
+      // Set handlerNotes to empty for the confirmation modal to let user enter a NEW note
+      setPendingMaintenanceReport({ ...report, handlerNotes: '' });
       setShowMaintenanceConfirmModal(true);
       return;
     }
@@ -1877,7 +1966,7 @@ export default function DamageReportsPage() {
         status: DamageReportStatus.Completed,
         eventTypeId: maintenanceEventType.id,
         eventTitle: `Bảo trì định kỳ - ${batch?.title || report.maintenanceBatchId}`,
-        eventDescription: report.damageContent || report.handlerNotes || '',
+        eventDescription: report.damageContent || getLatestNoteContent(report.handlerNotes) || '',
         eventDeviceId: report.deviceId || null,
         afterImages: report.afterImages?.length ? report.afterImages : (formData.afterImages?.length ? formData.afterImages : null),
         handlerNotes: report.handlerNotes || formData.handlerNotes || null,
@@ -2000,6 +2089,27 @@ export default function DamageReportsPage() {
       const errorMsg = error.response?.data?.error || error.message || 'Lỗi khi cập nhật ghi chú';
       toast.error(errorMsg);
       throw error;
+    }
+  };
+
+  const handleDirectImagesUpdate = async (reportId: number, newImages: string[]): Promise<void> => {
+    try {
+      const response = await api.put(`/damage-reports/${reportId}/images`, { images: newImages });
+      if (response.data.status) {
+        setReports(prev => prev.map(r =>
+          r.id === reportId ? { ...r, images: newImages } : r
+        ));
+        setAllReports(prev => prev.map(r =>
+          r.id === reportId ? { ...r, images: newImages } : r
+        ));
+        toast.success('Cập nhật hình ảnh thành công');
+      } else {
+        const errorMsg = response.data.error || 'Lỗi khi cập nhật hình ảnh';
+        toast.error(errorMsg);
+      }
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.error || error.message || 'Lỗi khi cập nhật hình ảnh';
+      toast.error(errorMsg);
     }
   };
 
@@ -2542,6 +2652,9 @@ export default function DamageReportsPage() {
                           <td style={{ padding: '0.45rem 0.75rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                               <span style={{ fontWeight: 600, color: '#1e293b', whiteSpace: 'normal', wordBreak: 'break-word', display: 'block' }}>
+                                {report.maintenanceBatchId && (!report.deviceName || report.deviceName === '-') ? (
+                                  <span className="badge bg-info bg-opacity-10 text-info fw-bold me-1" style={{ fontSize: '0.7rem' }}>Bảo trì</span>
+                                ) : null}
                                 {report.displayLocation || 'Không xác định'}
                               </span>
                               {report.isOverdue && (
@@ -2660,6 +2773,8 @@ export default function DamageReportsPage() {
                               value={report.handlerNotes || ''}
                               onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
                               canEdit={(userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && report.status !== DamageReportStatus.Completed}
+                              isAdding={editingNoteReportId === report.id}
+                              setIsAdding={(adding) => setEditingNoteReportId(adding ? report.id : null)}
                             />
                           </td>
                         </tr>
@@ -2740,6 +2855,9 @@ export default function DamageReportsPage() {
                                 fontWeight: '700',
                                 lineHeight: '1.2'
                               }}>
+                                {report.maintenanceBatchId && (!report.deviceName || report.deviceName === '-') ? (
+                                  <span className="badge bg-info bg-opacity-25 text-white fw-bold me-2" style={{ fontSize: '0.6rem', border: '1px solid rgba(255,255,255,0.3)' }}>Bảo trì</span>
+                                ) : null}
                                 {report.displayLocation || 'Không xác định'}
                               </h6>
                               {report.isOverdue && (
@@ -2985,53 +3103,78 @@ export default function DamageReportsPage() {
                                      report.status !== DamageReportStatus.Completed && 
                                      report.status !== DamageReportStatus.Cancelled && 
                                      report.status !== DamageReportStatus.Rejected}
+                            isAdding={editingNoteReportId === report.id}
+                            setIsAdding={(adding) => setEditingNoteReportId(adding ? report.id : null)}
                           />
                         </div>
                         )}
 
                         {/* Images Section - Side by Side (Before | After) */}
-                        {((report.images && report.images.length > 0) || (report.afterImages && report.afterImages.length > 0)) && (
-                          <div className="mt-3 pt-2 border-top">
+                        {((report.images && report.images.length > 0) || 
+                          (report.afterImages && report.afterImages.length > 0) ||
+                          (isAdmin(currentUser?.roles) || report.reporterId === currentUserStaffId || report.handlerId === currentUserStaffId)) && (
+                          <div className="mt-3 pt-2 border-top" onClick={(e) => e.stopPropagation()}>
                             <div className="row g-2">
                               {/* Left Column: Before Images */}
-                              {report.images && report.images.length > 0 && (
-                                <div className={report.afterImages && report.afterImages.length > 0 ? "col-6 border-end" : "col-12"}>
-                                  <div className="text-muted mb-1" style={{ fontSize: '0.5rem', fontWeight: '800', textTransform: 'uppercase' }}>Ảnh báo cáo</div>
-                                  <div className="d-flex gap-1 overflow-auto pb-1 scrollbar-thin">
-                                    {report.images.slice(0, 3).map((img, idx) => (
-                                      <img
-                                        key={idx}
-                                        src={img}
-                                        alt={`Hình ${idx + 1}`}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setSelectedImages(report.images!);
-                                          setCurrentImageIndex(idx);
-                                          setShowImageModal(true);
-                                        }}
-                                        style={{
-                                          width: '38px',
-                                          height: '38px',
-                                          objectFit: 'cover',
-                                          borderRadius: '4px',
-                                          border: '1px solid #e2e8f0',
-                                          cursor: 'pointer',
-                                          flexShrink: 0
-                                        }}
-                                      />
-                                    ))}
-                                    {report.images.length > 3 && (
-                                      <div 
-                                        className="d-flex align-items-center justify-content-center" 
-                                        style={{ width: '38px', height: '38px', backgroundColor: '#f1f5f9', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 'bold', cursor: 'pointer', flexShrink: 0 }}
-                                        onClick={(e) => { e.stopPropagation(); setSelectedImages(report.images!); setCurrentImageIndex(3); setShowImageModal(true); }}
-                                      >
-                                        +{report.images.length - 3}
-                                      </div>
-                                    )}
-                                  </div>
+                              <div className={report.afterImages && report.afterImages.length > 0 ? "col-6 border-end" : "col-12"}>
+                                <div className="d-flex align-items-center justify-content-between mb-1">
+                                  <div className="text-muted" style={{ fontSize: '0.5rem', fontWeight: '800', textTransform: 'uppercase' }}>Ảnh báo cáo</div>
+                                  {(isAdmin(currentUser?.roles) || report.reporterId === currentUserStaffId || report.handlerId === currentUserStaffId) && 
+                                   report.status !== DamageReportStatus.Completed && (
+                                    <button 
+                                      className="btn btn-link p-0 text-primary text-decoration-none" 
+                                      style={{ fontSize: '0.55rem', fontWeight: '700' }}
+                                      onClick={() => {
+                                        setFileManagerMode('image');
+                                        setFileManagerTarget('images');
+                                        setSelectedReportForImages(report.id);
+                                        setShowFileManager(true);
+                                      }}
+                                    >
+                                      <i className="fas fa-plus-circle me-1"></i>Thêm ảnh
+                                    </button>
+                                  )}
                                 </div>
-                              )}
+                                <div className="d-flex gap-1 overflow-auto pb-1 scrollbar-thin">
+                                  {report.images && report.images.length > 0 ? (
+                                    <>
+                                      {report.images.slice(0, 3).map((img, idx) => (
+                                        <img
+                                          key={idx}
+                                          src={img}
+                                          alt={`Hình ${idx + 1}`}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedImages(report.images!);
+                                            setCurrentImageIndex(idx);
+                                            setShowImageModal(true);
+                                          }}
+                                          style={{
+                                            width: '38px',
+                                            height: '38px',
+                                            objectFit: 'cover',
+                                            borderRadius: '4px',
+                                            border: '1px solid #e2e8f0',
+                                            cursor: 'pointer',
+                                            flexShrink: 0
+                                          }}
+                                        />
+                                      ))}
+                                      {report.images.length > 3 && (
+                                        <div 
+                                          className="d-flex align-items-center justify-content-center" 
+                                          style={{ width: '38px', height: '38px', backgroundColor: '#f1f5f9', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 'bold', cursor: 'pointer', flexShrink: 0 }}
+                                          onClick={(e) => { e.stopPropagation(); setSelectedImages(report.images!); setCurrentImageIndex(3); setShowImageModal(true); }}
+                                        >
+                                          +{report.images.length - 3}
+                                        </div>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <div className="text-muted fst-italic" style={{ fontSize: '0.6rem' }}>Chưa có ảnh</div>
+                                  )}
+                                </div>
+                              </div>
 
                               {/* Right Column: After Images */}
                               {report.afterImages && report.afterImages.length > 0 && (
@@ -3530,9 +3673,19 @@ export default function DamageReportsPage() {
       {showFileManager && (
         <FileManager
           isOpen={showFileManager}
-          onClose={() => setShowFileManager(false)}
+          onClose={() => {
+            setShowFileManager(false);
+            setSelectedReportForImages(null);
+          }}
           onSelectFile={(url: string) => {
-            if (fileManagerTarget === 'images') {
+            if (selectedReportForImages) {
+              const report = allReports.find(r => r.id === selectedReportForImages);
+              if (report) {
+                const newImages = Array.from(new Set([...(report.images || []), url]));
+                handleDirectImagesUpdate(selectedReportForImages, newImages);
+              }
+              setSelectedReportForImages(null);
+            } else if (fileManagerTarget === 'images') {
               setFormData(prev => ({ ...prev, images: Array.from(new Set([...(prev.images || []), url])) }));
             } else {
               if (completionModal.show) {
@@ -3548,7 +3701,14 @@ export default function DamageReportsPage() {
               toast.warning('Vui lòng chọn ít nhất một hình ảnh');
               return;
             }
-            if (fileManagerTarget === 'images') {
+            if (selectedReportForImages) {
+              const report = allReports.find(r => r.id === selectedReportForImages);
+              if (report) {
+                const newImages = Array.from(new Set([...(report.images || []), ...urls]));
+                handleDirectImagesUpdate(selectedReportForImages, newImages);
+              }
+              setSelectedReportForImages(null);
+            } else if (fileManagerTarget === 'images') {
               setFormData(prev => ({
                 ...prev,
                 images: Array.from(new Set([...(prev.images || []), ...urls])),

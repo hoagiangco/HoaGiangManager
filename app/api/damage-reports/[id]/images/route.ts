@@ -51,22 +51,21 @@ export async function PUT(
     if (!isAdmin) {
       const staffService = new (await import('@/lib/services/staffService')).StaffService();
       const staff = await staffService.getByUserId(user.userId);
-      
-      if (!staff || report.handlerId !== staff.id) {
+
+      const isHandler = staff && report.handlerId === staff.id;
+      const isReporter = staff && report.reporterId === staff.id;
+
+      if (!isHandler && !isReporter) {
         return NextResponse.json(
-          { status: false, error: 'Forbidden: Bạn chỉ được phép cập nhật khi là người xử lý báo cáo này' },
+          { status: false, error: 'Forbidden: Bạn không có quyền cập nhật hình ảnh báo cáo này' },
           { status: 403 }
         );
       }
 
-      // "Only add, no delete" logic for handlers
+      // "Only add, no delete" logic for non-admins
       const currentImages = report.images || [];
-      
-      // Ensure all current images are still in the new list
       const missingAny = currentImages.some(img => !images.includes(img));
       if (missingAny) {
-        // Automatically re-include current images if they were missing (to be safe/robust)
-        // or just enforce it.
         finalImages = Array.from(new Set([...currentImages, ...images]));
       }
     }

@@ -82,48 +82,68 @@ export async function generateDailyReportExcel(data: {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Báo cáo ngày');
 
-  // Set default column widths early
+  // Set default column widths early - Optimized for A4 Landscape (9 columns total)
   worksheet.columns = [
-    { key: 'col1', width: 10 },
-    { key: 'col2', width: 20 },
-    { key: 'col3', width: 25 },
-    { key: 'col4', width: 45 },
-    { key: 'col5', width: 20 },
-    { key: 'col6', width: 20 },
-    { key: 'col7', width: 20 },
-    { key: 'col8', width: 20 },
+    { key: 'col1', width: 6 },   // STT
+    { key: 'col2', width: 10 },  // Mã số
+    { key: 'col3', width: 14 },  // Ngày báo cáo
+    { key: 'col4', width: 22 },  // Thiết bị/Vị trí
+    { key: 'col5', width: 18 },  // Người báo cáo
+    { key: 'col6', width: 40 },  // Nội dung sự cố
+    { key: 'col7', width: 18 },  // Người xử lý
+    { key: 'col8', width: 14 },  // Trạng thái
+    { key: 'col9', width: 40 },  // Tiến độ xử lý
   ];
 
   // 1. Main Title
   const titleRow = worksheet.addRow([data.title]);
   titleRow.font = { bold: true, size: 16, color: { argb: 'FF1E293B' } };
   titleRow.alignment = { horizontal: 'center' };
-  worksheet.mergeCells(titleRow.number, 1, titleRow.number, 8);
+  worksheet.mergeCells(titleRow.number, 1, titleRow.number, 9);
 
   // 2. Date
   const dateRow = worksheet.addRow(['Ngày báo cáo: ' + data.date]);
   dateRow.font = { italic: true, size: 11, color: { argb: 'FF64748B' } };
   dateRow.alignment = { horizontal: 'center' };
-  worksheet.mergeCells(dateRow.number, 1, dateRow.number, 8);
+  worksheet.mergeCells(dateRow.number, 1, dateRow.number, 9);
 
-  worksheet.addRow([]); // Gap
+  worksheet.addRow([]); // Single Gap
 
-  // 3. Summary Section
-  const summaryHeader = worksheet.addRow(['TỔNG HỢP TRONG NGÀY']);
-  summaryHeader.font = { bold: true, size: 12 };
-  worksheet.mergeCells(summaryHeader.number, 1, summaryHeader.number, 3);
+  // 3. Summary Section - Compact Horizontal Layout
+  const summaryRow = worksheet.addRow([
+    '', 'Việc mới:', data.summary.totalNew,
+    'Đang xử lý:', data.summary.totalActive ?? 0,
+    'Đã xong:', data.summary.totalCompleted,
+    'Tồn đọng:', data.summary.totalPending
+  ]);
 
-  const sRow1 = worksheet.addRow(['Việc mới báo cáo:', data.summary.totalNew]);
-  const sRow2 = worksheet.addRow(['Việc đang xử lý:', data.summary.totalActive ?? 0]);
-  const sRow3 = worksheet.addRow(['Việc đã hoàn thành:', data.summary.totalCompleted]);
-  const sRow4 = worksheet.addRow(['Việc tồn đọng:', data.summary.totalPending]);
-
-  [sRow1, sRow2, sRow3, sRow4].forEach(row => {
-    row.getCell(1).font = { bold: true };
-    row.getCell(2).alignment = { horizontal: 'left' };
+  summaryRow.height = 20;
+  const summaryColors = ['FF22C55E', 'FF06B6D4', 'FF3B82F6', 'FFEF4444']; // success, info, primary, danger
+  
+  // Align metrics across the 9 columns (leaving Col 1 empty for padding)
+  [2, 4, 6, 8].forEach((colIdx, i) => {
+    const labelCell = summaryRow.getCell(colIdx);
+    const valueCell = summaryRow.getCell(colIdx + 1);
+    
+    labelCell.font = { bold: true, size: 10, color: { argb: 'FF475569' } };
+    labelCell.alignment = { horizontal: 'right', vertical: 'middle' };
+    
+    valueCell.font = { bold: true, size: 11, color: { argb: summaryColors[i] } };
+    valueCell.alignment = { horizontal: 'left', vertical: 'middle' };
+    valueCell.border = { bottom: { style: 'medium', color: { argb: summaryColors[i] } } };
   });
 
-  worksheet.addRow([]); // Gap
+  worksheet.addRow([]); // Single Gap
+
+  // Set Page Orientation to Landscape
+  worksheet.pageSetup = {
+    orientation: 'landscape',
+    paperSize: 9, // A4
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    margins: { left: 0.3, right: 0.3, top: 0.3, bottom: 0.3, header: 0, footer: 0 }
+  };
 
   // 4. Detailed Sections
   data.sections.forEach(section => {
