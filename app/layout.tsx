@@ -8,8 +8,8 @@ import 'react-datepicker/dist/react-datepicker.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'HoaGiang Manager - Quản lý vật tư',
-  description: 'Hệ thống quản lý vật tư và Báo cáo',
+  title: 'Hệ thống quản lý Thiết bị và Báo cáo công việc - HOÀ GIANG',
+  description: 'CÔNG TY CỔ PHẦN DU LỊCH - THƯƠNG MẠI HOÀ GIANG',
   manifest: '/manifest.webmanifest',
   icons: {
     icon: [

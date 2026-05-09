@@ -128,6 +128,202 @@ export default function StatisticsPage() {
   // Preview toggle states
   const [showPreview, setShowPreview] = useState<Record<string, boolean>>({ reports: true, devices: true });
   const [isExporting, setIsExporting] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
+
+  const handlePrint = () => {
+    const data = activeTab === 'reports' ? reportList.data : deviceList?.data;
+    if (!data || data.length === 0) {
+      toast.warning('Không có dữ liệu để in');
+      return;
+    }
+
+    const cols = activeTab === 'reports' ? colsReport : colsDevice;
+    const visibleCols = cols.filter(c => c.visible);
+    if (visibleCols.length === 0) {
+      toast.warning('Vui lòng chọn ít nhất một cột để hiển thị');
+      return;
+    }
+
+    setIsPrinting(true);
+
+    const title = activeTab === 'reports' 
+      ? (reportFilters.dailyMode ? 'BÁO CÁO CÔNG VIỆC TRONG NGÀY' : 'BÁO CÁO TỔNG HỢP CÔNG VIỆC')
+      : 'DANH SÁCH THIẾT BỊ';
+    
+    const subtitle = activeTab === 'reports'
+      ? (reportFilters.dailyMode 
+          ? `Ngày: ${formatVietnameseDate(reportFilters.fromDate)}`
+          : `Từ ngày: ${formatVietnameseDate(reportFilters.fromDate)} - Đến ngày: ${formatVietnameseDate(reportFilters.toDate)}`)
+      : `Phòng ban: ${departments.find((d: any) => d.id === deviceFilters.deptId)?.name || 'Tất cả'}`;
+
+    // printWindow.document.title = title;
+
+    const stripHtml = (html: string) => {
+      if (!html) return '';
+      return html.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ').trim();
+    };
+
+    const getVal = (row: any, colId: string, idx: number) => {
+      const lowerId = colId.toLowerCase();
+      if (lowerId === 'stt') return idx + 1;
+      
+      if (lowerId === 'deviceandlocation') {
+        const devName = row.deviceName || row.DeviceName;
+        const locName = row.damageLocation || row.DamageLocation;
+        const isMaintenance = row.maintenanceBatchId || (row.damageContent && (row.damageContent.toLowerCase().includes('bảo trì') || row.damageContent.toUpperCase().startsWith('BT ')));
+        if (!devName || devName === '-') {
+           if (isMaintenance) return 'Bảo trì';
+           return locName || '-';
+        }
+        return devName;
+      }
+
+      if (lowerId === 'damagecontent') {
+        let val = row[colId] || row['damageContent'] || '-';
+        if (row.maintenanceBatchId && maintenanceBatches) {
+          const batch = maintenanceBatches.find((b: any) => b.id === row.maintenanceBatchId);
+          if (batch) return `${batch.name} - ${batch.batchName || batch.id}`;
+        }
+        return stripHtml(String(val));
+      }
+
+      if (lowerId === 'handlernotes') {
+        const val = row[colId] || '-';
+        if (typeof val === 'string' && val.startsWith('[')) {
+          try {
+            const timeline = JSON.parse(val);
+            if (Array.isArray(timeline) && timeline.length > 0) {
+              return timeline[timeline.length - 1].content || '-';
+            }
+          } catch (e) { /* ignore */ }
+        }
+        return stripHtml(String(val));
+      }
+
+      if (lowerId.includes('date') || lowerId === 'createdat' || lowerId === 'updatedat') {
+        return formatVietnameseDate(row[colId]);
+      }
+
+      return row[colId] || '-';
+    };
+
+    const renderTable = (tableData: any[], startIndex = 0) => {
+      if (tableData.length === 0) return '';
+      return `
+        <table>
+          <thead>
+            <tr>
+              ${visibleCols.map(c => `<th>${columnLabels[c.id] || columnLabels[c.id.toLowerCase()] || c.id}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${tableData.map((row, i) => `
+              <tr>
+                ${visibleCols.map(c => {
+                  const val = getVal(row, c.id, startIndex + i);
+                  const isCenter = ['stt', 'id', 'reportDate', 'statusName', 'priorityName', 'completedDate', 'handlingDate'].includes(c.id);
+                  return `<td style="text-align: ${isCenter ? 'center' : 'left'}">${val}</td>`;
+                }).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    };
+
+    let contentHtml = '';
+    if (activeTab === 'reports' && reportFilters.dailyMode) {
+      const summary = reportListResponse?.summary;
+      contentHtml = `
+        <div class="summary-box">
+          <div class="summary-item">Việc mới: <span style="color: #22c55e">${summary?.totalNew || 0}</span></div>
+          <div class="summary-item">Đang xử lý: <span style="color: #06b6d4">${summary?.totalActive || 0}</span></div>
+          <div class="summary-item">Hoàn thành: <span style="color: #3b82f6">${summary?.totalCompleted || 0}</span></div>
+          <div class="summary-item">Tồn đọng: <span style="color: #ef4444">${summary?.totalPending || 0}</span></div>
+        </div>
+        <div class="section-title">I. Việc chưa xử lý</div>
+        ${renderTable(data.filter((r: any) => r.dailyCategory === 'Chưa làm'))}
+        <div class="section-title">II. Việc đang làm chưa xong</div>
+        ${renderTable(data.filter((r: any) => r.dailyCategory === 'Đang xử lý'))}
+        <div class="section-title">III. Việc đã xong</div>
+        ${renderTable(data.filter((r: any) => r.dailyCategory === 'Hoàn thành'))}
+        <div class="section-title">IV. Việc tồn đọng</div>
+        ${renderTable(data.filter((r: any) => r.dailyCategory === 'Tồn đọng'))}
+      `;
+    } else {
+      contentHtml = renderTable(data);
+    }
+
+    const htmlContent = `
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${title}</title>
+          <style>
+            @page { size: landscape; margin: 10mm; }
+            body { font-family: "Segoe UI", Roboto, Arial, sans-serif; font-size: 10pt; color: #334155; margin: 0; padding: 0; }
+            .header { border-bottom: 2px solid #334155; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; }
+            .company-name { font-weight: bold; font-size: 12pt; }
+            .system-name { font-size: 9pt; color: #64748b; }
+            .print-date { font-size: 9pt; }
+            .title { text-align: center; font-size: 18pt; font-weight: bold; margin-top: 10px; margin-bottom: 5px; color: #1e293b; }
+            .subtitle { text-align: center; font-size: 11pt; color: #475569; margin-bottom: 20px; font-style: italic; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th { background-color: #475569 !important; color: white !important; border: 1px solid #334155; padding: 8px; font-size: 9pt; text-transform: uppercase; -webkit-print-color-adjust: exact; }
+            td { border: 1px solid #cbd5e1; padding: 6px; vertical-align: middle; font-size: 9pt; word-wrap: break-word; }
+            .section-title { font-size: 11pt; font-weight: bold; color: #2563eb; margin-top: 25px; margin-bottom: 8px; border-left: 4px solid #2563eb; padding-left: 10px; }
+            .summary-box { display: flex; justify-content: center; gap: 30px; margin-bottom: 20px; padding: 12px; background-color: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; }
+            .summary-item { font-weight: bold; font-size: 10pt; }
+            tr:nth-child(even) { background-color: #fcfcfc; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <div class="company-name">CÔNG TY CỔ PHẦN DU LỊCH - THƯƠNG MẠI HOÀ GIANG</div>
+              <div class="system-name">Hệ thống quản lý Thiết bị và Báo cáo công việc</div>
+            </div>
+            <div class="print-date">Ngày in: ${new Date().toLocaleDateString('vi-VN')}</div>
+          </div>
+          <div class="title">${title}</div>
+          <div class="subtitle">${subtitle}</div>
+          ${contentHtml}
+          <div style="margin-top: 40px; display: flex; justify-content: flex-end; gap: 100px; padding-right: 50px;">
+            <div style="text-align: center;">
+              <div style="font-weight: bold;">Người lập biểu</div>
+              <div style="margin-top: 60px;">................................</div>
+            </div>
+            <div style="text-align: center;">
+              <div style="font-weight: bold;">Xác nhận bộ phận</div>
+              <div style="margin-top: 60px;">................................</div>
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+                window.onafterprint = function() { window.close(); };
+              }, 300);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+ 
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const printWindow = window.open(url, '_blank');
+
+    if (!printWindow) {
+      toast.error('Không thể mở cửa sổ in. Vui lòng kiểm tra cài đặt trình duyệt.');
+      setIsPrinting(false);
+      return;
+    }
+
+    // Clean up object URL after a while
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    setIsPrinting(false);
+  };
 
   // Static data loading
   const { data: deptData } = useSWR('/departments', fetcher);
@@ -507,11 +703,11 @@ export default function StatisticsPage() {
       {/* Page Header & Tabs - Combined for compactness */}
       <div className="d-flex flex-wrap justify-content-between align-items-center mb-2 bg-white p-2 rounded-3 shadow-sm border">
         <div className="d-flex align-items-center gap-3">
-          <div className="d-none d-lg-block border-end pe-3">
+          <div className="d-none d-lg-block border-end pe-3 d-print-none">
             <h6 className="fw-bold mb-0 text-dark">Thống kê & Báo cáo</h6>
           </div>
           
-          <div className="nav nav-pills gap-1 p-1 bg-light rounded-2 border">
+          <div className="nav nav-pills gap-1 p-1 bg-light rounded-2 border d-print-none">
             <button 
               className={`nav-link px-3 py-1 small fw-bold ${activeTab === 'reports' ? 'active bg-success' : 'text-muted'}`}
               onClick={() => setActiveTab('reports')}
@@ -530,7 +726,7 @@ export default function StatisticsPage() {
         <div className="d-flex gap-2 mt-2 mt-md-0">
           {activeTab === 'reports' && (
             <>
-              <div className="form-check form-switch d-flex align-items-center gap-2 border-end pe-3 me-1">
+              <div className="form-check form-switch d-flex align-items-center gap-2 border-end pe-3 me-1 d-print-none">
                 <input 
                   className="form-check-input mt-0" 
                   type="checkbox" 
@@ -555,7 +751,7 @@ export default function StatisticsPage() {
                 </label>
               </div>
 
-              <div className="d-flex gap-1">
+              <div className="d-flex gap-1 d-print-none">
                 <button className={`btn btn-xs btn-outline-secondary px-2 ${showPreview.reports ? 'active' : ''}`} onClick={() => togglePreview('reports')} title="Hiện/Ẩn danh sách">
                   <i className={`fas ${showPreview.reports ? 'fa-eye-slash' : 'fa-list-ul'}`}></i>
                 </button>
@@ -572,6 +768,14 @@ export default function StatisticsPage() {
                 />
 
                 <button 
+                  className="btn btn-xs btn-outline-dark px-2" 
+                  onClick={handlePrint}
+                  title="In báo cáo"
+                >
+                  <i className="fas fa-print me-1"></i>In
+                </button>
+
+                <button 
                   className="btn btn-xs btn-success px-2" 
                   onClick={() => handleExport('reports', reportFilters, colsReport)}
                   disabled={isExporting}
@@ -583,7 +787,7 @@ export default function StatisticsPage() {
           )}
 
           {activeTab === 'devices' && (
-             <div className="d-flex gap-1">
+             <div className="d-flex gap-1 d-print-none">
                 <button className={`btn btn-xs btn-outline-secondary px-2 ${showPreview.devices ? 'active' : ''}`} onClick={() => togglePreview('devices')} title="Hiện/Ẩn danh sách">
                   <i className={`fas ${showPreview.devices ? 'fa-eye-slash' : 'fa-list-ul'}`}></i>
                 </button>
@@ -600,6 +804,14 @@ export default function StatisticsPage() {
                 />
 
                 <button 
+                   className="btn btn-xs btn-outline-dark px-2" 
+                   onClick={handlePrint}
+                   title="In danh sách"
+                >
+                   <i className="fas fa-print me-1"></i>In
+                </button>
+
+                <button 
                   className="btn btn-xs btn-primary px-2" 
                   onClick={() => handleExport('devices', deviceFilters, colsDevice)}
                   disabled={isExporting}
@@ -610,13 +822,35 @@ export default function StatisticsPage() {
           )}
         </div>
       </div>
+
+      <div className="d-none d-print-block mb-4">
+        <div className="d-flex justify-content-between align-items-start border-bottom pb-2 mb-3">
+          <div>
+            <h5 className="fw-bold mb-0 text-dark">CÔNG TY CỔ PHẦN DU LỊCH - THƯƠNG MẠI HOÀ GIANG</h5>
+            <p className="small mb-0 text-muted">Hệ thống quản lý Thiết bị và Báo cáo công việc</p>
+          </div>
+          <div className="text-end">
+            <p className="small mb-0">Ngày in: {new Date().toLocaleDateString('vi-VN')}</p>
+          </div>
+        </div>
+        <h4 className="text-center fw-bold uppercase mt-3 mb-1">
+          {activeTab === 'reports' ? 'BÁO CÁO CÔNG VIỆC' : 'DANH SÁCH THIẾT BỊ'}
+        </h4>
+        <p className="text-center small mb-4">
+          {activeTab === 'reports' && (
+            reportFilters.dailyMode 
+              ? `Ngày: ${formatVietnameseDate(reportFilters.fromDate)}`
+              : `Từ ngày: ${formatVietnameseDate(reportFilters.fromDate)} - Đến ngày: ${formatVietnameseDate(reportFilters.toDate)}`
+          )}
+        </p>
+      </div>
       
-      <div className="card shadow-sm border-0 mb-2" style={{ borderRadius: '8px' }}>
-        <div className="card-body p-2">
+      <div className="card shadow-sm border-0 mb-2 print-no-shadow" style={{ borderRadius: '8px' }}>
+        <div className="card-body p-2 print-p-0">
           {/* Tab Content: Devices */}
           {activeTab === 'devices' && (
             <div>
-              <div className="row g-2 align-items-end mb-2 bg-light p-2 rounded-3 mx-0 border">
+              <div className="row g-2 align-items-end mb-2 bg-light p-2 rounded-3 mx-0 border d-print-none">
                 <div className="col-6 col-md-2">
                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Phòng ban</label>
                   <select 
@@ -678,7 +912,7 @@ export default function StatisticsPage() {
               </div>
 
               {/* Compact Device Stats Bar */}
-              <div className="d-flex flex-wrap gap-2 mb-2 p-2 bg-white rounded border">
+              <div className="d-flex flex-wrap gap-2 mb-2 p-2 bg-white rounded border d-print-none">
                 {[
                   { label: 'Tổng', value: deviceSummary?.data?.devices?.total, color: 'primary' },
                   { label: 'Dùng', value: deviceSummary?.data?.devices?.dangSuDung, color: 'success' },
@@ -699,7 +933,7 @@ export default function StatisticsPage() {
 
           {activeTab === 'reports' && (
             <div>
-              <div className="row g-2 align-items-end mb-2 bg-light p-2 rounded-3 mx-0 border">
+              <div className="row g-2 align-items-end mb-2 bg-light p-2 rounded-3 mx-0 border d-print-none">
                 <div className="col-6 col-md-2">
                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Phòng ban</label>
                   <select 
@@ -829,7 +1063,7 @@ export default function StatisticsPage() {
               </div>
 
               {/* Compact Stats Bar for Reports */}
-              <div className="d-flex flex-wrap gap-3 mb-2 p-2 bg-white rounded border">
+              <div className="d-flex flex-wrap gap-3 mb-2 p-2 bg-white rounded border d-print-none">
                 {reportFilters.dailyMode ? (
                   [
                     { label: 'Việc mới', value: reportListResponse?.summary?.totalNew, color: 'success' },
@@ -894,6 +1128,57 @@ export default function StatisticsPage() {
           font-size: 0.75rem;
           line-height: 1.5;
           border-radius: 4px;
+        }
+        @media print {
+          @page {
+            size: landscape;
+            margin: 10mm;
+          }
+          body {
+            background-color: #fff !important;
+            color: #000 !important;
+          }
+          .container-fluid {
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: none !important;
+          }
+          .print-no-shadow {
+            box-shadow: none !important;
+            border: none !important;
+          }
+          .print-p-0 {
+            padding: 0 !important;
+          }
+          .table-responsive {
+            max-height: none !important;
+            overflow: visible !important;
+          }
+          .table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+          }
+          .table th {
+            background-color: #f8fafc !important;
+            color: #000 !important;
+            border: 1px solid #dee2e6 !important;
+            -webkit-print-color-adjust: exact;
+          }
+          .table td {
+            border: 1px solid #dee2e6 !important;
+            white-space: normal !important;
+            word-break: break-word !important;
+            font-size: 8.5pt !important;
+          }
+          .badge {
+            border: 1px solid #000 !important;
+            color: #000 !important;
+            background: transparent !important;
+          }
+          /* Hide sidebar/header from layout.tsx if they exist */
+          :global(.sidebar), :global(.navbar), :global(.top-bar) {
+            display: none !important;
+          }
         }
       `}</style>
     </div>
@@ -1039,7 +1324,7 @@ function PreviewTable({ data, loading, color, configCols, pagination, maintenanc
         </table>
       </div>
       
-      <div className="card-footer bg-white text-muted x-small d-flex flex-column flex-md-row justify-content-between align-items-center py-2 px-3 border-top gap-2">
+      <div className="card-footer bg-white text-muted x-small d-flex flex-column flex-md-row justify-content-between align-items-center py-2 px-3 border-top gap-2 d-print-none">
         <div className="d-flex align-items-center gap-3">
           <span>Tổng cộng: <span className="fw-bold text-dark">{pagination?.total || data.length}</span> kết quả.</span>
           {pagination && (
