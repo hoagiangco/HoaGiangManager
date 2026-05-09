@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/auth/middleware';
 import pool from '@/lib/db';
 import { format } from 'date-fns';
+import { generateExcelFile } from '@/lib/utils/excelGenerator.server';
 
 function stripHtml(html: string) {
   if (!html) return '';
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
     const toDate = searchParams.get('toDate');
     const categoryId = searchParams.get('categoryId');
     const keyword = searchParams.get('search');
+    const isPreview = searchParams.get('preview') === 'true';
 
     if (type === 'devices') {
       let query = `
@@ -87,20 +89,87 @@ export async function GET(request: NextRequest) {
         5: 'Có sự cố'
       };
 
-      const formattedData = result.rows.map(row => ({
-        'Mã TB': `TB-${row.ID}`,
-        'Tên thiết bị': row.Name || '',
-        'Serial': row.Serial || '',
-        'Danh mục': row.CategoryName || '',
-        'Phòng ban': row.DepartmentName || '',
-        'Vị trí': row.LocationName || '',
-        'Ngày sử dụng': row.UseDate ? format(new Date(row.UseDate), 'dd/MM/yyyy') : '',
-        'Hạn bảo hành': row.WarrantyDate ? format(new Date(row.WarrantyDate), 'dd/MM/yyyy') : '',
-        'Trạng thái': deviceStatusMap[row.Status] || 'Không xác định',
-        'Ghi chú': stripHtml(row.Description || '')
-      }));
+      const columnIdsParam = searchParams.get('columns');
+      const requestedColumns = columnIdsParam ? columnIdsParam.split(',') : null;
 
-      return NextResponse.json({ status: true, data: formattedData });
+      const allPossibleColumns = [
+        { id: 'stt', label: 'STT' },
+        { id: 'id', label: 'Mã TB' },
+        { id: 'deviceName', label: 'Tên thiết bị' },
+        { id: 'deviceSerial', label: 'Serial' },
+        { id: 'deviceCategoryName', label: 'Danh mục' },
+        { id: 'deviceDepartmentName', label: 'Phòng ban' },
+        { id: 'deviceLocationName', label: 'Vị trí' },
+        { id: 'useDate', label: 'Ngày sử dụng' },
+        { id: 'statusName', label: 'Trạng thái' },
+        { id: 'notes', label: 'Ghi chú' }
+      ];
+
+      // Filter and sort columns based on requestedColumns
+      let finalColumns = allPossibleColumns;
+      if (requestedColumns) {
+         finalColumns = requestedColumns
+            .map(id => allPossibleColumns.find(c => c.id.toLowerCase() === id.toLowerCase()))
+            .filter(Boolean) as { id: string, label: string }[];
+      }
+
+      if (isPreview) {
+        const formattedData = result.rows.map(row => {
+          const item: any = {};
+          finalColumns.forEach(col => {
+            switch (col.id.toLowerCase()) {
+              case 'id': item.id = row.ID; break;
+              case 'devicename': item.deviceName = row.Name || ''; break;
+              case 'deviceserial': item.deviceSerial = row.Serial || ''; break;
+              case 'devicecategoryname': item.deviceCategoryName = row.CategoryName || ''; break;
+              case 'devicedepartmentname': item.deviceDepartmentName = row.DepartmentName || ''; break;
+              case 'devicelocationname': item.deviceLocationName = row.LocationName || ''; break;
+              case 'statusname': item.statusName = deviceStatusMap[row.Status] || 'Không xác định'; break;
+              case 'usedate': item.useDate = row.UseDate ? format(new Date(row.UseDate), 'yyyy-MM-dd') : ''; break;
+              case 'notes': item.notes = stripHtml(row.Description || ''); break;
+            }
+          });
+          return item;
+        });
+        return NextResponse.json({ status: true, data: formattedData });
+      }
+
+      // Professional Excel Export for A4 Landscape
+      const excelHeaders = finalColumns.map(c => c.label);
+      const excelRows = result.rows.map((row, idx) => {
+        return finalColumns.map(col => {
+          switch (col.id.toLowerCase()) {
+            case 'stt': return idx + 1;
+            case 'id': return `TB-${row.ID}`;
+            case 'devicename': return row.Name || '';
+            case 'deviceserial': return row.Serial || '';
+            case 'devicecategoryname': return row.CategoryName || '';
+            case 'devicedepartmentname': return row.DepartmentName || '';
+            case 'devicelocationname': return row.LocationName || '';
+            case 'usedate': return row.UseDate ? format(new Date(row.UseDate), 'dd/MM/yyyy') : '';
+            case 'statusname': return deviceStatusMap[row.Status] || 'Không xác định';
+            case 'notes': return stripHtml(row.Description || '');
+            default: return '';
+          }
+        });
+      });
+
+      const excelBuffer = await generateExcelFile({
+        title: 'DANH SÁCH THIẾT BỊ',
+        department: departmentId && departmentId !== '0' ? (result.rows[0]?.DepartmentName || 'Tất cả') : 'Tất cả bộ phận',
+        dateRange: `Ngày xuất: ${format(new Date(), 'dd/MM/yyyy')}`,
+        headers: excelHeaders,
+        rows: excelRows,
+        fileName: 'Danh_Sach_Thiet_Bi.xlsx'
+      });
+
+      return new NextResponse(excelBuffer as any, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="Danh_Sach_Thiet_Bi.xlsx"`,
+        },
+      });
       
     } else if (type === 'maintenance') {
       let query = `

@@ -237,6 +237,67 @@ export async function GET(request: NextRequest) {
       return html.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ').trim();
     };
 
+    // Get requested columns from query param
+    const columnIdsParam = searchParams.get('columns');
+    const requestedColumns = columnIdsParam ? columnIdsParam.split(',') : null;
+
+    // Define all possible columns for mapping
+    const allPossibleColumns = [
+      { id: 'stt', label: 'STT' },
+      { id: 'id', label: 'Mã số', dailyLabel: 'Mã số' },
+      { id: 'reportDate', label: 'Ngày báo cáo' },
+      { id: 'reporterName', label: 'Người báo cáo' },
+      { id: 'reporterDepartmentName', label: 'Phòng ban' },
+      { id: 'handlerName', label: 'Người xử lý' },
+      { id: 'handlingDate', label: 'Ngày xử lý' },
+      { id: 'completedDate', label: 'Ngày hoàn thành' },
+      { id: 'deviceAndLocation', label: 'Thiết bị/Vị trí' },
+      { id: 'damageContent', label: 'Nội dung báo cáo', dailyLabel: 'Nội dung sự cố' },
+      { id: 'statusName', label: 'Trạng thái' },
+      { id: 'priorityName', label: 'Mức độ' },
+      { id: 'handlerNotes', label: 'Tiến độ xử lý' }
+    ];
+
+    // Filter and sort columns based on requestedColumns
+    let finalColumns = allPossibleColumns;
+    if (requestedColumns) {
+      finalColumns = requestedColumns
+        .map(id => allPossibleColumns.find(c => c.id.toLowerCase() === id.toLowerCase()))
+        .filter(Boolean) as any[];
+    } else if (dailyMode) {
+      // Default daily columns if not specified
+      const dailyIds = ['stt', 'id', 'reportDate', 'deviceAndLocation', 'reporterName', 'damageContent', 'handlerName', 'statusName', 'handlerNotes'];
+      finalColumns = dailyIds.map(id => allPossibleColumns.find(c => c.id === id)).filter(Boolean) as any[];
+    }
+
+    // Helper to get data for a column
+    const getColValue = (report: any, colId: string, idx: number) => {
+      const reporterName = report.reporterName || staffMap.get(report.reporterId) || 'N/A';
+      const handlerName = report.handlerName || (report.handlerId ? (staffMap.get(report.handlerId) || 'N/A') : 'Chưa phân công');
+      const isMaintenance = report.maintenanceBatchId || (report.damageContent && (report.damageContent.toLowerCase().includes('bảo trì') || report.damageContent.toUpperCase().startsWith('BT ')));
+      let deviceName = report.deviceName || (report.deviceId ? (deviceMap.get(report.deviceId) || 'N/A') : report.damageLocation || 'Khác');
+      if (isMaintenance && (!report.deviceName || report.deviceName === '-')) {
+        deviceName = 'Bảo trì';
+      }
+
+      switch (colId.toLowerCase()) {
+        case 'stt': return idx + 1;
+        case 'id': return report.id;
+        case 'reportdate': return formatDateDisplay(report.reportDate) || '';
+        case 'reportername': return reporterName;
+        case 'reporterdepartmentname': return report.reporterDepartmentName || deptMap.get(report.reportingDepartmentId) || 'N/A';
+        case 'handlername': return handlerName;
+        case 'handlingdate': return formatDateDisplay(report.handlingDate) || '';
+        case 'completeddate': return formatDateDisplay(report.completedDate) || '';
+        case 'deviceandlocation': return deviceName;
+        case 'damagecontent': return stripHtml(report.damageContent || '');
+        case 'statusname': return report.statusName || statusMap[report.status as DamageReportStatus] || '';
+        case 'priorityname': return report.priorityName || priorityMap[report.priority as DamageReportPriority] || '';
+        case 'handlernotes': return formatTimelineForExcel(report.handlerNotes || '');
+        default: return '';
+      }
+    };
+
     // If preview mode, return JSON data with raw keys instead of Excel file
     if (isPreview) {
       return NextResponse.json({
@@ -246,50 +307,6 @@ export async function GET(request: NextRequest) {
         recordCount: allReports.length
       });
     }
-
-    // Prepare data for Excel (Friendly labels)
-    const excelData = allReports.map((report, index) => {
-      const reporterName = report.reporterName || staffMap.get(report.reporterId) || 'N/A';
-      const handlerName = report.handlerName || (report.handlerId ? (staffMap.get(report.handlerId) || 'N/A') : 'Chưa phân công');
-      
-      const isMaintenance = report.maintenanceBatchId || (report.damageContent && (report.damageContent.toLowerCase().includes('bảo trì') || report.damageContent.toUpperCase().startsWith('BT ')));
-      let deviceName = report.deviceName || (report.deviceId ? (deviceMap.get(report.deviceId) || 'N/A') : report.damageLocation || 'Khác');
-      if (isMaintenance && (!report.deviceName || report.deviceName === '-')) {
-        deviceName = 'Bảo trì';
-      }
-
-      if (dailyMode) {
-        return {
-          'STT': index + 1,
-          'Mã số': report.id,
-          'Ngày báo cáo': formatDateDisplay(report.reportDate) || '',
-          'Thiết bị/Vị trí': deviceName,
-          'Người báo cáo': reporterName,
-          'Nội dung sự cố': stripHtml(report.damageContent || ''),
-          'Người xử lý': handlerName,
-          'Trạng thái': report.statusName || statusMap[report.status as DamageReportStatus] || '',
-          'Tiến độ xử lý': formatTimelineForExcel(report.handlerNotes || ''),
-        };
-      }
-
-      const departmentName = report.reporterDepartmentName || deptMap.get(report.reportingDepartmentId) || 'N/A';
-      
-      return {
-        'STT': index + 1,
-        'ID': report.id,
-        'Ngày báo cáo': formatDateDisplay(report.reportDate) || '',
-        'Người báo cáo': reporterName,
-        'Phòng ban': departmentName,
-        'Người xử lý': handlerName,
-        'Ngày xử lý': formatDateDisplay(report.handlingDate) || '',
-        'Ngày hoàn thành': formatDateDisplay(report.completedDate) || '',
-        'Thiết bị/Vị trí': deviceName,
-        'Nội dung báo cáo': stripHtml(report.damageContent || ''),
-        'Trạng thái': report.statusName || statusMap[report.status as DamageReportStatus] || '',
-        'Mức độ': report.priorityName || priorityMap[report.priority as DamageReportPriority] || '',
-        'Tiến độ xử lý': formatTimelineForExcel(report.handlerNotes || ''),
-      };
-    });
 
     // Generate filename
     const deptNameForFile = selectedDeptId > 0 
@@ -301,29 +318,9 @@ export async function GET(request: NextRequest) {
     let excelBuffer: Buffer;
     
     if (dailyMode) {
-      const headers = ['STT', 'Mã số', 'Ngày báo cáo', 'Thiết bị/Vị trí', 'Người báo cáo', 'Nội dung sự cố', 'Người xử lý', 'Trạng thái', 'Tiến độ xử lý'];
-      
+      const headers = finalColumns.map(c => c.dailyLabel || c.label);
       const mapToRow = (reports: any[]) => reports.map((r, idx) => {
-        const reporterName = r.reporterName || staffMap.get(r.reporterId) || 'N/A';
-        const handlerName = r.handlerName || (r.handlerId ? (staffMap.get(r.handlerId) || 'N/A') : 'Chưa phân công');
-        
-        const isMaintenance = r.maintenanceBatchId || (r.damageContent && (r.damageContent.toLowerCase().includes('bảo trì') || r.damageContent.toUpperCase().startsWith('BT ')));
-        let deviceName = r.deviceName || (r.deviceId ? (deviceMap.get(r.deviceId) || 'N/A') : r.damageLocation || 'Khác');
-        if (isMaintenance && (!r.deviceName || r.deviceName === '-')) {
-          deviceName = 'Bảo trì';
-        }
-
-        return [
-          idx + 1,
-          r.id,
-          formatDateDisplay(r.reportDate) || '',
-          deviceName,
-          reporterName,
-          stripHtml(r.damageContent || ''),
-          handlerName,
-          r.statusName || statusMap[r.status as DamageReportStatus] || '',
-          formatTimelineForExcel(r.handlerNotes || ''),
-        ];
+        return finalColumns.map(col => getColValue(r, col.id, idx));
       });
 
       // Split into sections (using the categorization logic from earlier)
@@ -346,9 +343,11 @@ export async function GET(request: NextRequest) {
         ],
       });
     } else {
-      // Prepare data for standard Excel generation
-      const headers = Object.keys(excelData[0] || []);
-      const rows = excelData.map(row => Object.values(row));
+      // Standard Excel generation
+      const headers = finalColumns.map(c => c.label);
+      const rows = allReports.map((report, idx) => {
+        return finalColumns.map(col => getColValue(report, col.id, idx));
+      });
 
       excelBuffer = await generateExcelFile({
         title: 'BÁO CÁO CÔNG VIỆC',

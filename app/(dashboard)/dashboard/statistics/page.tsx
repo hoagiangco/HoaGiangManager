@@ -49,19 +49,21 @@ const formatVietnameseDate = (dateStr: string) => {
 // Vietnamese Label Mapping for Table Columns
 const columnLabels: Record<string, string> = {
   'stt': 'STT',
-  'id': 'Mã số',
+  'id': 'Mã TB',
   'deviceAndLocation': 'Thiết bị',
+  'deviceName': 'Tên thiết bị',
   'deviceSerial': 'Số Serial',
-  'deviceLocationName': 'Vị trí thiết bị',
   'deviceCategoryName': 'Loại thiết bị',
+  'deviceDepartmentName': 'Phòng ban',
+  'deviceLocationName': 'Vị trí',
+  'statusName': 'Trạng thái',
+  'useDate': 'Ngày sử dụng',
   'reporterName': 'Người báo cáo',
-  'reportingDepartmentId': 'Mã PB',
   'handlerName': 'Người xử lý',
   'reportDate': 'Ngày báo',
   'handlingDate': 'Ngày xử lý',
   'completedDate': 'Ngày xong',
   'damageContent': 'Nội dung sự cố',
-  'statusName': 'Trạng thái',
   'priorityName': 'Mức độ',
   'notes': 'Ghi chú',
   'handlerNotes': 'Tiến độ xử lý',
@@ -75,7 +77,12 @@ const columnLabels: Record<string, string> = {
   'statusname': 'Trạng thái',
   'priorityname': 'Mức độ',
   'handlernotes': 'Tiến độ xử lý',
-  'devicelocationname': 'Vị trí thiết bị'
+  'devicelocationname': 'Vị trí',
+  'devicename': 'Tên thiết bị',
+  'usedate': 'Ngày sử dụng',
+  'devicedepartmentname': 'Phòng ban',
+  'devicecategoryname': 'Loại thiết bị',
+  'deviceserial': 'Số Serial'
 };
 
 const columnBlacklist = [
@@ -84,19 +91,15 @@ const columnBlacklist = [
   'createdby', 'updatedby', 'createdat', 'updatedat', 'rejectionreason',
   'devicestatus', 'dayssincereport', 'daysinprogress', 'isoverdue', 
   'reporterdepartmentname', 'handlerdepartmentname', 'updatedbyname',
-  'deviceserial', 'notes', 'dailycategory', 'worknotes', 'checkinstaffname',
-  'deviceLocationName', 'deviceCategoryName', 'devicelocationname', 'devicecategoryname',
-  'deviceid', 'reporterid', 'handlerid', 'reportingDepartmentId', 'maintenanceBatchId',
-  'afterImages', 'rejectionReason', 'createdBy', 'updatedBy', 'updatedByName',
-  'deviceName', 'damageLocation', 'devicename', 'damagelocation'
+  'notes', 'dailycategory', 'worknotes', 'checkinstaffname'
 ];
 
 const defaultReportColumnOrder = [
-  'stt', 'deviceAndLocation', 'reportDate', 'damageContent', 'statusName', 'priorityName', 'handlerName', 'completedDate'
+  'stt', 'deviceAndLocation', 'reportDate', 'damageContent', 'statusName', 'priorityName', 'handlerName', 'completedDate', 'notes'
 ];
 
 const defaultDeviceColumnOrder = [
-  'stt', 'deviceName', 'deviceSerial', 'deviceCategoryName', 'deviceLocationName', 'statusName'
+  'stt', 'id', 'deviceName', 'deviceSerial', 'deviceCategoryName', 'deviceDepartmentName', 'deviceLocationName', 'statusName', 'useDate', 'notes'
 ];
 
 export default function StatisticsPage() {
@@ -123,7 +126,7 @@ export default function StatisticsPage() {
   const [pageSize, setPageSize] = useState(50);
 
   // Preview toggle states
-  const [showPreview, setShowPreview] = useState<Record<string, boolean>>({ reports: true });
+  const [showPreview, setShowPreview] = useState<Record<string, boolean>>({ reports: true, devices: true });
   const [isExporting, setIsExporting] = useState(false);
 
   // Static data loading
@@ -144,8 +147,6 @@ export default function StatisticsPage() {
   useEffect(() => {
     setReportPage(1);
   }, [reportFilters]);
-
-
 
   // Summary Data fetch logic
   const getSummaryUrl = (tab: string, filters: any) => {
@@ -268,25 +269,39 @@ export default function StatisticsPage() {
         !columnBlacklist.includes(c.id.toLowerCase())
       ) : null;
 
-      // Auto-migration: Add STT if missing
-      if (filteredSaved && !filteredSaved.some(c => c.id === 'stt')) {
-        filteredSaved = [{ id: 'stt', visible: true }, ...filteredSaved];
-        saveCols('hg_cols_device', filteredSaved);
+      // Auto-migration: Add missing default columns to saved config
+      if (filteredSaved) {
+        let changed = false;
+        defaultDeviceColumnOrder.forEach(defId => {
+          if (!filteredSaved!.some(c => c.id.toLowerCase() === defId.toLowerCase())) {
+            filteredSaved!.push({ id: defId, visible: true });
+            changed = true;
+          }
+        });
+        if (changed) saveCols('hg_cols_device', filteredSaved);
       }
 
-      if (filteredSaved && filteredSaved.length > 0) {
+      if (filteredSaved && filteredSaved.length > 0 && filteredSaved.some(c => c.visible)) {
         setColsDevice(filteredSaved);
         return;
       }
 
       const keys = Object.keys(deviceList.data[0]);
+      const lowerKeys = keys.map(k => k.toLowerCase());
       
+      // Ensure all default columns are present, even if key case is different
       const initialColsBase = defaultDeviceColumnOrder
-        .filter(id => keys.includes(id))
-        .map(id => ({ id, visible: true }));
+        .map(id => {
+          // Find original key that matches (case-insensitive)
+          const originalKey = keys.find(k => k.toLowerCase() === id.toLowerCase());
+          if (id === 'stt') return { id, visible: true };
+          if (originalKey) return { id: originalKey, visible: true };
+          // If not found in keys but in default, still include it (might be virtual or just missing in first row)
+          return { id, visible: true };
+        });
 
       const otherKeys = keys.filter(k => 
-        !defaultDeviceColumnOrder.includes(k) && 
+        !defaultDeviceColumnOrder.some(d => d.toLowerCase() === k.toLowerCase()) && 
         !columnBlacklist.includes(k) && 
         !columnBlacklist.includes(k.toLowerCase()) &&
         !k.toLowerCase().endsWith('id')
@@ -323,11 +338,15 @@ export default function StatisticsPage() {
           saveCols('hg_cols_report', finalSaved);
         }
 
-        // Auto-migration: Add STT if missing
-        if (finalSaved && !finalSaved.some(c => c.id === 'stt')) {
-          finalSaved = [{ id: 'stt', visible: true }, ...finalSaved];
-          saveCols('hg_cols_report', finalSaved);
-        }
+        // Auto-migration: Add missing default columns
+        let changed = false;
+        defaultReportColumnOrder.forEach(defId => {
+          if (!finalSaved!.some(c => c.id.toLowerCase() === defId.toLowerCase())) {
+            finalSaved!.push({ id: defId, visible: true });
+            changed = true;
+          }
+        });
+        if (changed) saveCols('hg_cols_report', finalSaved);
       }
 
       if (finalSaved) {
@@ -336,22 +355,25 @@ export default function StatisticsPage() {
           !columnBlacklist.includes(c.id) && 
           !columnBlacklist.includes(c.id.toLowerCase())
         );
-        setColsReport(filteredSaved);
-        return;
+        if (filteredSaved.length > 0 && filteredSaved.some(c => c.visible)) {
+          setColsReport(filteredSaved);
+          return;
+        }
       }
 
       const keys = Object.keys(reportList.data[0]);
+      const lowerKeys = keys.map(k => k.toLowerCase());
       
       const initialColsBase = defaultReportColumnOrder
         .map(id => {
-           if (id === 'deviceAndLocation') return { id, visible: true };
-           if (keys.includes(id)) return { id, visible: true };
-           return null;
-        })
-        .filter(Boolean) as ColMeta[];
+           if (id === 'stt' || id === 'deviceAndLocation') return { id, visible: true };
+           const originalKey = keys.find(k => k.toLowerCase() === id.toLowerCase());
+           if (originalKey) return { id: originalKey, visible: true };
+           return { id, visible: true };
+        });
         
       const otherKeys = keys.filter(k => 
-        !defaultReportColumnOrder.includes(k) && 
+        !defaultReportColumnOrder.some(d => d.toLowerCase() === k.toLowerCase()) && 
         !columnBlacklist.includes(k) && 
         !columnBlacklist.includes(k.toLowerCase()) &&
         !k.toLowerCase().endsWith('id')
@@ -434,10 +456,16 @@ export default function StatisticsPage() {
         if (filters.toDate) params.append('toDate', filters.toDate);
       }
       
+      // Pass visible columns to server
+      const visibleColIds = cols.filter(c => c.visible).map(c => c.id);
+      if (visibleColIds.length > 0) {
+        params.append('columns', visibleColIds.join(','));
+      }
+      
       const endpoint = tab === 'reports' ? '/damage-reports/export' : '/statistics/export';
       
-      // Always use server-side Excel for Reports tab to get professional formatting (sections, landscape, etc.)
-      if (tab === 'reports') {
+      // Use server-side Excel for Reports and Devices tabs to get professional formatting (sections, landscape, etc.)
+      if (tab === 'reports' || tab === 'devices') {
         const response = await api.get(`${endpoint}?${params.toString()}`, { responseType: 'blob' });
         
         const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -445,11 +473,13 @@ export default function StatisticsPage() {
         link.href = url;
         
         // Generate a nice filename
-        let fileName = 'Bao_Cao_Cong_Viec';
-        if (filters.dailyMode) {
-          fileName = `Bao_Cao_Ngay_${filters.fromDate || getLocalDateStr()}`;
-        } else {
-          fileName = `Bao_Cao_Tong_Hop_${filters.fromDate || ''}_den_${filters.toDate || ''}`;
+        let fileName = tab === 'reports' ? 'Bao_Cao_Cong_Viec' : 'Danh_Sach_Thiet_Bi';
+        if (tab === 'reports') {
+          if (filters.dailyMode) {
+            fileName = `Bao_Cao_Ngay_${filters.fromDate || getLocalDateStr()}`;
+          } else {
+            fileName = `Bao_Cao_Tong_Hop_${filters.fromDate || ''}_den_${filters.toDate || ''}`;
+          }
         }
         
         link.setAttribute('download', `${fileName}.xlsx`);
@@ -462,71 +492,8 @@ export default function StatisticsPage() {
         return;
       }
 
-      // Fallback for other tabs (Devices)
-      params.append('preview', 'true'); 
-      const response = await api.get(`${endpoint}?${params.toString()}`);
-      
-      if (!response.data.status) throw new Error(response.data.error || 'Lỗi lấy dữ liệu export');
-      
-      const exportData = response.data.data || [];
-      if (exportData.length === 0) {
-        toast.update(toastId, { render: 'Không có dữ liệu để xuất', type: 'warning', isLoading: false, autoClose: 3000 });
-        return;
-      }
-
-      const visibleColIds = cols.filter(c => c.visible).map(c => c.id);
-      const titlePrefix = 'THIẾT BỊ';
-      
-      const columns = visibleColIds.map(id => ({
-        id: id,
-        label: columnLabels[id] || columnLabels[id.toLowerCase()] || id,
-        width: id === 'handlerNotes' || id === 'damageContent' || id === 'notes' || id === 'deviceAndLocation' ? 50 : 20
-      }));
-
-      const formattedData = exportData.map((row: any) => {
-        const newRow: any = {};
-        visibleColIds.forEach(id => {
-          let val = row[id];
-          
-          if (id === 'deviceAndLocation') {
-            const dev = row.deviceName || row.DeviceName;
-            const loc = row.damageLocation || row.DamageLocation;
-            const content = row.damageContent || '';
-            const isMt = row.maintenanceBatchId || content.toLowerCase().includes('bảo trì') || content.toUpperCase().startsWith('BT ');
-            
-            if (isMt && (!dev || dev === '-')) val = 'Bảo trì';
-            else if (dev && dev !== '-') val = dev;
-            else if (loc && loc !== '-') val = loc;
-            else val = row.deviceLocationName || '-';
-          }
-
-          if (id === 'handlerNotes' && typeof val === 'string' && val.startsWith('[')) {
-            try {
-              const timeline = JSON.parse(val);
-              if (Array.isArray(timeline) && timeline.length > 0) {
-                val = timeline[timeline.length - 1].content || '';
-              }
-            } catch (e) {}
-          }
-
-          const lowerKey = id.toLowerCase();
-          if (lowerKey.includes('date') || lowerKey === 'createdat' || lowerKey === 'updatedat') {
-            val = formatVietnameseDate(val);
-          }
-
-          newRow[id] = val === null || val === undefined ? '' : val;
-        });
-        return newRow;
-      });
-
-      await exportToExcel({
-        title: `THỐNG KÊ CHI TIẾT ${titlePrefix}`,
-        filename: `Thống_kê_thiet_bi`,
-        columns: columns,
-        data: formattedData
-      });
-      
-      toast.update(toastId, { render: 'Xuất Excel thành công!', type: 'success', isLoading: false, autoClose: 3000 });
+      // Fallback logic
+      toast.update(toastId, { render: 'Lỗi xuất file!', type: 'error', isLoading: false, autoClose: 3000 });
     } catch (error: any) {
       console.error(error);
       toast.update(toastId, { render: 'Lỗi khi xuất file Excel!', type: 'error', isLoading: false, autoClose: 3000 });
@@ -536,49 +503,124 @@ export default function StatisticsPage() {
   };
 
   return (
-    <div className="container-fluid px-3 py-2">
-      {/* Page Header - Compact */}
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <div>
-          <h5 className="fw-bold mb-0" style={{ color: '#1e293b' }}>Thống kê & Báo cáo</h5>
-          <p className="text-muted small mb-0">Dữ liệu thời gian thực và trích xuất chuyên nghiệp</p>
+    <div className="container-fluid px-2 py-1">
+      {/* Page Header & Tabs - Combined for compactness */}
+      <div className="d-flex flex-wrap justify-content-between align-items-center mb-2 bg-white p-2 rounded-3 shadow-sm border">
+        <div className="d-flex align-items-center gap-3">
+          <div className="d-none d-lg-block border-end pe-3">
+            <h6 className="fw-bold mb-0 text-dark">Thống kê & Báo cáo</h6>
+          </div>
+          
+          <div className="nav nav-pills gap-1 p-1 bg-light rounded-2 border">
+            <button 
+              className={`nav-link px-3 py-1 small fw-bold ${activeTab === 'reports' ? 'active bg-success' : 'text-muted'}`}
+              onClick={() => setActiveTab('reports')}
+            >
+              <i className="fas fa-file-invoice me-1"></i>Báo cáo
+            </button>
+            <button 
+              className={`nav-link px-3 py-1 small fw-bold ${activeTab === 'devices' ? 'active bg-primary' : 'text-muted'}`}
+              onClick={() => setActiveTab('devices')}
+            >
+              <i className="fas fa-desktop me-1"></i>Thiết bị
+            </button>
+          </div>
+        </div>
+
+        <div className="d-flex gap-2 mt-2 mt-md-0">
+          {activeTab === 'reports' && (
+            <>
+              <div className="form-check form-switch d-flex align-items-center gap-2 border-end pe-3 me-1">
+                <input 
+                  className="form-check-input mt-0" 
+                  type="checkbox" 
+                  role="switch" 
+                  id="dailyReportMode"
+                  checked={reportFilters.dailyMode}
+                  onChange={e => {
+                    const isDaily = e.target.checked;
+                    setReportFilters(prev => ({ 
+                      ...prev, 
+                      dailyMode: isDaily,
+                      fromDate: isDaily ? getLocalDateStr() : getFirstDayOfMonthStr(),
+                      toDate: getLocalDateStr()
+                    }));
+                    if (isDaily) setShowPreview(prev => ({ ...prev, reports: true }));
+                  }}
+                />
+                <label className="form-check-label fw-bold d-flex align-items-center mb-0" htmlFor="dailyReportMode" style={{ fontSize: '0.75rem', cursor: 'pointer' }}>
+                  <span className={!reportFilters.dailyMode ? 'text-primary' : 'text-muted opacity-50'}>Bc tổng hợp</span>
+                  <span className="mx-1 text-muted">/</span>
+                  <span className={reportFilters.dailyMode ? 'text-success' : 'text-muted opacity-50'}>Bc ngày</span>
+                </label>
+              </div>
+
+              <div className="d-flex gap-1">
+                <button className={`btn btn-xs btn-outline-secondary px-2 ${showPreview.reports ? 'active' : ''}`} onClick={() => togglePreview('reports')} title="Hiện/Ẩn danh sách">
+                  <i className={`fas ${showPreview.reports ? 'fa-eye-slash' : 'fa-list-ul'}`}></i>
+                </button>
+                
+                <ColumnDropdown 
+                  isOpen={colDropdownTab === 'reports'}
+                  onToggle={() => setColDropdownTab(prev => prev === 'reports' ? null : 'reports')}
+                  cols={colsReport}
+                  setCols={(newCols: ColMeta[]) => {
+                    setColsReport(newCols);
+                    saveCols('hg_cols_report', newCols);
+                  }}
+                  disabled={colsReport.length === 0}
+                />
+
+                <button 
+                  className="btn btn-xs btn-success px-2" 
+                  onClick={() => handleExport('reports', reportFilters, colsReport)}
+                  disabled={isExporting}
+                >
+                  <i className={`fas ${isExporting ? 'fa-spinner fa-spin' : 'fa-file-excel'} me-1`}></i>Xuất
+                </button>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'devices' && (
+             <div className="d-flex gap-1">
+                <button className={`btn btn-xs btn-outline-secondary px-2 ${showPreview.devices ? 'active' : ''}`} onClick={() => togglePreview('devices')} title="Hiện/Ẩn danh sách">
+                  <i className={`fas ${showPreview.devices ? 'fa-eye-slash' : 'fa-list-ul'}`}></i>
+                </button>
+                
+                <ColumnDropdown 
+                  isOpen={colDropdownTab === 'devices'}
+                  onToggle={() => setColDropdownTab(prev => prev === 'devices' ? null : 'devices')}
+                  cols={colsDevice}
+                  setCols={(newCols: ColMeta[]) => {
+                    setColsDevice(newCols);
+                    saveCols('hg_cols_device', newCols);
+                  }}
+                  disabled={colsDevice.length === 0}
+                />
+
+                <button 
+                  className="btn btn-xs btn-primary px-2" 
+                  onClick={() => handleExport('devices', deviceFilters, colsDevice)}
+                  disabled={isExporting}
+                >
+                  <i className={`fas ${isExporting ? 'fa-spinner fa-spin' : 'fa-file-excel'} me-1`}></i>Xuất
+                </button>
+             </div>
+          )}
         </div>
       </div>
-
-      {/* Tabs Navigation */}
-      <div className="card shadow-sm border-0 mb-4" style={{ borderRadius: '12px' }}>
-        <div className="card-header bg-white border-0 pt-3 pb-0">
-          <ul className="nav nav-pills gap-2 pb-2 border-bottom">
-            <li className="nav-item">
-              <button 
-                className={`nav-link px-4 py-2 fw-bold ${activeTab === 'reports' ? 'active bg-success' : 'text-muted bg-light border'}`}
-                onClick={() => setActiveTab('reports')}
-                style={{ borderRadius: '8px' }}
-              >
-                <i className="fas fa-file-invoice me-2"></i>Sự cố & Báo cáo
-              </button>
-            </li>
-            <li className="nav-item">
-              <button 
-                className={`nav-link px-4 py-2 fw-bold position-relative ${activeTab === 'devices' ? 'active bg-primary' : 'text-muted bg-light border'}`}
-                onClick={() => setActiveTab('devices')}
-                style={{ borderRadius: '8px', zIndex: 1 }}
-              >
-                <i className="fas fa-desktop me-2"></i>Thiết bị
-              </button>
-            </li>
-          </ul>
-        </div>
-        
-        <div className="card-body pt-3">
+      
+      <div className="card shadow-sm border-0 mb-2" style={{ borderRadius: '8px' }}>
+        <div className="card-body p-2">
           {/* Tab Content: Devices */}
           {activeTab === 'devices' && (
             <div>
-              <div className="row g-2 align-items-end mb-4 bg-light p-2 rounded-3 mx-0 border">
-                <div className="col-12 col-md-2">
+              <div className="row g-2 align-items-end mb-2 bg-light p-2 rounded-3 mx-0 border">
+                <div className="col-6 col-md-2">
                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Phòng ban</label>
                   <select 
-                    className="form-select form-select-sm border shadow-none"
+                    className="form-select form-select-xs border shadow-none"
                     value={deviceFilters.deptId}
                     onChange={e => setDeviceFilters(prev => ({ ...prev, deptId: Number(e.target.value) }))}
                   >
@@ -586,10 +628,10 @@ export default function StatisticsPage() {
                     {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
                   </select>
                 </div>
-                <div className="col-12 col-md-2">
+                <div className="col-6 col-md-2">
                    <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Vị trí</label>
                    <select 
-                    className="form-select form-select-sm border shadow-none"
+                    className="form-select form-select-xs border shadow-none"
                     value={deviceFilters.locId}
                     onChange={e => setDeviceFilters(prev => ({ ...prev, locId: Number(e.target.value) }))}
                   >
@@ -597,10 +639,10 @@ export default function StatisticsPage() {
                     {locations.map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}
                   </select>
                 </div>
-                <div className="col-12 col-md-2">
+                <div className="col-6 col-md-2">
                    <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Danh mục</label>
                    <select 
-                    className="form-select form-select-sm border shadow-none"
+                    className="form-select form-select-xs border shadow-none"
                     value={deviceFilters.categoryId}
                     onChange={e => setDeviceFilters(prev => ({ ...prev, categoryId: Number(e.target.value) }))}
                   >
@@ -608,10 +650,10 @@ export default function StatisticsPage() {
                     {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
-                <div className="col-12 col-md-2">
+                <div className="col-6 col-md-2">
                    <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Trạng thái</label>
                    <select 
-                    className="form-select form-select-sm border shadow-none"
+                    className="form-select form-select-xs border shadow-none"
                     value={deviceFilters.status}
                     onChange={e => setDeviceFilters(prev => ({ ...prev, status: Number(e.target.value) }))}
                   >
@@ -620,7 +662,7 @@ export default function StatisticsPage() {
                     <option value="2">Đang sửa chữa</option>
                     <option value="3">Lỗi/Ngưng hoạt động</option>
                     <option value="4">Đã thanh lý</option>
-                    <option value="5">Có sự cố</option>
+                    <option value="5">Sự cố</option>
                   </select>
                 </div>
                 <div className="col-12 col-md">
@@ -633,60 +675,20 @@ export default function StatisticsPage() {
                     onChange={e => setDeviceFilters(prev => ({ ...prev, search: e.target.value }))}
                   />
                 </div>
-                <div className="col-12 mt-2 d-flex justify-content-end">
-                   <div className="d-flex gap-2 position-relative w-100" style={{ maxWidth: '400px' }}>
-                     <button className="btn btn-sm btn-outline-primary flex-grow-1 fw-bold d-flex align-items-center justify-content-center" onClick={() => togglePreview('devices')}>
-                       <i className={`fas ${showPreview.devices ? 'fa-eye-slash' : 'fa-list-ul'} me-md-2`}></i>
-                       <span className="d-none d-md-inline">{showPreview.devices ? 'Đóng ds' : 'Xem danh sách'}</span>
-                     </button>
-                     
-                     <ColumnDropdown 
-                       isOpen={colDropdownTab === 'devices'}
-                       onToggle={() => setColDropdownTab(prev => prev === 'devices' ? null : 'devices')}
-                       cols={colsDevice}
-                       setCols={(newCols: ColMeta[]) => {
-                         setColsDevice(newCols);
-                         saveCols('hg_cols_device', newCols);
-                       }}
-                       disabled={colsDevice.length === 0}
-                     />
-
-                     <button 
-                       className="btn btn-sm btn-primary px-3 fw-bold flex-grow-1 d-flex align-items-center justify-content-center" 
-                       onClick={() => handleExport('devices', deviceFilters, colsDevice)}
-                       disabled={isExporting}
-                     >
-                       <i className={`fas ${isExporting ? 'fa-spinner fa-spin' : 'fa-file-excel'} me-md-1`}></i>
-                       <span className="d-none d-md-inline"> Xuất</span>
-                     </button>
-                   </div>
-                </div>
               </div>
 
-              {/* Device Stats Grid */}
-              <div className="row g-3 mb-4">
+              {/* Compact Device Stats Bar */}
+              <div className="d-flex flex-wrap gap-2 mb-2 p-2 bg-white rounded border">
                 {[
-                  { label: 'Tổng số', value: deviceSummary?.data?.devices?.total, color: 'primary', icon: 'fa-box' },
-                  { label: 'Đang dùng', value: deviceSummary?.data?.devices?.dangSuDung, color: 'success', icon: 'fa-check-circle' },
-                  { label: 'Đang sửa chữa', value: deviceSummary?.data?.devices?.dangSuaChua, color: 'warning', icon: 'fa-wrench' },
-                  { label: 'Có sự cố', value: deviceSummary?.data?.devices?.coHuHong, color: 'info', icon: 'fa-exclamation-triangle' },
-                  { label: 'Lỗi/Ngưng h.động', value: deviceSummary?.data?.devices?.huHong, color: 'danger', icon: 'fa-times-circle' },
-                  { label: 'Thanh lý', value: deviceSummary?.data?.devices?.daThanhLy, color: 'secondary', icon: 'fa-trash-alt' },
+                  { label: 'Tổng', value: deviceSummary?.data?.devices?.total, color: 'primary' },
+                  { label: 'Dùng', value: deviceSummary?.data?.devices?.dangSuDung, color: 'success' },
+                  { label: 'Sửa', value: deviceSummary?.data?.devices?.dangSuaChua, color: 'warning' },
+                  { label: 'Sự cố', value: deviceSummary?.data?.devices?.coHuHong, color: 'info' },
+                  { label: 'Lỗi', value: deviceSummary?.data?.devices?.huHong, color: 'danger' },
                 ].map((stat, idx) => (
-                  <div key={idx} className="col-6 col-md-4 col-lg-2">
-                    <div className="card border-0 shadow-sm h-100" style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0 !important' }}>
-                      <div className="card-body py-1 px-3">
-                        <div className="d-flex justify-content-between align-items-center">
-                          <div>
-                            <p className="x-small text-muted mb-0 uppercase fw-bold" style={{ fontSize: '0.6rem', lineHeight: '1.2' }}>{stat.label}</p>
-                            <h3 className={`fw-bold mb-0 text-${stat.color}`}>{stat.value ?? 0}</h3>
-                          </div>
-                          <div className={`bg-${stat.color} bg-opacity-10 text-${stat.color} rounded-3 d-flex align-items-center justify-content-center`} style={{ width: '36px', height: '36px' }}>
-                            <i className={`fas ${stat.icon} fa-fw`}></i>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                  <div key={idx} className="d-flex align-items-center gap-1 border-end pe-2">
+                    <span className="x-small text-muted uppercase fw-bold">{stat.label}:</span>
+                    <span className={`fw-bold text-${stat.color}`}>{stat.value ?? 0}</span>
                   </div>
                 ))}
               </div>
@@ -697,66 +699,11 @@ export default function StatisticsPage() {
 
           {activeTab === 'reports' && (
             <div>
-              <div className="col-12 mb-2 d-flex flex-wrap justify-content-between align-items-center border-bottom pb-2 gap-2">
-                <div className="form-check form-switch d-flex align-items-center gap-2">
-                  <input 
-                    className="form-check-input" 
-                    type="checkbox" 
-                    role="switch" 
-                    id="dailyReportMode"
-                    checked={reportFilters.dailyMode}
-                    onChange={e => {
-                      const isDaily = e.target.checked;
-                      setReportFilters(prev => ({ 
-                        ...prev, 
-                        dailyMode: isDaily,
-                        fromDate: isDaily ? getLocalDateStr() : getFirstDayOfMonthStr(),
-                        toDate: getLocalDateStr()
-                      }));
-                      if (isDaily) setShowPreview(prev => ({ ...prev, reports: true }));
-                    }}
-                  />
-                  <label className="form-check-label fw-bold d-flex align-items-center" htmlFor="dailyReportMode" style={{ fontSize: '0.85rem', cursor: 'pointer' }}>
-                    <span className={!reportFilters.dailyMode ? 'text-primary' : 'text-muted opacity-50'}>Bc tổng hợp</span>
-                    <span className="mx-1 text-muted">/</span>
-                    <span className={reportFilters.dailyMode ? 'text-success' : 'text-muted opacity-50'}>Bc ngày</span>
-                  </label>
-                </div>
-
-                <div className="d-flex gap-2 align-items-center flex-grow-1 flex-md-grow-0 justify-content-end">
-                   <button className={`btn btn-sm px-3 fw-bold ${reportFilters.dailyMode ? 'btn-success' : 'btn-outline-success'}`} onClick={() => togglePreview('reports')} style={{ minWidth: '40px' }}>
-                     <i className={`fas ${showPreview.reports ? 'fa-eye-slash' : 'fa-list-ul'} ${showPreview.reports ? '' : 'me-md-1'}`}></i>
-                     <span className="d-none d-md-inline">{showPreview.reports ? ' Đóng ds' : ' Danh sách'}</span>
-                   </button>
-                   
-                   <ColumnDropdown 
-                     isOpen={colDropdownTab === 'reports'}
-                     onToggle={() => setColDropdownTab(prev => prev === 'reports' ? null : 'reports')}
-                     cols={colsReport}
-                     setCols={(newCols: ColMeta[]) => {
-                       setColsReport(newCols);
-                       saveCols('hg_cols_report', newCols);
-                     }}
-                     disabled={colsReport.length === 0}
-                   />
-
-                   <button 
-                     className="btn btn-sm btn-success px-3 fw-bold" 
-                     onClick={() => handleExport('reports', reportFilters, colsReport)}
-                     disabled={isExporting}
-                     style={{ minWidth: '40px' }}
-                   >
-                     <i className={`fas ${isExporting ? 'fa-spinner fa-spin' : 'fa-file-excel'} me-md-1`}></i>
-                     <span className="d-none d-md-inline"> Xuất</span>
-                   </button>
-                </div>
-              </div>
-
-              <div className="row g-2 align-items-end mb-4 bg-light p-3 rounded-3 border">
-                <div className="col-12 col-md-2">
+              <div className="row g-2 align-items-end mb-2 bg-light p-2 rounded-3 mx-0 border">
+                <div className="col-6 col-md-2">
                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Phòng ban</label>
                   <select 
-                    className="form-select form-select-sm border shadow-none"
+                    className="form-select form-select-xs border shadow-none"
                     value={reportFilters.deptId}
                     onChange={e => setReportFilters(prev => ({ ...prev, deptId: Number(e.target.value), staffId: 0 }))}
                   >
@@ -766,10 +713,10 @@ export default function StatisticsPage() {
                 </div>
 
                 {reportFilters.dailyMode ? (
-                  <div className="col-12 col-md-2">
+                  <div className="col-6 col-md-2">
                     <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Nhân viên</label>
                     <select 
-                      className="form-select form-select-sm border shadow-none"
+                      className="form-select form-select-xs border shadow-none"
                       value={reportFilters.staffId}
                       onChange={e => setReportFilters(prev => ({ ...prev, staffId: Number(e.target.value) }))}
                     >
@@ -778,10 +725,10 @@ export default function StatisticsPage() {
                     </select>
                   </div>
                 ) : (
-                  <div className="col-12 col-md-2">
+                  <div className="col-6 col-md-2">
                     <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Mức độ</label>
                     <select 
-                      className="form-select form-select-sm border shadow-none"
+                      className="form-select form-select-xs border shadow-none"
                       value={reportFilters.priority}
                       onChange={e => setReportFilters(prev => ({ ...prev, priority: Number(e.target.value) }))}
                     >
@@ -794,24 +741,23 @@ export default function StatisticsPage() {
                   </div>
                 )}
 
-                <div className="col-12 col-md-2">
-                  <label className="form-label x-small fw-bold text-muted mb-1 uppercase">{reportFilters.dailyMode ? 'Danh mục việc' : 'Trạng thái'}</label>
+                <div className="col-6 col-md-2">
+                  <label className="form-label x-small fw-bold text-muted mb-1 uppercase">{reportFilters.dailyMode ? 'Danh mục' : 'Trạng thái'}</label>
                   {reportFilters.dailyMode ? (
                     <select 
-                      className="form-select form-select-sm border shadow-none border-success"
+                      className="form-select form-select-xs border shadow-none border-success"
                       value={reportFilters.dailyCategory}
                       onChange={e => setReportFilters(prev => ({ ...prev, dailyCategory: e.target.value }))}
                     >
-                      <option value="all">Tất cả công việc</option>
-                      <option value="new">Việc mới (Chưa làm)</option>
+                      <option value="all">Tất cả</option>
+                      <option value="new">Việc mới</option>
                       <option value="active">Đang xử lý</option>
-                      <option value="completed">Việc hoàn thành</option>
-                      <option value="backlog">Việc tồn đọng</option>
-                      <option value="priority">Việc ưu tiên</option>
+                      <option value="completed">Hoàn thành</option>
+                      <option value="backlog">Tồn đọng</option>
                     </select>
                   ) : (
                     <select 
-                      className="form-select form-select-sm border shadow-none"
+                      className="form-select form-select-xs border shadow-none"
                       value={reportFilters.status}
                       onChange={e => setReportFilters(prev => ({ ...prev, status: Number(e.target.value) }))}
                     >
@@ -826,16 +772,15 @@ export default function StatisticsPage() {
                   )}
                 </div>
 
-                <div className="col-12 col-md-2">
+                <div className="col-6 col-md-2">
                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">{reportFilters.dailyMode ? 'Ngày xem' : 'Từ ngày'}</label>
                   <div className="position-relative">
                     <input 
                       type="text" 
-                      className={`form-control form-control-sm border shadow-none bg-white pe-4 ${reportFilters.dailyMode ? 'border-success' : ''}`}
+                      className={`form-control form-control-xs border shadow-none bg-white pe-4 ${reportFilters.dailyMode ? 'border-success' : ''}`}
                       value={formatVietnameseDate(reportFilters.fromDate)}
                       readOnly
                     />
-                    <i className="fas fa-calendar-alt position-absolute top-50 end-0 translate-middle-y me-2 text-muted small" style={{ pointerEvents: 'none' }}></i>
                     <input 
                       type="date" 
                       className="position-absolute top-0 start-0 w-100 h-100 opacity-0"
@@ -851,16 +796,15 @@ export default function StatisticsPage() {
                 </div>
                 
                 {!reportFilters.dailyMode && (
-                  <div className="col-12 col-md-2">
+                  <div className="col-6 col-md-2">
                     <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Đến ngày</label>
                     <div className="position-relative">
                       <input 
                         type="text" 
-                        className="form-control form-control-sm border shadow-none bg-white pe-4"
+                        className="form-control form-control-xs border shadow-none bg-white pe-4"
                         value={formatVietnameseDate(reportFilters.toDate)}
                         readOnly
                       />
-                      <i className="fas fa-calendar-alt position-absolute top-50 end-0 translate-middle-y me-2 text-muted small" style={{ pointerEvents: 'none' }}></i>
                       <input 
                         type="date" 
                         className="position-absolute top-0 start-0 w-100 h-100 opacity-0"
@@ -872,70 +816,46 @@ export default function StatisticsPage() {
                   </div>
                 )}
 
-                <div className="col-12 col-md">
+                <div className="col col-md">
                    <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Tìm kiếm</label>
                    <input 
                     type="text" 
-                    className="form-control form-control-sm border shadow-none" 
-                    placeholder="Nội dung, thiết bị..."
+                    className="form-control form-control-xs border shadow-none" 
+                    placeholder="Nội dung..."
                     value={reportFilters.search}
                     onChange={e => setReportFilters(prev => ({ ...prev, search: e.target.value }))}
                   />
                 </div>
-
               </div>
 
-              {reportFilters.dailyMode ? (
-                <div className="row g-3 mb-4">
-                  {[
-                    { label: 'Việc mới', value: reportListResponse?.summary?.totalNew, color: 'success', icon: 'fa-plus-circle' },
-                    { label: 'Đang xử lý', value: reportListResponse?.summary?.totalActive, color: 'info', icon: 'fa-spinner' },
-                    { label: 'Hoàn thành', value: reportListResponse?.summary?.totalCompleted, color: 'primary', icon: 'fa-check-double' },
-                    { label: 'Việc tồn đọng', value: reportListResponse?.summary?.totalPending, color: 'danger', icon: 'fa-history' },
+              {/* Compact Stats Bar for Reports */}
+              <div className="d-flex flex-wrap gap-3 mb-2 p-2 bg-white rounded border">
+                {reportFilters.dailyMode ? (
+                  [
+                    { label: 'Việc mới', value: reportListResponse?.summary?.totalNew, color: 'success' },
+                    { label: 'Đang xử lý', value: reportListResponse?.summary?.totalActive, color: 'info' },
+                    { label: 'Hoàn thành', value: reportListResponse?.summary?.totalCompleted, color: 'primary' },
+                    { label: 'Tồn đọng', value: reportListResponse?.summary?.totalPending, color: 'danger' },
                   ].map((stat, idx) => (
-                    <div key={idx} className="col-6 col-md-3">
-                      <div className="card border-0 shadow-sm h-100" style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0 !important' }}>
-                        <div className="card-body py-1 px-3">
-                          <div className="d-flex justify-content-between align-items-center">
-                            <div>
-                              <p className="x-small text-muted mb-0 uppercase fw-bold" style={{ fontSize: '0.6rem', lineHeight: '1.2' }}>{stat.label}</p>
-                              <h3 className={`fw-bold mb-0 text-${stat.color}`}>{stat.value ?? 0}</h3>
-                            </div>
-                            <div className={`bg-${stat.color} bg-opacity-10 text-${stat.color} rounded-3 d-flex align-items-center justify-content-center`} style={{ width: '36px', height: '36px' }}>
-                              <i className={`fas ${stat.icon} fa-fw`}></i>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                    <div key={idx} className="d-flex align-items-center gap-1 border-end pe-3">
+                      <span className="x-small text-muted uppercase fw-bold">{stat.label}:</span>
+                      <span className={`fw-bold text-${stat.color}`}>{stat.value ?? 0}</span>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="row g-3 mb-4">
-                  {[
-                    { label: 'Tổng sự cố', value: reportSummary?.data?.reports?.total, color: 'primary', icon: 'fa-file-alt' },
-                    { label: 'Chờ xử lý', value: reportSummary?.data?.reports?.pending, color: 'warning', icon: 'fa-clock' },
-                    { label: 'Đang xử lý', value: reportSummary?.data?.reports?.inProgress, color: 'info', icon: 'fa-tools' },
-                    { label: 'Đã hoàn thành', value: reportSummary?.data?.reports?.completed, color: 'success', icon: 'fa-check-circle' },
+                  ))
+                ) : (
+                  [
+                    { label: 'Tổng sự cố', value: reportSummary?.data?.reports?.total, color: 'primary' },
+                    { label: 'Chờ xử lý', value: reportSummary?.data?.reports?.pending, color: 'warning' },
+                    { label: 'Đang xử lý', value: reportSummary?.data?.reports?.inProgress, color: 'info' },
+                    { label: 'Hoàn thành', value: reportSummary?.data?.reports?.completed, color: 'success' },
                   ].map((stat, idx) => (
-                    <div key={idx} className="col-6 col-md-3">
-                      <div className="card border-0 shadow-sm h-100" style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0 !important' }}>
-                        <div className="card-body py-1 px-3">
-                          <div className="d-flex justify-content-between align-items-center">
-                            <div>
-                              <p className="x-small text-muted mb-0 uppercase fw-bold" style={{ fontSize: '0.6rem', lineHeight: '1.2' }}>{stat.label}</p>
-                              <h3 className={`fw-bold mb-0 text-${stat.color}`}>{stat.value ?? 0}</h3>
-                            </div>
-                            <div className={`bg-${stat.color} bg-opacity-10 text-${stat.color} rounded-3 d-flex align-items-center justify-content-center`} style={{ width: '36px', height: '36px' }}>
-                              <i className={`fas ${stat.icon} fa-fw`}></i>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                    <div key={idx} className="d-flex align-items-center gap-1 border-end pe-3">
+                      <span className="x-small text-muted uppercase fw-bold">{stat.label}:</span>
+                      <span className={`fw-bold text-${stat.color}`}>{stat.value ?? 0}</span>
                     </div>
-                  ))}
-                </div>
-              )}
+                  ))
+                )}
+              </div>
 
               {showPreview.reports && (
                 <PreviewTable 
@@ -960,10 +880,21 @@ export default function StatisticsPage() {
       </div>
 
       <style jsx>{`
-        .x-small { font-size: 0.75rem; }
+        .x-small { font-size: 0.7rem; }
         .uppercase { text-transform: uppercase; letter-spacing: 0.025em; }
-        .nav-link.active { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
-        .min-width-200 { min-width: 200px; }
+        .nav-link.active { box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); }
+        .form-select-xs, .form-control-xs { 
+          padding: 0.25rem 0.5rem; 
+          font-size: 0.8rem; 
+          height: auto;
+          min-height: 31px;
+        }
+        .btn-xs {
+          padding: 0.2rem 0.5rem;
+          font-size: 0.75rem;
+          line-height: 1.5;
+          border-radius: 4px;
+        }
       `}</style>
     </div>
   );
@@ -989,7 +920,7 @@ function PreviewTable({ data, loading, color, configCols, pagination, maintenanc
 
   const visibleColIds = configCols && configCols.length > 0 
     ? configCols.filter(c => c.visible).map(c => c.id)
-    : defaultReportColumnOrder.filter(id => id === 'deviceAndLocation' || Object.keys(data[0]).includes(id));
+    : (color === 'primary' ? defaultDeviceColumnOrder : defaultReportColumnOrder);
 
   if (visibleColIds.length === 0) {
     return <div className="alert alert-warning text-center border p-3 small">Vui lòng chọn ít nhất 1 cột để hiển thị</div>
@@ -1216,7 +1147,7 @@ function ColumnDropdown({ isOpen, onToggle, cols, setCols, disabled }: { isOpen:
                     <input className="form-check-input ms-0 mt-0" type="checkbox" role="switch" checked={col.visible} onChange={() => toggleVisible(idx)} style={{ cursor: 'pointer', transform: 'scale(0.9)' }} />
                   </div>
                   <label className="mb-0 small fw-medium text-dark text-truncate cursor-pointer" style={{ maxWidth: '160px' }} onClick={() => toggleVisible(idx)}>
-                    {columnLabels[col.id] || col.id}
+                    {columnLabels[col.id] || columnLabels[col.id.toLowerCase()] || col.id}
                   </label>
                 </div>
                 <div className="btn-group shadow-sm" style={{ borderRadius: '6px', overflow: 'hidden' }}>

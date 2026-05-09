@@ -99,30 +99,20 @@ export async function generateDailyReportExcel(data: {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Báo cáo ngày');
 
-  // Set default column widths early - Optimized for A4 Landscape (9 columns total)
-  worksheet.columns = [
-    { key: 'col1', width: 6 },   // STT
-    { key: 'col2', width: 10 },  // Mã số
-    { key: 'col3', width: 14 },  // Ngày báo cáo
-    { key: 'col4', width: 22 },  // Thiết bị/Vị trí
-    { key: 'col5', width: 18 },  // Người báo cáo
-    { key: 'col6', width: 40 },  // Nội dung sự cố
-    { key: 'col7', width: 18 },  // Người xử lý
-    { key: 'col8', width: 14 },  // Trạng thái
-    { key: 'col9', width: 40 },  // Tiến độ xử lý
-  ];
+  // Get max header length across all sections
+  const maxCols = Math.max(...data.sections.map(s => s.headers.length), 9);
 
   // 1. Main Title
   const titleRow = worksheet.addRow([data.title]);
   titleRow.font = { bold: true, size: 16, color: { argb: 'FF1E293B' } };
   titleRow.alignment = { horizontal: 'center' };
-  worksheet.mergeCells(titleRow.number, 1, titleRow.number, 9);
+  worksheet.mergeCells(titleRow.number, 1, titleRow.number, maxCols);
 
   // 2. Date
   const dateRow = worksheet.addRow(['Ngày báo cáo: ' + data.date]);
   dateRow.font = { italic: true, size: 11, color: { argb: 'FF64748B' } };
   dateRow.alignment = { horizontal: 'center' };
-  worksheet.mergeCells(dateRow.number, 1, dateRow.number, 9);
+  worksheet.mergeCells(dateRow.number, 1, dateRow.number, maxCols);
 
   worksheet.addRow([]); // Single Gap
 
@@ -137,7 +127,7 @@ export async function generateDailyReportExcel(data: {
   summaryRow.height = 20;
   const summaryColors = ['FF22C55E', 'FF06B6D4', 'FF3B82F6', 'FFEF4444']; // success, info, primary, danger
   
-  // Align metrics across the 9 columns (leaving Col 1 empty for padding)
+  // Align metrics across the columns (leaving Col 1 empty for padding)
   [2, 4, 6, 8].forEach((colIdx, i) => {
     const labelCell = summaryRow.getCell(colIdx);
     const valueCell = summaryRow.getCell(colIdx + 1);
@@ -151,6 +141,22 @@ export async function generateDailyReportExcel(data: {
   });
 
   worksheet.addRow([]); // Single Gap
+
+  // Set Column Widths dynamically
+  if (data.sections.length > 0) {
+    data.sections[0].headers.forEach((header, index) => {
+      const h = header.toLowerCase();
+      let width = 15;
+      if (h === 'stt') width = 6;
+      else if (h === 'id' || h === 'mã số') width = 10;
+      else if (h.includes('ngày')) width = 14;
+      else if (h.includes('nội dung') || h.includes('tiến độ') || h.includes('ghi chú')) width = 40;
+      else if (h.includes('thiết bị') || h.includes('vị trí')) width = 22;
+      else if (h.includes('người báo') || h.includes('người xử')) width = 18;
+      
+      worksheet.getColumn(index + 1).width = width;
+    });
+  }
 
   // Set Page Orientation to Landscape
   worksheet.pageSetup = {
