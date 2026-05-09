@@ -327,7 +327,7 @@ export async function GET(request: NextRequest) {
       const dataForSections = await damageReportService.getDailyReportData(fromDateStr!, { departmentId: selectedDeptId, handlerId: selectedHandlerId });
       
       excelBuffer = await generateDailyReportExcel({
-        title: 'CÔNG TY CP DU LỊCH - THƯƠNG MẠI HOÀ GIANG - BÁO CÁO CÔNG VIỆC TRONG NGÀY',
+        title: 'BÁO CÁO CÔNG VIỆC TRONG NGÀY',
         date: formatDateDisplay(from) || fromDateStr!,
         summary: {
           totalNew: dataForSections.summary.totalNew,
@@ -350,7 +350,7 @@ export async function GET(request: NextRequest) {
       });
 
       excelBuffer = await generateExcelFile({
-        title: 'CÔNG TY CP DU LỊCH - THƯƠNG MẠI HOÀ GIANG - BÁO CÁO CÔNG VIỆC',
+        title: 'BÁO CÁO CÔNG VIỆC',
         department: finalDeptName,
         dateRange: `Từ ngày: ${formatDateDisplay(from)} đến ngày: ${formatDateDisplay(to)}`,
         headers,

@@ -280,7 +280,6 @@ export default function StatisticsPage() {
         <body>
           <div class="header">
             <div>
-              <div class="company-name">CÔNG TY CỔ PHẦN DU LỊCH - THƯƠNG MẠI HOÀ GIANG</div>
               <div class="system-name">Hệ thống quản lý Thiết bị và Báo cáo công việc</div>
             </div>
             <div class="print-date">Ngày in: ${new Date().toLocaleDateString('vi-VN')}</div>
@@ -745,9 +744,9 @@ export default function StatisticsPage() {
                   }}
                 />
                 <label className="form-check-label fw-bold d-flex align-items-center mb-0" htmlFor="dailyReportMode" style={{ fontSize: '0.75rem', cursor: 'pointer' }}>
-                  <span className={!reportFilters.dailyMode ? 'text-primary' : 'text-muted opacity-50'}>Bc tổng hợp</span>
-                  <span className="mx-1 text-muted">/</span>
-                  <span className={reportFilters.dailyMode ? 'text-success' : 'text-muted opacity-50'}>Bc ngày</span>
+                  <span className={!reportFilters.dailyMode ? 'text-primary' : 'text-muted opacity-50'}>All</span>
+                  <span className="mx-1 text-muted">|</span>
+                  <span className={reportFilters.dailyMode ? 'text-success' : 'text-muted opacity-50'}>Hôm nay</span>
                 </label>
               </div>
 
@@ -1015,6 +1014,7 @@ export default function StatisticsPage() {
                       value={formatVietnameseDate(reportFilters.fromDate)}
                       readOnly
                     />
+                    <i className="fas fa-calendar-alt position-absolute end-0 top-50 translate-middle-y me-2 text-muted" style={{ pointerEvents: 'none', fontSize: '0.8rem' }}></i>
                     <input 
                       type="date" 
                       className="position-absolute top-0 start-0 w-100 h-100 opacity-0"
@@ -1039,6 +1039,7 @@ export default function StatisticsPage() {
                         value={formatVietnameseDate(reportFilters.toDate)}
                         readOnly
                       />
+                      <i className="fas fa-calendar-alt position-absolute end-0 top-50 translate-middle-y me-2 text-muted" style={{ pointerEvents: 'none', fontSize: '0.8rem' }}></i>
                       <input 
                         type="date" 
                         className="position-absolute top-0 start-0 w-100 h-100 opacity-0"

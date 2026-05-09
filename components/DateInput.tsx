@@ -9,7 +9,12 @@ const DatePicker = dynamic(
   () => import('react-datepicker').then((mod) => mod.default || mod),
   { 
     ssr: false,
-    loading: () => <input type="text" className="form-control" readOnly placeholder="dd/MM/yyyy" />
+    loading: () => (
+      <div className="position-relative w-100">
+        <input type="text" className="form-control pe-4" readOnly placeholder="dd/MM/yyyy" />
+        <i className="fas fa-calendar-alt position-absolute end-0 top-50 translate-middle-y me-2 text-muted" style={{ pointerEvents: 'none', fontSize: '0.85rem' }}></i>
+      </div>
+    )
   }
 );
 
@@ -114,44 +119,49 @@ export default function DateInput({
   if (!isMounted || !DatePickerComponent) {
     // Return a regular input during SSR or while loading
     return (
-      <input
-        type="text"
-        className={className}
-        value={dateValue ? formatDateInput(dateValue) : ''}
-        placeholder={placeholder}
-        disabled={disabled}
-        required={required}
-        style={style}
-        readOnly
-      />
+      <div className="position-relative w-100">
+        <input
+          type="text"
+          className={`${className} pe-4`}
+          value={dateValue ? formatDateInput(dateValue) : ''}
+          placeholder={placeholder}
+          disabled={disabled}
+          required={required}
+          style={style}
+          readOnly
+        />
+        <i className="fas fa-calendar-alt position-absolute end-0 top-50 translate-middle-y me-2 text-muted" style={{ pointerEvents: 'none', fontSize: '0.85rem' }}></i>
+      </div>
     );
   }
 
   const Picker = DatePickerComponent;
 
   return (
-    <Picker
-      selected={dateValue}
-      onChange={handleChange}
-      dateFormat="dd/MM/yyyy"
-      className={className}
-      disabled={disabled}
-      minDate={minDate}
-      maxDate={maxDate}
-      placeholderText={placeholder}
-      required={required}
-      showYearDropdown
-      showMonthDropdown
-      dropdownMode="select"
-      locale="vi"
-      wrapperClassName="w-100"
-      customInput={
-        <input 
-          style={style} 
-          className={className}
-        />
-      }
-    />
+    <div className="position-relative w-100">
+      <Picker
+        selected={dateValue}
+        onChange={handleChange}
+        dateFormat="dd/MM/yyyy"
+        className={`${className} pe-4`}
+        disabled={disabled}
+        minDate={minDate}
+        maxDate={maxDate}
+        placeholderText={placeholder}
+        required={required}
+        showYearDropdown
+        showMonthDropdown
+        dropdownMode="select"
+        locale="vi"
+        wrapperClassName="w-100"
+        customInput={
+          <input 
+            style={style} 
+          />
+        }
+      />
+      <i className="fas fa-calendar-alt position-absolute end-0 top-50 translate-middle-y me-2 text-muted" style={{ pointerEvents: 'none', fontSize: '0.85rem' }}></i>
+    </div>
   );
 }
 
