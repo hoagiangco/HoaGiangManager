@@ -309,19 +309,40 @@ export default function StatisticsPage() {
       </html>
     `;
  
-    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const printWindow = window.open(url, '_blank');
+    // Use an iframe approach for better mobile support and to avoid popup blockers
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
 
-    if (!printWindow) {
-      toast.error('Không thể mở cửa sổ in. Vui lòng kiểm tra cài đặt trình duyệt.');
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(htmlContent);
+      doc.close();
+
+      // Wait for content to load then trigger print
+      setTimeout(() => {
+        if (iframe.contentWindow) {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+          
+          // Cleanup after a delay to ensure print dialog opened
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+            setIsPrinting(false);
+          }, 1000);
+        }
+      }, 500);
+    } else {
+      toast.error('Không thể khởi tạo trình xem trước. Vui lòng thử lại.');
+      document.body.removeChild(iframe);
       setIsPrinting(false);
-      return;
     }
-
-    // Clean up object URL after a while
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-    setIsPrinting(false);
   };
 
   // Static data loading
