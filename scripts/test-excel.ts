@@ -7,7 +7,7 @@ async function test() {
     const buffer = await generateDailyReportExcel({
       title: 'TEST REPORT',
       date: '14-04-2026',
-      summary: { totalNew: 1, totalCompleted: 2, totalPending: 3 },
+      summary: { totalNew: 1, totalCompleted: 2, totalPending: 3, totalPendingActive: 0 },
       sections: [
         {
           title: 'Section 1',

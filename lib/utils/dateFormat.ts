@@ -1,14 +1,17 @@
 import { format } from 'date-fns';
 
-/**
- * Format date for display: dd/MM/yyyy
- */
+// Format date for display: dd/MM/yyyy
 export const formatDateDisplay = (value?: string | Date | null): string => {
   if (!value) return '';
   try {
     const date = typeof value === 'string' ? new Date(value) : value;
     if (Number.isNaN(date.getTime())) return '';
-    return format(date, 'dd/MM/yyyy');
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    }).format(date);
   } catch (error) {
     return '';
   }
@@ -22,7 +25,13 @@ export const formatDateInput = (value?: string | Date | null): string => {
   try {
     const date = typeof value === 'string' ? new Date(value) : value;
     if (Number.isNaN(date.getTime())) return '';
-    return format(date, 'yyyy-MM-dd');
+    // en-CA format is YYYY-MM-DD
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(date);
   } catch (error) {
     return '';
   }
@@ -36,7 +45,22 @@ export const formatDateTime = (value?: string | Date | null): string => {
   try {
     const date = typeof value === 'string' ? new Date(value) : value;
     if (Number.isNaN(date.getTime())) return '';
-    return format(date, 'dd/MM/yyyy HH:mm');
+    
+    const datePart = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    }).format(date);
+    
+    const timePart = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).format(date);
+
+    return `${datePart} ${timePart}`;
   } catch (error) {
     return '';
   }
@@ -50,7 +74,18 @@ export const formatDateFilename = (value?: string | Date | null): string => {
   try {
     const date = typeof value === 'string' ? new Date(value) : value;
     if (Number.isNaN(date.getTime())) return '';
-    return format(date, 'yyyyMMdd');
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    }).formatToParts(date);
+    
+    const year = parts.find(p => p.type === 'year')?.value || '';
+    const month = parts.find(p => p.type === 'month')?.value || '';
+    const day = parts.find(p => p.type === 'day')?.value || '';
+    
+    return `${year}${month}${day}`;
   } catch (error) {
     return '';
   }

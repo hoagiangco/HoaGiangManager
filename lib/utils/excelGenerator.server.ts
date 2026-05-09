@@ -87,6 +87,7 @@ export async function generateDailyReportExcel(data: {
     totalActive?: number;
     totalCompleted: number;
     totalPending: number;
+    totalPendingActive: number;
   };
   sections: {
     title: string;
@@ -120,11 +121,12 @@ export async function generateDailyReportExcel(data: {
   const summaryRowNum = worksheet.addRow([]).number;
   worksheet.getRow(summaryRowNum).height = 25;
 
+  const totalWorkedToday = (data.summary.totalNew || 0) + (data.summary.totalActive || 0) + (data.summary.totalCompleted || 0);
+  const totalPending = (data.summary.totalPending || 0) + (data.summary.totalPendingActive || 0);
   const stats = [
-    { label: 'Việc mới:', value: data.summary.totalNew, color: 'FF22C55E', cols: [2, 3] },
-    { label: 'Đang xử lý:', value: data.summary.totalActive ?? 0, color: 'FF06B6D4', cols: [4, 4] },
-    { label: 'Đã xong:', value: data.summary.totalCompleted, color: 'FF3B82F6', cols: [5, 6] },
-    { label: 'Tồn đọng:', value: data.summary.totalPending, color: 'FFEF4444', cols: [7, 8] }
+    { label: 'Việc làm hôm nay:', value: totalWorkedToday, color: 'FF06B6D4', cols: [2, 3] },
+    { label: 'Việc hoàn thành:', value: data.summary.totalCompleted, color: 'FF3B82F6', cols: [4, 5] },
+    { label: 'Việc tồn đọng:', value: totalPending, color: 'FFEF4444', cols: [6, 7] }
   ];
 
   stats.forEach(s => {

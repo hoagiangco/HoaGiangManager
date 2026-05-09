@@ -136,28 +136,21 @@ export async function GET(request: NextRequest) {
       dailySummary = data.summary;
       
       // Categorize like the UI does
-      const taggedNew = data.newReports.map(r => ({ ...r, dailyCategory: 'Chưa làm' }));
-      const taggedActive = data.activeReports.map(r => ({ ...r, dailyCategory: 'Đang xử lý' }));
-      const taggedCompleted = data.completedReports.map(r => ({ ...r, dailyCategory: 'Hoàn thành' }));
-      const taggedPending = data.pendingReports.map(r => ({ ...r, dailyCategory: 'Tồn đọng' }));
+      const taggedNew = data.newReports.map((r: any) => ({ ...r, dailyCategory: 'Chưa làm', section: '1. VIỆC TRONG NGÀY' }));
+      const taggedActive = data.activeReports.map((r: any) => ({ ...r, dailyCategory: 'Đang xử lý', section: '1. VIỆC TRONG NGÀY' }));
+      const taggedCompleted = data.completedReports.map((r: any) => ({ ...r, dailyCategory: 'Hoàn thành', section: '1. VIỆC TRONG NGÀY' }));
+      const taggedPendingActive = data.pendingActiveReports.map((r: any) => ({ ...r, dailyCategory: 'Đang xử lý', section: '2. VIỆC ĐANG XỬ LÝ' }));
+      const taggedPending = data.pendingReports.map((r: any) => ({ ...r, dailyCategory: 'Tồn đọng', section: '3. VIỆC CHỜ XỬ LÝ' }));
 
-      allReports = [...taggedNew, ...taggedActive, ...taggedCompleted, ...taggedPending];
-
-      // Remove duplicates
-      const seenIds = new Set();
-      allReports = allReports.filter(r => {
-        if (seenIds.has(r.id)) return false;
-        seenIds.add(r.id);
-        return true;
-      });
+      allReports = [...taggedNew, ...taggedActive, ...taggedCompleted, ...taggedPendingActive, ...taggedPending];
 
       // Filter by category
       if (category !== 'all') {
-        if (category === 'new') allReports = allReports.filter(r => r.dailyCategory === 'Chưa làm');
-        else if (category === 'active') allReports = allReports.filter(r => r.dailyCategory === 'Đang xử lý');
-        else if (category === 'completed') allReports = allReports.filter(r => r.dailyCategory === 'Hoàn thành');
-        else if (category === 'backlog') allReports = allReports.filter(r => r.dailyCategory === 'Tồn đọng');
-        else if (category === 'priority') allReports = allReports.filter(r => r.priority >= DamageReportPriority.High);
+        if (category === 'new') allReports = allReports.filter((r: any) => r.dailyCategory === 'Chưa làm');
+        else if (category === 'active') allReports = allReports.filter((r: any) => r.dailyCategory === 'Đang xử lý' && r.section === '1. VIỆC TRONG NGÀY');
+        else if (category === 'completed') allReports = allReports.filter((r: any) => r.dailyCategory === 'Hoàn thành');
+        else if (category === 'backlog') allReports = allReports.filter((r: any) => r.section === '2. VIỆC ĐANG XỬ LÝ' || r.section === '3. VIỆC CHỜ XỬ LÝ');
+        else if (category === 'priority') allReports = allReports.filter((r: any) => r.priority >= DamageReportPriority.High);
       }
     } else {
       // Standard filtering
@@ -266,7 +259,7 @@ export async function GET(request: NextRequest) {
         .filter(Boolean) as any[];
     } else if (dailyMode) {
       // Default daily columns if not specified
-      const dailyIds = ['stt', 'id', 'reportDate', 'deviceAndLocation', 'reporterName', 'damageContent', 'handlerName', 'statusName', 'handlerNotes'];
+      const dailyIds = ['stt', 'reportDate', 'id', 'deviceAndLocation', 'reporterName', 'damageContent', 'handlerName', 'statusName', 'handlerNotes'];
       finalColumns = dailyIds.map(id => allPossibleColumns.find(c => c.id === id)).filter(Boolean) as any[];
     }
 
@@ -334,12 +327,12 @@ export async function GET(request: NextRequest) {
           totalActive: dataForSections.summary.totalActive,
           totalCompleted: dataForSections.summary.totalCompleted,
           totalPending: dataForSections.summary.totalPending,
+          totalPendingActive: dataForSections.summary.totalPendingActive,
         },
         sections: [
-          { title: 'Việc chưa xử lý', headers, rows: mapToRow(dataForSections.newReports) },
-          { title: 'Việc đang làm chưa xong', headers, rows: mapToRow(dataForSections.activeReports) },
-          { title: 'Việc đã xong', headers, rows: mapToRow(dataForSections.completedReports) },
-          { title: 'Việc tồn đọng', headers, rows: mapToRow(dataForSections.pendingReports) },
+          { title: '1. VIỆC TRONG NGÀY', headers, rows: mapToRow([...dataForSections.newReports, ...dataForSections.activeReports, ...dataForSections.completedReports]) },
+          { title: '2. VIỆC ĐANG XỬ LÝ', headers, rows: mapToRow(dataForSections.pendingActiveReports) },
+          { title: '3. VIỆC CHỜ XỬ LÝ', headers, rows: mapToRow(dataForSections.pendingReports) },
         ],
       });
     } else {

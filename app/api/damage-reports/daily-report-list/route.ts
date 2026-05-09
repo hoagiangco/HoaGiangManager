@@ -43,33 +43,24 @@ export async function GET(request: NextRequest) {
     // Flatten and tag reports
     let reports: any[] = [];
 
-    // Tag each report with its daily category
-    const taggedNew = data.newReports.map(r => ({ ...r, dailyCategory: 'Chưa làm' }));
-    const taggedActive = data.activeReports.map(r => ({ ...r, dailyCategory: 'Đang xử lý' }));
-    const taggedCompleted = data.completedReports.map(r => ({ ...r, dailyCategory: 'Hoàn thành' }));
-    const taggedPending = data.pendingReports.map(r => ({ ...r, dailyCategory: 'Tồn đọng' }));
+    // Tag each report with its daily category and section (for print/excel consistency)
+    const taggedNew = data.newReports.map(r => ({ ...r, dailyCategory: '1. VIỆC TRONG NGÀY', section: '1. VIỆC TRONG NGÀY' }));
+    const taggedActive = data.activeReports.map(r => ({ ...r, dailyCategory: '1. VIỆC TRONG NGÀY', section: '1. VIỆC TRONG NGÀY' }));
+    const taggedCompleted = data.completedReports.map(r => ({ ...r, dailyCategory: '1. VIỆC TRONG NGÀY', section: '1. VIỆC TRONG NGÀY' }));
+    const taggedPendingActive = data.pendingActiveReports.map(r => ({ ...r, dailyCategory: '2. VIỆC ĐANG XỬ LÝ', section: '2. VIỆC ĐANG XỬ LÝ' }));
+    const taggedPending = data.pendingReports.map(r => ({ ...r, dailyCategory: '3. VIỆC CHỜ XỬ LÝ', section: '3. VIỆC CHỜ XỬ LÝ' }));
 
     // Combine all
-    reports = [...taggedNew, ...taggedActive, ...taggedCompleted, ...taggedPending];
-
-    // Remove duplicates (a report might be New and Active if checked in today)
-    const seenIds = new Set();
-    reports = reports.filter(r => {
-      if (seenIds.has(r.id)) return false;
-      seenIds.add(r.id);
-      return true;
-    });
+    reports = [...taggedNew, ...taggedActive, ...taggedCompleted, ...taggedPendingActive, ...taggedPending];
 
     // Apply category filtering if requested
     if (category !== 'all') {
-      if (category === 'new') {
-        reports = reports.filter(r => r.dailyCategory === 'Chưa làm');
-      } else if (category === 'active') {
-        reports = reports.filter(r => r.dailyCategory === 'Đang xử lý');
-      } else if (category === 'completed') {
-        reports = reports.filter(r => r.dailyCategory === 'Hoàn thành');
-      } else if (category === 'backlog') {
-        reports = reports.filter(r => r.dailyCategory === 'Tồn đọng');
+      if (category === 'today') {
+        reports = reports.filter(r => r.dailyCategory === '1. VIỆC TRONG NGÀY');
+      } else if (category === 'pendingActive') {
+        reports = reports.filter(r => r.status === 3);
+      } else if (category === 'pending') {
+        reports = reports.filter(r => r.status === 1 || r.status === 2);
       } else if (category === 'priority') {
         reports = reports.filter(r => r.priority >= DamageReportPriority.High);
       }

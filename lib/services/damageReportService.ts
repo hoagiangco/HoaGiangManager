@@ -1389,11 +1389,13 @@ export class DamageReportService {
     activeReports: DamageReportVM[];
     completedReports: DamageReportVM[];
     pendingReports: DamageReportVM[];
+    pendingActiveReports: DamageReportVM[];
     summary: {
       totalNew: number;
       totalActive: number;
       totalCompleted: number;
       totalPending: number;
+      totalPendingActive: number;
     }
   }> {
     // Parse as local date components to avoid UTC timezone shift
@@ -1415,7 +1417,10 @@ export class DamageReportService {
       queryParams.push(filters.handlerId);
     }
 
-    // 1. New reports: created today
+    // 1. New reports (Việc mới): created today, Status IN (1, 2)
+    // Wait, if it's checked in today, it's in activeReports. If completed, in completedReports.
+    // We will just fetch Status IN (1, 2) created today. We'll filter out active/completed via code or query.
+    // Actually, it's easier to use the exclude mechanism or explicit NOT EXISTS.
     const newReportsRes = await pool.query(
       `SELECT 
          dr."ID" as id, dr."DeviceID" as "deviceId", dr."DamageLocation" as "damageLocation",
@@ -1439,21 +1444,21 @@ export class DamageReportService {
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
        WHERE dr."ReportDate" >= $${paramIdx} AND dr."ReportDate" <= $${paramIdx + 1}
+       AND CAST(dr."Status"::text AS INTEGER) IN (1, 2)
+       AND NOT EXISTS (
+         SELECT 1 FROM "DailyWorkLog" dwl WHERE dwl."DamageReportID" = dr."ID" AND dwl."WorkDate" = $${paramIdx + 2}::date
+       )
        ${filterClause}
        ORDER BY dr."ReportDate" DESC`,
-      [...queryParams, from, to]
+      [...queryParams, from, to, workDateStr]
     );
 
-    // 2. Active reports: checked-in today (not completed/cancelled)
-    // For active reports, if handlerId filter is active, we check the check-in staff as well
+    // 2. Active reports (Việc đang xử lý có checkin trong ngày)
     let activeFilterClause = filterClause;
     const activeParams = [...queryParams, workDateStr];
     const activeDateIdx = activeParams.length;
 
     if (filters?.handlerId && filters.handlerId > 0) {
-       // already in filterClause as dr."HandlerID" = ...
-       // But we might also want to include cases where they checked in even if not the primary handler?
-       // Usually, if filtered by staff, we want work done by THEM.
        activeFilterClause = activeFilterClause.replace(`dr."HandlerID"`, `dwl."StaffID"`);
     }
 
@@ -1489,7 +1494,7 @@ export class DamageReportService {
       activeParams
     );
 
-    // 3. Completed reports: completed today
+    // 3. Completed reports (Việc hoàn thành trong ngày)
     const completedReportsRes = await pool.query(
       `SELECT 
          dr."ID" as id, dr."DeviceID" as "deviceId", dr."DamageLocation" as "damageLocation",
@@ -1519,21 +1524,8 @@ export class DamageReportService {
       [...queryParams, from, to]
     );
 
-    // 4. Pending reports: all non-completed/cancelled, not checked-in today, not new today
-    //    AND reportDate <= selected date (to avoid showing future-dated or unrelated reports)
-    const activeIds = activeReportsRes.rows.map((r: any) => r.id);
-    const newIds = newReportsRes.rows.map((r: any) => r.id);
-    const completedIds = completedReportsRes.rows.map((r: any) => r.id);
-    const excludeIds = Array.from(new Set([...activeIds, ...newIds, ...completedIds]));
-
-    const excludeClause = excludeIds.length > 0
-      ? `AND dr."ID" NOT IN (${excludeIds.join(',')})`
-      : '';
-
-    // Add date cutoff param: only show reports created on or before the selected date
-    const pendingParams = [...queryParams, to];
-    const pendingDateIdx = pendingParams.length;
-
+    // 4. Pending Reports (Việc chờ xử lý - Tồn đọng)
+    // Created BEFORE today, Status IN (1, 2), NOT checked in today
     const pendingReportsRes = await pool.query(
       `SELECT 
          dr."ID" as id, dr."DeviceID" as "deviceId", dr."DamageLocation" as "damageLocation",
@@ -1556,12 +1548,42 @@ export class DamageReportService {
        LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
-       WHERE CAST(dr."Status"::text AS INTEGER) IN (1, 2, 3)
-         AND dr."ReportDate" <= $${pendingDateIdx}
-         ${excludeClause}
-         ${filterClause}
+       WHERE dr."ReportDate" <= $${paramIdx}
+       AND CAST(dr."Status"::text AS INTEGER) IN (1, 2)
+       ${filterClause}
        ORDER BY dr."ReportDate" ASC`,
-      pendingParams
+      [...queryParams, to]
+    );
+
+    // 5. Pending Active Reports (Việc đang xử lý - Tồn đọng)
+    // ALL reports with Status = 3, created on or before today
+    const pendingActiveReportsRes = await pool.query(
+      `SELECT 
+         dr."ID" as id, dr."DeviceID" as "deviceId", dr."DamageLocation" as "damageLocation",
+         dr."ReporterID" as "reporterId", dr."ReportingDepartmentID" as "reportingDepartmentId",
+         dr."HandlerID" as "handlerId", dr."ReportDate" as "reportDate",
+         dr."HandlingDate" as "handlingDate", dr."CompletedDate" as "completedDate",
+         dr."DamageContent" as "damageContent",
+         dr."MaintenanceBatchId" as "maintenanceBatchId",
+         CAST(dr."Status"::text AS INTEGER) as status,
+         CAST(dr."Priority"::text AS INTEGER) as priority,
+         dr."Notes" as notes, dr."HandlerNotes" as "handlerNotes",
+         d."Name" as "deviceName",
+         reporter."Name" as "reporterName",
+         handler."Name" as "handlerName",
+         loc."Name" as "deviceLocationName",
+         cat."Name" as "deviceCategoryName"
+       FROM "DamageReport" dr
+       LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
+       LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
+       LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
+       LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
+       LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
+       WHERE dr."ReportDate" <= $${paramIdx}
+       AND CAST(dr."Status"::text AS INTEGER) = 3
+       ${filterClause}
+       ORDER BY dr."ReportDate" ASC`,
+      [...queryParams, to]
     );
 
     const mapRow = (r: any): DamageReportVM => ({
@@ -1596,11 +1618,13 @@ export class DamageReportService {
       activeReports: activeReportsRes.rows.map(mapRow),
       completedReports: completedReportsRes.rows.map(mapRow),
       pendingReports: pendingReportsRes.rows.map(mapRow),
+      pendingActiveReports: pendingActiveReportsRes.rows.map(mapRow),
       summary: {
         totalNew: newReportsRes.rows.length,
         totalActive: activeReportsRes.rows.length,
         totalCompleted: completedReportsRes.rows.length,
         totalPending: pendingReportsRes.rows.length,
+        totalPendingActive: pendingActiveReportsRes.rows.length,
       }
     };
   }

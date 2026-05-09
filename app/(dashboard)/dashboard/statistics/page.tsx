@@ -28,10 +28,10 @@ const getFirstDayOfMonthStr = () => {
 const formatVietnameseDate = (dateStr: string) => {
   if (!dateStr || dateStr === '-' || dateStr === '') return '-';
   
-  // Handle ISO strings or YYYY-MM-DD
-  const isoMatch = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoMatch) {
-    return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`;
+  // If it's strictly YYYY-MM-DD without time
+  if (String(dateStr).match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const parts = String(dateStr).split('-');
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
   }
 
   try {
@@ -95,7 +95,7 @@ const columnBlacklist = [
 ];
 
 const defaultReportColumnOrder = [
-  'stt', 'deviceAndLocation', 'reportDate', 'damageContent', 'statusName', 'priorityName', 'handlerName', 'completedDate', 'notes'
+  'stt', 'reportDate', 'deviceAndLocation', 'damageContent', 'statusName', 'priorityName', 'handlerName', 'completedDate', 'notes'
 ];
 
 const defaultDeviceColumnOrder = [
@@ -236,19 +236,18 @@ export default function StatisticsPage() {
       const summary = reportListResponse?.summary;
       contentHtml = `
         <div class="summary-box">
-          <div class="summary-item" style="border-bottom: 3px solid #22c55e">Việc mới: <span style="color: #22c55e">${summary?.totalNew || 0}</span></div>
-          <div class="summary-item" style="border-bottom: 3px solid #06b6d4">Đang xử lý: <span style="color: #06b6d4">${summary?.totalActive || 0}</span></div>
-          <div class="summary-item" style="border-bottom: 3px solid #3b82f6">Đã xong: <span style="color: #3b82f6">${summary?.totalCompleted || 0}</span></div>
-          <div class="summary-item" style="border-bottom: 3px solid #ef4444">Tồn đọng: <span style="color: #ef4444">${summary?.totalPending || 0}</span></div>
+          <div class="summary-item" style="border-bottom: 3px solid #06b6d4">Việc làm hôm nay: <span style="color: #06b6d4">${(summary?.totalNew || 0) + (summary?.totalActive || 0) + (summary?.totalCompleted || 0)}</span></div>
+          <div class="summary-item" style="border-bottom: 3px solid #3b82f6">Việc hoàn thành: <span style="color: #3b82f6">${summary?.totalCompleted || 0}</span></div>
+          <div class="summary-item" style="border-bottom: 3px solid #ef4444">Việc tồn đọng: <span style="color: #ef4444">${(summary?.totalPending || 0) + (summary?.totalPendingActive || 0)}</span></div>
         </div>
-        <div class="section-title">I. Việc chưa xử lý</div>
-        ${renderTable(data.filter((r: any) => r.dailyCategory === 'Chưa làm'))}
-        <div class="section-title">II. Việc đang làm chưa xong</div>
-        ${renderTable(data.filter((r: any) => r.dailyCategory === 'Đang xử lý'))}
-        <div class="section-title">III. Việc đã xong</div>
-        ${renderTable(data.filter((r: any) => r.dailyCategory === 'Hoàn thành'))}
-        <div class="section-title">IV. Việc tồn đọng</div>
-        ${renderTable(data.filter((r: any) => r.dailyCategory === 'Tồn đọng'))}
+        <div class="section-title">1. VIỆC TRONG NGÀY</div>
+        ${renderTable(data.filter((r: any) => (r.section || r.dailyCategory) === '1. VIỆC TRONG NGÀY'))}
+        
+        <div class="section-title">2. VIỆC ĐANG XỬ LÝ</div>
+        ${renderTable(data.filter((r: any) => (r.section || r.dailyCategory) === '2. VIỆC ĐANG XỬ LÝ'))}
+
+        <div class="section-title">3. VIỆC CHỜ XỬ LÝ</div>
+        ${renderTable(data.filter((r: any) => (r.section || r.dailyCategory) === '3. VIỆC CHỜ XỬ LÝ'))}
       `;
     } else {
       contentHtml = renderTable(data);
@@ -297,14 +296,7 @@ export default function StatisticsPage() {
               <div style="margin-top: 60px;">................................</div>
             </div>
           </div>
-          <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.print();
-                window.onafterprint = function() { window.close(); };
-              }, 300);
-            };
-          </script>
+
         </body>
       </html>
     `;
@@ -562,6 +554,18 @@ export default function StatisticsPage() {
             changed = true;
           }
         });
+
+        // Auto-migration: Ensure reportDate is right after stt
+        const sttIdx = finalSaved!.findIndex(c => c.id.toLowerCase() === 'stt');
+        const rdIdx = finalSaved!.findIndex(c => c.id.toLowerCase() === 'reportdate');
+        if (sttIdx !== -1 && rdIdx !== -1 && rdIdx !== sttIdx + 1) {
+          const rdCol = finalSaved![rdIdx];
+          finalSaved!.splice(rdIdx, 1);
+          const newSttIdx = finalSaved!.findIndex(c => c.id.toLowerCase() === 'stt');
+          finalSaved!.splice(newSttIdx + 1, 0, rdCol);
+          changed = true;
+        }
+
         if (changed) saveCols('hg_cols_report', finalSaved!);
       }
 
@@ -767,7 +771,7 @@ export default function StatisticsPage() {
                 <label className="form-check-label fw-bold d-flex align-items-center mb-0" htmlFor="dailyReportMode" style={{ fontSize: '0.75rem', cursor: 'pointer' }}>
                   <span className={!reportFilters.dailyMode ? 'text-primary' : 'text-muted opacity-50'}>All</span>
                   <span className="mx-1 text-muted">|</span>
-                  <span className={reportFilters.dailyMode ? 'text-success' : 'text-muted opacity-50'}>Hôm nay</span>
+                  <span className={reportFilters.dailyMode ? 'text-success' : 'text-muted opacity-50'}>Today</span>
                 </label>
               </div>
 
@@ -1004,10 +1008,9 @@ export default function StatisticsPage() {
                       onChange={e => setReportFilters(prev => ({ ...prev, dailyCategory: e.target.value }))}
                     >
                       <option value="all">Tất cả</option>
-                      <option value="new">Việc mới</option>
-                      <option value="active">Đang xử lý</option>
-                      <option value="completed">Hoàn thành</option>
-                      <option value="backlog">Tồn đọng</option>
+                      <option value="today">Việc trong ngày</option>
+                      <option value="pendingActive">Việc đang xử lý</option>
+                      <option value="pending">Việc chờ xử lý</option>
                     </select>
                   ) : (
                     <select 
@@ -1088,10 +1091,9 @@ export default function StatisticsPage() {
               <div className="d-flex flex-wrap gap-3 mb-2 p-2 bg-white rounded border d-print-none">
                 {reportFilters.dailyMode ? (
                   [
-                    { label: 'Việc mới', value: reportListResponse?.summary?.totalNew, color: 'success' },
-                    { label: 'Đang xử lý', value: reportListResponse?.summary?.totalActive, color: 'info' },
-                    { label: 'Hoàn thành', value: reportListResponse?.summary?.totalCompleted, color: 'primary' },
-                    { label: 'Tồn đọng', value: reportListResponse?.summary?.totalPending, color: 'danger' },
+                    { label: 'Việc làm hôm nay', value: (reportListResponse?.summary?.totalNew || 0) + (reportListResponse?.summary?.totalActive || 0) + (reportListResponse?.summary?.totalCompleted || 0), color: 'info' },
+                    { label: 'Việc hoàn thành', value: reportListResponse?.summary?.totalCompleted, color: 'primary' },
+                    { label: 'Việc tồn đọng', value: (reportListResponse?.summary?.totalPending || 0) + (reportListResponse?.summary?.totalPendingActive || 0), color: 'danger' },
                   ].map((stat, idx) => (
                     <div key={idx} className="d-flex align-items-center gap-1 border-end pe-3">
                       <span className="x-small text-muted uppercase fw-bold">{stat.label}:</span>
