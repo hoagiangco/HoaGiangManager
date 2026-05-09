@@ -116,28 +116,32 @@ export async function generateDailyReportExcel(data: {
 
   worksheet.addRow([]); // Single Gap
 
-  // 3. Summary Section - Compact Horizontal Layout
-  const summaryRow = worksheet.addRow([
-    '', 'Việc mới:', data.summary.totalNew,
-    'Đang xử lý:', data.summary.totalActive ?? 0,
-    'Đã xong:', data.summary.totalCompleted,
-    'Tồn đọng:', data.summary.totalPending
-  ]);
+  // 3. Summary Section - Balanced Horizontal Layout using merged cells
+  const summaryRowNum = worksheet.addRow([]).number;
+  worksheet.getRow(summaryRowNum).height = 25;
 
-  summaryRow.height = 20;
-  const summaryColors = ['FF22C55E', 'FF06B6D4', 'FF3B82F6', 'FFEF4444']; // success, info, primary, danger
-  
-  // Align metrics across the columns (leaving Col 1 empty for padding)
-  [2, 4, 6, 8].forEach((colIdx, i) => {
-    const labelCell = summaryRow.getCell(colIdx);
-    const valueCell = summaryRow.getCell(colIdx + 1);
+  const stats = [
+    { label: 'Việc mới:', value: data.summary.totalNew, color: 'FF22C55E', cols: [2, 3] },
+    { label: 'Đang xử lý:', value: data.summary.totalActive ?? 0, color: 'FF06B6D4', cols: [4, 4] },
+    { label: 'Đã xong:', value: data.summary.totalCompleted, color: 'FF3B82F6', cols: [5, 6] },
+    { label: 'Tồn đọng:', value: data.summary.totalPending, color: 'FFEF4444', cols: [7, 8] }
+  ];
+
+  stats.forEach(s => {
+    const cell = worksheet.getCell(summaryRowNum, s.cols[0]);
+    cell.value = {
+      richText: [
+        { text: s.label + ' ', font: { bold: true, size: 10, color: { argb: 'FF475569' } } },
+        { text: String(s.value), font: { bold: true, size: 11, color: { argb: s.color } } }
+      ]
+    };
     
-    labelCell.font = { bold: true, size: 10, color: { argb: 'FF475569' } };
-    labelCell.alignment = { horizontal: 'right', vertical: 'middle' };
+    if (s.cols[0] !== s.cols[1]) {
+      worksheet.mergeCells(summaryRowNum, s.cols[0], summaryRowNum, s.cols[1]);
+    }
     
-    valueCell.font = { bold: true, size: 11, color: { argb: summaryColors[i] } };
-    valueCell.alignment = { horizontal: 'left', vertical: 'middle' };
-    valueCell.border = { bottom: { style: 'medium', color: { argb: summaryColors[i] } } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    cell.border = { bottom: { style: 'medium', color: { argb: s.color } } };
   });
 
   worksheet.addRow([]); // Single Gap

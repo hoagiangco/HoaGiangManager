@@ -236,10 +236,10 @@ export default function StatisticsPage() {
       const summary = reportListResponse?.summary;
       contentHtml = `
         <div class="summary-box">
-          <div class="summary-item">Việc mới: <span style="color: #22c55e">${summary?.totalNew || 0}</span></div>
-          <div class="summary-item">Đang xử lý: <span style="color: #06b6d4">${summary?.totalActive || 0}</span></div>
-          <div class="summary-item">Hoàn thành: <span style="color: #3b82f6">${summary?.totalCompleted || 0}</span></div>
-          <div class="summary-item">Tồn đọng: <span style="color: #ef4444">${summary?.totalPending || 0}</span></div>
+          <div class="summary-item" style="border-bottom: 3px solid #22c55e">Việc mới: <span style="color: #22c55e">${summary?.totalNew || 0}</span></div>
+          <div class="summary-item" style="border-bottom: 3px solid #06b6d4">Đang xử lý: <span style="color: #06b6d4">${summary?.totalActive || 0}</span></div>
+          <div class="summary-item" style="border-bottom: 3px solid #3b82f6">Đã xong: <span style="color: #3b82f6">${summary?.totalCompleted || 0}</span></div>
+          <div class="summary-item" style="border-bottom: 3px solid #ef4444">Tồn đọng: <span style="color: #ef4444">${summary?.totalPending || 0}</span></div>
         </div>
         <div class="section-title">I. Việc chưa xử lý</div>
         ${renderTable(data.filter((r: any) => r.dailyCategory === 'Chưa làm'))}
@@ -272,8 +272,8 @@ export default function StatisticsPage() {
             th { background-color: #475569 !important; color: white !important; border: 1px solid #334155; padding: 8px; font-size: 9pt; text-transform: uppercase; -webkit-print-color-adjust: exact; }
             td { border: 1px solid #cbd5e1; padding: 6px; vertical-align: middle; font-size: 9pt; word-wrap: break-word; }
             .section-title { font-size: 11pt; font-weight: bold; color: #2563eb; margin-top: 25px; margin-bottom: 8px; border-left: 4px solid #2563eb; padding-left: 10px; }
-            .summary-box { display: flex; justify-content: center; gap: 30px; margin-bottom: 20px; padding: 12px; background-color: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; }
-            .summary-item { font-weight: bold; font-size: 10pt; }
+            .summary-box { display: flex; justify-content: center; gap: 40px; margin-bottom: 25px; padding: 0 20px; }
+            .summary-item { font-weight: bold; font-size: 10.5pt; padding: 5px 15px; min-width: 120px; text-align: center; }
             tr:nth-child(even) { background-color: #fcfcfc; }
           </style>
         </head>
