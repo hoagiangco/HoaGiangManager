@@ -248,7 +248,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Prepare data for Excel (Friendly labels)
-    const excelData = allReports.map(report => {
+    const excelData = allReports.map((report, index) => {
       const reporterName = report.reporterName || staffMap.get(report.reporterId) || 'N/A';
       const handlerName = report.handlerName || (report.handlerId ? (staffMap.get(report.handlerId) || 'N/A') : 'Chưa phân công');
       
@@ -260,6 +260,7 @@ export async function GET(request: NextRequest) {
 
       if (dailyMode) {
         return {
+          'STT': index + 1,
           'Mã số': report.id,
           'Ngày báo cáo': formatDateDisplay(report.reportDate) || '',
           'Thiết bị/Vị trí': deviceName,
@@ -274,6 +275,7 @@ export async function GET(request: NextRequest) {
       const departmentName = report.reporterDepartmentName || deptMap.get(report.reportingDepartmentId) || 'N/A';
       
       return {
+        'STT': index + 1,
         'ID': report.id,
         'Ngày báo cáo': formatDateDisplay(report.reportDate) || '',
         'Người báo cáo': reporterName,
@@ -284,10 +286,8 @@ export async function GET(request: NextRequest) {
         'Thiết bị/Vị trí': deviceName,
         'Nội dung báo cáo': stripHtml(report.damageContent || ''),
         'Trạng thái': report.statusName || statusMap[report.status as DamageReportStatus] || '',
-        'Mức độ ưu tiên': report.priorityName || priorityMap[report.priority as DamageReportPriority] || '',
+        'Mức độ': report.priorityName || priorityMap[report.priority as DamageReportPriority] || '',
         'Tiến độ xử lý': formatTimelineForExcel(report.handlerNotes || ''),
-        'Ngày tạo': formatDateTime(report.createdAt) || '',
-        'Người cập nhật': report.updatedByName || '',
       };
     });
 
@@ -351,9 +351,9 @@ export async function GET(request: NextRequest) {
       const rows = excelData.map(row => Object.values(row));
 
       excelBuffer = await generateExcelFile({
-        title: 'BÁO CÁO TỔNG HỢP',
+        title: 'BÁO CÁO CÔNG VIỆC',
         department: finalDeptName,
-        dateRange: `Từ ngày: ${formatDateRange(from, to)}`,
+        dateRange: `Từ ngày: ${formatDateDisplay(from)} đến ngày: ${formatDateDisplay(to)}`,
         headers,
         rows,
         fileName,

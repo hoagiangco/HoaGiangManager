@@ -436,18 +436,23 @@ export default function StatisticsPage() {
       
       const endpoint = tab === 'reports' ? '/damage-reports/export' : '/statistics/export';
       
-      // If it's a daily report, we want to download the server-generated Excel directly 
-      // because it has specialized formatting (sections, summary, etc.)
-      if (tab === 'reports' && filters.dailyMode) {
-        const downloadUrl = `${api.defaults.baseURL}${endpoint}?${params.toString()}`;
-        // Use fetch/blob to handle authentication headers if needed, or window.location if not
+      // Always use server-side Excel for Reports tab to get professional formatting (sections, landscape, etc.)
+      if (tab === 'reports') {
         const response = await api.get(`${endpoint}?${params.toString()}`, { responseType: 'blob' });
         
         const url = window.URL.createObjectURL(new Blob([response.data]));
         const link = document.createElement('a');
         link.href = url;
-        const fileName = `BaoCaoNgay_${filters.fromDate || getLocalDateStr()}.xlsx`;
-        link.setAttribute('download', fileName);
+        
+        // Generate a nice filename
+        let fileName = 'Bao_Cao_Cong_Viec';
+        if (filters.dailyMode) {
+          fileName = `Bao_Cao_Ngay_${filters.fromDate || getLocalDateStr()}`;
+        } else {
+          fileName = `Bao_Cao_Tong_Hop_${filters.fromDate || ''}_den_${filters.toDate || ''}`;
+        }
+        
+        link.setAttribute('download', `${fileName}.xlsx`);
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -457,7 +462,7 @@ export default function StatisticsPage() {
         return;
       }
 
-      // Fallback/Standard Mode: Client-side generation (to respect custom column selection)
+      // Fallback for other tabs (Devices)
       params.append('preview', 'true'); 
       const response = await api.get(`${endpoint}?${params.toString()}`);
       
@@ -470,7 +475,7 @@ export default function StatisticsPage() {
       }
 
       const visibleColIds = cols.filter(c => c.visible).map(c => c.id);
-      const titlePrefix = tab === 'devices' ? 'THIẾT BỊ' : 'BÁO CÁO';
+      const titlePrefix = 'THIẾT BỊ';
       
       const columns = visibleColIds.map(id => ({
         id: id,
@@ -516,7 +521,7 @@ export default function StatisticsPage() {
 
       await exportToExcel({
         title: `THỐNG KÊ CHI TIẾT ${titlePrefix}`,
-        filename: `Thống_kê_${tab}`,
+        filename: `Thống_kê_thiet_bi`,
         columns: columns,
         data: formattedData
       });
@@ -711,8 +716,10 @@ export default function StatisticsPage() {
                       if (isDaily) setShowPreview(prev => ({ ...prev, reports: true }));
                     }}
                   />
-                  <label className="form-check-label fw-bold text-success" htmlFor="dailyReportMode" style={{ fontSize: '0.85rem', cursor: 'pointer' }}>
-                    <i className="fas fa-calendar-check me-1"></i> Chế độ Báo cáo ngày
+                  <label className="form-check-label fw-bold d-flex align-items-center" htmlFor="dailyReportMode" style={{ fontSize: '0.85rem', cursor: 'pointer' }}>
+                    <span className={!reportFilters.dailyMode ? 'text-primary' : 'text-muted opacity-50'}>Bc tổng hợp</span>
+                    <span className="mx-1 text-muted">/</span>
+                    <span className={reportFilters.dailyMode ? 'text-success' : 'text-muted opacity-50'}>Bc ngày</span>
                   </label>
                 </div>
 

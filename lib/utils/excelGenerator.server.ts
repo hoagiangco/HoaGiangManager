@@ -9,56 +9,73 @@ export async function generateExcelFile(data: {
   rows: any[][];
   fileName: string;
 }): Promise<Buffer> {
-  // Use require at runtime to avoid build-time issues
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const ExcelJS = require('exceljs');
-  
-  // Create workbook
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Báo cáo');
 
-  // Add title row
+  // Set Page Orientation to Landscape and A4
+  worksheet.pageSetup = {
+    orientation: 'landscape',
+    paperSize: 9, // A4
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    margins: { left: 0.3, right: 0.3, top: 0.3, bottom: 0.3, header: 0, footer: 0 }
+  };
+
+  // 1. Header Information
   const titleRow = worksheet.addRow([data.title]);
-  titleRow.font = { bold: true, size: 14 };
-  titleRow.alignment = { horizontal: 'center', vertical: 'middle' };
+  titleRow.font = { bold: true, size: 16, color: { argb: 'FF1E293B' } };
+  titleRow.alignment = { horizontal: 'center' };
   worksheet.mergeCells(1, 1, 1, data.headers.length);
 
-  // Add department row
-  const deptRow = worksheet.addRow(['Bộ phận báo cáo: ' + data.department]);
-  deptRow.font = { bold: true };
+  const infoRow = worksheet.addRow([`Bộ phận: ${data.department}  |  ${data.dateRange}`]);
+  infoRow.font = { italic: true, size: 11, color: { argb: 'FF475569' } };
+  infoRow.alignment = { horizontal: 'center' };
   worksheet.mergeCells(2, 1, 2, data.headers.length);
 
-  // Add date range row
-  const dateRow = worksheet.addRow([data.dateRange]);
-  dateRow.font = { bold: true };
-  worksheet.mergeCells(3, 1, 3, data.headers.length);
+  worksheet.addRow([]); // Gap
 
-  // Empty row
-  worksheet.addRow(['']);
-
-  // Add headers
+  // 2. Add Table Headers
   const headerRow = worksheet.addRow(data.headers);
-  headerRow.font = { bold: true };
-  headerRow.fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FFE0E0E0' }
-  };
-  headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
-
-  // Add data rows
-  data.rows.forEach(row => {
-    worksheet.addRow(row);
+  headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  headerRow.height = 25;
+  headerRow.eachCell((cell: any) => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
   });
 
-  // Set column widths
-  data.headers.forEach((_, index) => {
-    worksheet.getColumn(index + 1).width = 15;
+  // 3. Add Data Rows
+  data.rows.forEach(rowData => {
+    const row = worksheet.addRow(rowData);
+    row.eachCell((cell: any) => {
+      cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+      cell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left' };
+      
+      // Center align specific columns like STT, ID, Dates, Status
+      const colIdx = cell.fullAddress.col;
+      const header = data.headers[colIdx - 1]?.toLowerCase() || '';
+      if (header === 'stt' || header === 'id' || header.includes('ngày') || header === 'trạng thái' || header === 'mức độ') {
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      }
+    });
   });
 
-  // Generate buffer
+  // 4. Smart Column Widths
+  data.headers.forEach((header, index) => {
+    const h = header.toLowerCase();
+    let width = 15;
+    if (h === 'stt') width = 6;
+    else if (h === 'id' || h === 'mã số') width = 10;
+    else if (h.includes('ngày')) width = 14;
+    else if (h.includes('nội dung') || h.includes('tiến độ') || h.includes('ghi chú')) width = 45;
+    else if (h.includes('thiết bị') || h.includes('vị trí')) width = 25;
+    
+    worksheet.getColumn(index + 1).width = width;
+  });
+
   const buffer = await workbook.xlsx.writeBuffer();
-  
   return Buffer.from(buffer);
 }
 
