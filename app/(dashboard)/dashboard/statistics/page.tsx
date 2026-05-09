@@ -542,7 +542,7 @@ export default function StatisticsPage() {
             changed = true;
           }
         });
-        if (changed) saveCols('hg_cols_report', finalSaved);
+        if (changed) saveCols('hg_cols_report', finalSaved!);
       }
 
       if (finalSaved) {
