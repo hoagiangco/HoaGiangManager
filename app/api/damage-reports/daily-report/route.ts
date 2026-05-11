@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/auth/middleware';
 import { DamageReportService } from '@/lib/services/damageReportService';
-import { formatDateDisplay, formatDateFilename } from '@/lib/utils/dateFormat';
+import { getVNTodayStr, formatDateDisplay, formatDateFilename } from '@/lib/utils/dateFormat';
 import { generateDailyReportExcel } from '@/lib/utils/excelGenerator.server';
 import { formatTimelineForExcel } from '@/lib/utils/formatTimeline';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,11 +35,7 @@ export async function GET(request: NextRequest) {
     if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
       targetDateStr = dateParam;
     } else {
-      const now = new Date();
-      const y = now.getFullYear();
-      const m = String(now.getMonth() + 1).padStart(2, '0');
-      const d = String(now.getDate()).padStart(2, '0');
-      targetDateStr = `${y}-${m}-${d}`;
+      targetDateStr = getVNTodayStr();
     }
     // Parse for display purposes (formatDateDisplay)
     const [py, pm, pd] = targetDateStr.split('-').map(Number);

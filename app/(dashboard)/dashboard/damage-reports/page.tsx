@@ -41,13 +41,14 @@ const getLatestNoteContent = (value: string | undefined | null): string => {
 };
 
 // Handler Notes Editor Component
-const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false, canEdit = true, isAdding, setIsAdding }: {
+const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false, canEdit = true, isAdmin = false, isAdding, setIsAdding }: {
   reportId: number;
   value: string;
   onChange: (value: string) => void;
   onClick?: (e: React.MouseEvent) => void;
   isCard?: boolean;
   canEdit?: boolean;
+  isAdmin?: boolean;
   isAdding: boolean;
   setIsAdding: (isAdding: boolean) => void;
 }) => {
@@ -60,10 +61,28 @@ const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false
   const userTimeline = useMemo(() => timeline.filter(e => e.type !== 'auto'), [timeline]);
   const latestNote = userTimeline.length > 0 ? userTimeline[userTimeline.length - 1] : null;
 
+  const containerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (isAdding && inputRef.current) {
       inputRef.current.focus();
     }
+  }, [isAdding]);
+
+  // Handle click outside for card mode or non-modal mode if any
+  useEffect(() => {
+    if (!isAdding) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      // If we are in modal mode, the modal background handles it.
+      // But we can also check the containerRef if needed.
+      // Since the modal is a child of the container, we check if the click is outside the white box.
+      // Actually, HandlerNotesEditor uses a position-fixed overlay which is a child.
+      // The current modal implementation already has a background click handler.
+    };
+    
+    // document.addEventListener('mousedown', handleClickOutside);
+    // return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isAdding]);
 
   const handleSave = async (e?: React.MouseEvent) => {
@@ -104,6 +123,56 @@ const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false
     }
   };
 
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState('');
+
+  const handleUpdateEntry = async (entryId: string) => {
+    if (!editingContent.trim()) return;
+    const updatedTimeline = timeline.map(entry => 
+      entry.id === entryId ? { ...entry, content: editingContent.trim() } : entry
+    );
+    try {
+      await onChange(JSON.stringify(updatedTimeline));
+      setEditingEntryId(null);
+      setEditingContent('');
+    } catch (error) {
+      // Error handled by parent
+    }
+  };
+
+  const handleDeleteEntry = async (entryId: string) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa ghi chú này?')) return;
+    const updatedTimeline = timeline.filter(entry => entry.id !== entryId);
+    try {
+      await onChange(JSON.stringify(updatedTimeline));
+    } catch (error) {
+      // Error handled by parent
+    }
+  };
+
+  // Robust click outside handling for the modal
+  useEffect(() => {
+    if (!isAdding) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
+        handleCancel();
+      }
+    };
+
+    // Use a small timeout to avoid catching the same event that opened it
+    const timeout = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 10);
+
+    return () => {
+      clearTimeout(timeout);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isAdding]);
+
   return (
     <div className="d-flex flex-column" onClick={(e) => { e.stopPropagation(); if (onClick) onClick(e); }} style={{ width: '100%', position: 'relative' }}>
       {/* Latest note display */}
@@ -117,7 +186,15 @@ const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false
           transition: 'all 0.2s ease',
           boxShadow: isAdding ? '0 0 0 2px rgba(59, 130, 246, 0.1)' : 'none'
         }} 
-        onClick={() => canEdit && !isAdding && setIsAdding(true)}
+        onClick={(e) => {
+          if (canEdit && !isAdding) {
+            e.stopPropagation();
+            setIsAdding(true);
+          } else if (isAdding) {
+            // Prevent bubbling to document or parent if already adding
+            e.stopPropagation();
+          }
+        }}
       >
         <div style={{ flex: 1 }}>
           {latestNote ? (
@@ -169,6 +246,7 @@ const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false
           onClick={handleCancel}
         >
           <div 
+            ref={modalRef}
             className="bg-white rounded shadow-lg p-3 w-100" 
             style={{ 
               maxWidth: '450px',
@@ -258,13 +336,52 @@ const HandlerNotesEditor = ({ reportId, value, onChange, onClick, isCard = false
                         {entry.type === 'auto' && <i className="fas fa-robot me-1 text-success"></i>}
                         {entry.author}
                       </span>
-                      <span className="text-muted" style={{ fontSize: '0.7rem' }}>
-                        {formatDateLabel(entry.timestamp)}
-                      </span>
+                      <div className="d-flex align-items-center gap-2">
+                        {isAdmin && entry.type !== 'auto' && (
+                          <div className="d-flex gap-1 me-2">
+                            <button 
+                              className="btn btn-link p-0 text-primary" 
+                              style={{ fontSize: '0.7rem' }}
+                              onClick={() => {
+                                setEditingEntryId(entry.id);
+                                setEditingContent(entry.content);
+                              }}
+                            >
+                              <i className="fas fa-edit"></i>
+                            </button>
+                            <button 
+                              className="btn btn-link p-0 text-danger" 
+                              style={{ fontSize: '0.7rem' }}
+                              onClick={() => handleDeleteEntry(entry.id)}
+                            >
+                              <i className="fas fa-trash-alt"></i>
+                            </button>
+                          </div>
+                        )}
+                        <span className="text-muted" style={{ fontSize: '0.7rem' }}>
+                          {formatDateLabel(entry.timestamp)}
+                        </span>
+                      </div>
                     </div>
-                    <div className={entry.type === 'auto' ? 'text-success fst-italic' : 'text-dark'} style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>
-                      {entry.content}
-                    </div>
+                    {editingEntryId === entry.id ? (
+                      <div className="mt-1">
+                        <textarea 
+                          className="form-control form-control-sm mb-2" 
+                          value={editingContent}
+                          onChange={(e) => setEditingContent(e.target.value)}
+                          style={{ fontSize: '0.8rem' }}
+                          rows={3}
+                        />
+                        <div className="d-flex justify-content-end gap-2">
+                          <button className="btn btn-sm btn-primary py-0" onClick={() => handleUpdateEntry(entry.id)}>Lưu</button>
+                          <button className="btn btn-sm btn-light border py-0" onClick={() => setEditingEntryId(null)}>Hủy</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={entry.type === 'auto' ? 'text-success fst-italic' : 'text-dark'} style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>
+                        {entry.content}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -303,6 +420,18 @@ const DailyCheckinButton = ({
       setIsLoading(false);
     }
   }, [initialData]);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showNotes && containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setShowNotes(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showNotes]);
 
   useEffect(() => {
     if (!initialData) {
@@ -463,7 +592,7 @@ const DailyCheckinButton = ({
   }
 
   return (
-    <div className="daily-checkin-container position-relative" onClick={e => e.stopPropagation()}>
+    <div ref={containerRef} className="daily-checkin-container position-relative" onClick={e => e.stopPropagation()}>
       {showNotes ? (
         <div className="d-flex flex-column gap-2 mt-1 p-2 bg-white rounded border shadow-sm position-absolute" style={{ minWidth: '200px', zIndex: 100, left: 0, top: '100%' }}>
           <textarea 
@@ -630,6 +759,17 @@ export default function DamageReportsPage() {
     targetStatus: DamageReportStatus.Completed,
   });
 
+  const hasNotesToday = (handlerNotes: string | undefined | null) => {
+    if (!handlerNotes) return false;
+    const timeline = parseTimeline(handlerNotes);
+    const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+    return timeline.some(entry => {
+      if (entry.type === 'auto') return false;
+      const entryDate = new Date(entry.timestamp).toLocaleDateString('en-CA');
+      return entryDate === todayStr;
+    });
+  };
+
   // Modal device filter state
   const [modalDeviceCategoryId, setModalDeviceCategoryId] = useState<number>(0);
   const [modalDeviceSearch, setModalDeviceSearch] = useState('');
@@ -764,22 +904,7 @@ export default function DamageReportsPage() {
     };
   }, []);
 
-  // Close note editor when clicking outside
-  useEffect(() => {
-    if (editingNoteReportId !== null) {
-      const handleGlobalClick = () => {
-        setEditingNoteReportId(null);
-      };
-      // Use a small timeout to avoid immediate closing when clicking the toggle button
-      const timeout = setTimeout(() => {
-        document.addEventListener('click', handleGlobalClick);
-      }, 0);
-      return () => {
-        clearTimeout(timeout);
-        document.removeEventListener('click', handleGlobalClick);
-      };
-    }
-  }, [editingNoteReportId]);
+  // Note editor click outside is now handled within HandlerNotesEditor component
 
   const openQuickView = (reportId: number) => {
     setSelectedQuickReportId(reportId);
@@ -2072,12 +2197,13 @@ export default function DamageReportsPage() {
     try {
       const response = await api.put(`/damage-reports/${reportId}/handler-notes`, { handlerNotes: newHandlerNotes });
       if (response.data.status) {
-        // Update local state immediately for better UX
+        const actualNotes = response.data.data;
+        // Update local state immediately with the ACTUAL notes returned from server for better UX and consistency
         setReports(prev => prev.map(r =>
-          r.id === reportId ? { ...r, handlerNotes: newHandlerNotes } : r
+          r.id === reportId ? { ...r, handlerNotes: actualNotes } : r
         ));
         setAllReports(prev => prev.map(r =>
-          r.id === reportId ? { ...r, handlerNotes: newHandlerNotes } : r
+          r.id === reportId ? { ...r, handlerNotes: actualNotes } : r
         ));
         toast.success('Cập nhật ghi chú thành công');
       } else {
@@ -2238,12 +2364,12 @@ export default function DamageReportsPage() {
 
               <div className="ms-md-1 d-flex gap-1 align-items-center">
                 {/* Secondary actions */}
-                {(isAdmin(currentUser?.roles) || userPermissions.canEdit || userPermissions.canDelete) && (
+                {(isAdmin(currentUser?.roles) || userPermissions.canEdit || userPermissions.canDelete || (selectedIds.length === 1 && (allReports.find(r => r.id === selectedIds[0])?.handlerId === currentUserStaffId || allReports.find(r => r.id === selectedIds[0])?.reporterId === currentUserStaffId))) && (
                   <div ref={overflowMenuRef} style={{ position: 'relative' }}>
                     {/* Desktop: nút inline riêng lẻ */}
                     <div className="d-none d-md-flex gap-1 align-items-center">
                       {/* Buttons removed: ColumnDropdown and Export Excel */}
-                      {userPermissions.canEdit && (
+                      {(userPermissions.canEdit || (selectedIds.length === 1 && (allReports.find(r => r.id === selectedIds[0])?.handlerId === currentUserStaffId || allReports.find(r => r.id === selectedIds[0])?.reporterId === currentUserStaffId))) && (
                         <button
                           className="btn btn-outline-secondary btn-sm d-flex align-items-center justify-content-center"
                           onClick={handleEdit}
@@ -2287,7 +2413,7 @@ export default function DamageReportsPage() {
                           minWidth: '170px',
                           overflow: 'hidden'
                         }}>
-                          {userPermissions.canEdit && (
+                          {(userPermissions.canEdit || (selectedIds.length === 1 && (allReports.find(r => r.id === selectedIds[0])?.handlerId === currentUserStaffId || allReports.find(r => r.id === selectedIds[0])?.reporterId === currentUserStaffId))) && (
                             <button
                               className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start py-3 px-3"
                               style={{ fontSize: '0.85rem', cursor: 'pointer' }}
@@ -2638,10 +2764,10 @@ export default function DamageReportsPage() {
                                   )}
                                 </div>
                                 {/* Daily check-in button icon */}
-                                <div style={{ width: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: '1px solid #e2e8f0' }}>
-                                  {report.status !== DamageReportStatus.Completed && report.status !== DamageReportStatus.Cancelled && report.status !== DamageReportStatus.Rejected && (isAdmin(currentUser?.roles) || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) ? (
-                                    <DailyCheckinButton reportId={report.id} initialData={getCheckinStatus(report.id)} onCheckinChange={() => mutateCheckins()} compact={true} />
-                                  ) : (
+                              <div style={{ width: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: '1px solid #e2e8f0' }}>
+                                {(report.status === DamageReportStatus.InProgress && (isAdmin(currentUser?.roles) || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && !hasNotesToday(report.handlerNotes)) ? (
+                                  <DailyCheckinButton reportId={report.id} initialData={getCheckinStatus(report.id)} onCheckinChange={() => mutateCheckins()} compact={true} />
+                                ) : (
                                     <span style={{ width: '100%', display: 'block' }} />
                                   )}
                                 </div>
@@ -2773,6 +2899,7 @@ export default function DamageReportsPage() {
                               value={report.handlerNotes || ''}
                               onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
                               canEdit={(userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && report.status !== DamageReportStatus.Completed}
+                              isAdmin={isAdmin(currentUser?.roles)}
                               isAdding={editingNoteReportId === report.id}
                               setIsAdding={(adding) => setEditingNoteReportId(adding ? report.id : null)}
                             />
@@ -2914,10 +3041,9 @@ export default function DamageReportsPage() {
                             </button>
                           )}
                           {/* Daily check-in button in header */}
-                          {report.status !== DamageReportStatus.Completed &&
-                           report.status !== DamageReportStatus.Cancelled &&
-                           report.status !== DamageReportStatus.Rejected &&
-                           (isAdmin(currentUser?.roles) || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && (
+                          {report.status === DamageReportStatus.InProgress &&
+                           (isAdmin(currentUser?.roles) || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && 
+                           !hasNotesToday(report.handlerNotes) && (
                             <div onClick={(e) => e.stopPropagation()}>
                               <DailyCheckinButton reportId={report.id} initialData={getCheckinStatus(report.id)} onCheckinChange={() => mutateCheckins()} compact={true} cardHeader={true} />
                             </div>
@@ -3103,6 +3229,7 @@ export default function DamageReportsPage() {
                                      report.status !== DamageReportStatus.Completed && 
                                      report.status !== DamageReportStatus.Cancelled && 
                                      report.status !== DamageReportStatus.Rejected}
+                            isAdmin={isAdmin(currentUser?.roles)}
                             isAdding={editingNoteReportId === report.id}
                             setIsAdding={(adding) => setEditingNoteReportId(adding ? report.id : null)}
                           />
@@ -3511,7 +3638,7 @@ export default function DamageReportsPage() {
                           className="form-select form-select-sm shadow-none" 
                           value={formData.handlerId || 0} 
                           onChange={(e) => setFormData({ ...formData, handlerId: Number(e.target.value) || undefined })} 
-                          disabled={isEdit && !isAdmin(currentUser?.roles)}
+                          disabled={isEdit && !userPermissions.canEdit && (currentUserStaffId === null || (formData.handlerId !== currentUserStaffId && formData.reporterId !== currentUserStaffId))}
                           style={{ minHeight: '28px', fontSize: '0.75rem' }}
                         >
                           <option value={0}>-- Phân công --</option>

@@ -111,7 +111,11 @@ export const exportToExcel = async ({
     // Generate and Download
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    saveAs(blob, `${filename}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    saveAs(blob, `${filename}_${day}-${month}-${year}.xlsx`);
 
     return true;
   } catch (error) {

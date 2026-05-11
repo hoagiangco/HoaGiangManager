@@ -2,6 +2,7 @@ import pool from '../db';
 import { PoolClient } from 'pg';
 import { NotificationService, NotificationType, NotificationCategory } from './notificationService';
 import { Event, EventVM, EventStatus } from '@/types';
+import { getVNNow } from '../utils/dateFormat';
 
 export class EventService {
   private async ensureEventSequence(client?: PoolClient): Promise<void> {
@@ -247,7 +248,7 @@ export class EventService {
   async create(event: Omit<Event, 'id'>): Promise<number> {
     await this.ensureEventSequence();
 
-    const now = new Date();
+    const now = getVNNow();
     const result = await pool.query(
       `INSERT INTO "Event" (
         "Title", "DeviceID", "EventTypeID", "Description", "Notes",

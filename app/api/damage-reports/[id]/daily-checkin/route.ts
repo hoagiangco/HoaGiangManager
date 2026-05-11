@@ -118,8 +118,8 @@ export async function POST(
     const result = await pool.query(
       `INSERT INTO "DailyWorkLog" ("DamageReportID", "StaffID", "WorkDate", "Notes", "UpdatedAt")
        VALUES ($1, $2, $3::date, $4, CURRENT_TIMESTAMP)
-       ON CONFLICT ("DamageReportID", "StaffID", "WorkDate")
-       DO UPDATE SET "Notes" = EXCLUDED."Notes", "UpdatedAt" = CURRENT_TIMESTAMP
+       ON CONFLICT ("DamageReportID", "WorkDate")
+       DO UPDATE SET "Notes" = EXCLUDED."Notes", "StaffID" = EXCLUDED."StaffID", "UpdatedAt" = CURRENT_TIMESTAMP
        RETURNING *`,
       [reportId, staff.id, workDate, notes]
     );
@@ -168,8 +168,8 @@ export async function DELETE(
 
     await pool.query(
       `DELETE FROM "DailyWorkLog" 
-       WHERE "DamageReportID" = $1 AND "StaffID" = $2 AND "WorkDate" = $3::date`,
-      [reportId, staff.id, workDate]
+       WHERE "DamageReportID" = $1 AND "WorkDate" = $2::date`,
+      [reportId, workDate]
     );
 
     // Auto-append to timeline

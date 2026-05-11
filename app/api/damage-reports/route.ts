@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/auth/middleware';
 import { DamageReportService } from '@/lib/services/damageReportService';
 import { DamageReportStatus, DamageReportPriority } from '@/types';
+import { getVNTodayStr } from '@/lib/utils/dateFormat';
 
 export async function GET(request: NextRequest) {
   try {
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
     
     // Set default values
     if (!reportData.reportDate) {
-      reportData.reportDate = new Date().toISOString().split('T')[0];
+      reportData.reportDate = getVNTodayStr();
     }
     if (!reportData.status) {
       reportData.status = DamageReportStatus.Pending;

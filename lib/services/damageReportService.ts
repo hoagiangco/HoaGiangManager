@@ -3,6 +3,7 @@ import { PoolClient } from 'pg';
 import { DamageReport, DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceStatus, EventStatus, TimelineEntry } from '@/types';
 import { EventService } from './eventService';
 import { NotificationService, NotificationType, NotificationCategory } from './notificationService';
+import { getVNNow } from '../utils/dateFormat';
 
 export class DamageReportService {
   private async ensureHistorySequence(client?: PoolClient): Promise<void> {
@@ -187,9 +188,15 @@ export class DamageReportService {
       }
 
       if (filters.maintenanceBatchId) {
-        query += ` AND dr."MaintenanceBatchId" = $${paramIndex}`;
-        params.push(filters.maintenanceBatchId);
-        paramIndex++;
+        if (filters.maintenanceBatchId === 'only-maintenance') {
+          query += ` AND dr."MaintenanceBatchId" IS NOT NULL`;
+        } else if (filters.maintenanceBatchId === 'none-maintenance') {
+          query += ` AND dr."MaintenanceBatchId" IS NULL`;
+        } else {
+          query += ` AND dr."MaintenanceBatchId" = $${paramIndex}`;
+          params.push(filters.maintenanceBatchId);
+          paramIndex++;
+        }
       }
     }
 
@@ -296,8 +303,14 @@ export class DamageReportService {
     }
 
     if (maintenanceBatchId) {
-      params.push(maintenanceBatchId);
-      whereClause += ` AND dr."MaintenanceBatchId" = $${params.length}`;
+      if (maintenanceBatchId === 'only-maintenance') {
+        whereClause += ` AND dr."MaintenanceBatchId" IS NOT NULL`;
+      } else if (maintenanceBatchId === 'none-maintenance') {
+        whereClause += ` AND dr."MaintenanceBatchId" IS NULL`;
+      } else {
+        params.push(maintenanceBatchId);
+        whereClause += ` AND dr."MaintenanceBatchId" = $${params.length}`;
+      }
     }
 
     // Sort field mapping
@@ -391,8 +404,8 @@ export class DamageReportService {
   }
 
   private mapRowToVM(row: any): DamageReportVM {
-    const reportDate = row.reportDate ? new Date(row.reportDate) : new Date();
-    const today = new Date();
+    const reportDate = row.reportDate ? new Date(row.reportDate) : getVNNow();
+    const today = getVNNow();
     today.setHours(0, 0, 0, 0);
     const reportDateOnly = new Date(reportDate);
     reportDateOnly.setHours(0, 0, 0, 0);
@@ -498,8 +511,8 @@ export class DamageReportService {
     const status = parseInt(row.status) as DamageReportStatus;
     const priority = parseInt(row.priority) as DamageReportPriority;
 
-    const reportDate = row.reportDate ? new Date(row.reportDate) : new Date();
-    const today = new Date();
+    const reportDate = row.reportDate ? new Date(row.reportDate) : getVNNow();
+    const today = getVNNow();
     today.setHours(0, 0, 0, 0);
     const reportDateOnly = new Date(reportDate);
     reportDateOnly.setHours(0, 0, 0, 0);
@@ -556,7 +569,7 @@ export class DamageReportService {
         report.reportingDepartmentId,
         report.handlerId || null,
         report.assignedDate || null,
-        report.reportDate || new Date(),
+        report.reportDate || getVNNow(),
         report.handlingDate || null,
         report.completedDate || null,
         report.estimatedCompletionDate || null,
@@ -698,6 +711,32 @@ export class DamageReportService {
       }
     }
 
+    // Handle date clearing and auto-setting based on status transition for full update
+    let finalHandlingDate: Date | null | undefined = report.handlingDate;
+    let finalCompletedDate: Date | null | undefined = report.completedDate;
+    const now = getVNNow();
+
+    if (currentStatus && currentStatus !== report.status.toString()) {
+      const nextStatus = report.status;
+
+      if (nextStatus === DamageReportStatus.Pending) {
+        // 1. Chuyển sang Chờ xử lý (1) -> Xóa cả ngày xử lý và ngày hoàn thành
+        finalHandlingDate = null;
+        finalCompletedDate = null;
+      } else if (nextStatus === DamageReportStatus.Completed) {
+        // 2. Chuyển sang Hoàn thành (4) -> Tự động gán ngày hoàn thành nếu chưa có
+        if (!finalCompletedDate) finalCompletedDate = now;
+      } else {
+        // 3. Các trạng thái khác (Đang xử lý, Đã phân công, v.v.) -> Xóa ngày hoàn thành
+        finalCompletedDate = null;
+        
+        // Nếu là Đang xử lý (3) -> Gán ngày xử lý nếu chưa có
+        if (nextStatus === DamageReportStatus.InProgress && !finalHandlingDate) {
+          finalHandlingDate = now;
+        }
+      }
+    }
+
     await pool.query(
       `UPDATE "DamageReport" SET
         "DeviceID" = $1,
@@ -730,8 +769,8 @@ export class DamageReportService {
         report.handlerId || null,
         report.assignedDate || null,
         report.reportDate,
-        report.handlingDate || null,
-        report.completedDate || null,
+        finalHandlingDate || null,
+        finalCompletedDate || null,
         report.estimatedCompletionDate || null,
         report.damageContent,
         report.images ? JSON.stringify(report.images) : null,
@@ -831,11 +870,36 @@ export class DamageReportService {
       const damageContent = row.damage_content || '';
       const handlerName = row.handler_name || 'Nhân viên';
 
-      // Update report status
-      await client.query(
-        `UPDATE "DamageReport" SET "Status" = $1, "UpdatedBy" = $2, "UpdatedAt" = CURRENT_TIMESTAMP WHERE "ID" = $3`,
-        [status.toString(), updatedBy, id]
-      );
+      // Handle date clearing and auto-setting based on status transition
+      let updateQuery = `UPDATE "DamageReport" SET "Status" = $1, "UpdatedBy" = $2, "UpdatedAt" = CURRENT_TIMESTAMP`;
+      const updateParams: any[] = [status.toString(), updatedBy, id];
+      const now = getVNNow();
+
+      if (status === DamageReportStatus.Pending) {
+        // 1. Chuyển sang Chờ xử lý (1) -> Xóa cả ngày xử lý và ngày hoàn thành
+        updateQuery += `, "HandlingDate" = NULL, "CompletedDate" = NULL`;
+      } else if (status === DamageReportStatus.Completed) {
+        // 2. Chuyển sang Hoàn thành (4) -> Gán ngày hoàn thành
+        updateQuery += `, "CompletedDate" = $4`;
+        updateParams.push(now);
+      } else {
+        // 3. Các trạng thái khác -> Xóa ngày hoàn thành
+        updateQuery += `, "CompletedDate" = NULL`;
+        
+        // Nếu chuyển sang Đang xử lý (3) -> Gán ngày xử lý nếu chưa có
+        if (status === DamageReportStatus.InProgress) {
+          const handlingRes = await client.query('SELECT "HandlingDate" FROM "DamageReport" WHERE "ID" = $1', [id]);
+          if (!handlingRes.rows[0]?.HandlingDate) {
+            updateQuery += `, "HandlingDate" = $${updateParams.length + 1}`;
+            updateParams.push(now);
+          }
+        }
+      }
+
+      updateQuery += ` WHERE "ID" = $3`;
+
+      // Update report status and dates
+      await client.query(updateQuery, updateParams);
 
       // History
       if (currentStatusStr !== status.toString()) {
@@ -1003,7 +1067,7 @@ export class DamageReportService {
     }];
   }
 
-  async appendTimelineNote(id: number, content: string, type: 'manual' | 'auto' | 'legacy', authorName: string, updatedBy: string): Promise<number> {
+  async appendTimelineNote(id: number, content: string, type: 'manual' | 'auto' | 'legacy', authorName: string, updatedBy: string): Promise<string> {
     const currentResult = await pool.query(
       `SELECT "HandlerNotes" FROM "DamageReport" WHERE "ID" = $1`,
       [id]
@@ -1039,13 +1103,39 @@ export class DamageReportService {
       [id, currentHandlerNotes || '', newNotesJson, updatedBy]
     );
 
-    return id;
+    return newNotesJson;
   }
 
-  async updateHandlerNotes(id: number, handlerNotes: string, updatedBy: string): Promise<number> {
-    // This method is now legacy, it will just replace the content directly but we should ideally use appendTimelineNote
-    // However, if the old API is still called, we will just parse and append as 'manual'
-    // To ensure compatibility, we'll fetch staff name if possible
+  async updateHandlerNotes(id: number, handlerNotes: string, updatedBy: string): Promise<string> {
+    // Check if the incoming string is already a full timeline JSON
+    let isFullTimeline = false;
+    try {
+      if (handlerNotes.trim().startsWith('[')) {
+        const parsed = JSON.parse(handlerNotes);
+        if (Array.isArray(parsed) && parsed.length > 0 && (parsed[0].hasOwnProperty('timestamp') || parsed[0].hasOwnProperty('content'))) {
+          isFullTimeline = true;
+        }
+      }
+    } catch (e) {}
+
+    if (isFullTimeline) {
+      // Replace the entire field directly if it's a valid timeline
+      await pool.query(
+        `UPDATE "DamageReport" SET "HandlerNotes" = $1, "UpdatedBy" = $2, "UpdatedAt" = CURRENT_TIMESTAMP WHERE "ID" = $3`,
+        [handlerNotes, updatedBy, id]
+      );
+      
+      // Track in history
+      await pool.query(
+        `INSERT INTO "DamageReportHistory" ("DamageReportID", "FieldName", "OldValue", "NewValue", "ChangedBy")
+         VALUES ($1, 'HandlerNotes_Update', 'Timeline Update', $2, $3)`,
+        [id, handlerNotes, updatedBy]
+      );
+      
+      return handlerNotes;
+    }
+
+    // Traditional behavior: append as 'manual' note
     let authorName = 'Người xử lý';
     try {
       const staffRes = await pool.query('SELECT "Name" FROM "Staff" WHERE "UserId" = $1', [updatedBy]);
@@ -1384,7 +1474,7 @@ export class DamageReportService {
    * Uses DailyWorkLog for accurate "active today" section
    * @param dateStr - date in 'YYYY-MM-DD' format (local date)
    */
-  async getDailyReportData(dateStr: string, filters?: { departmentId?: number, handlerId?: number }): Promise<{
+  async getDailyReportData(dateStr: string, filters?: { departmentId?: number, handlerId?: number, maintenanceBatchId?: string }): Promise<{
     newReports: DamageReportVM[];
     activeReports: DamageReportVM[];
     completedReports: DamageReportVM[];
@@ -1416,11 +1506,18 @@ export class DamageReportService {
       filterClause += ` AND dr."HandlerID" = $${paramIdx++}`;
       queryParams.push(filters.handlerId);
     }
+    if (filters?.maintenanceBatchId) {
+      if (filters.maintenanceBatchId === 'only-maintenance') {
+        filterClause += ` AND dr."MaintenanceBatchId" IS NOT NULL`;
+      } else if (filters.maintenanceBatchId === 'none-maintenance') {
+        filterClause += ` AND dr."MaintenanceBatchId" IS NULL`;
+      } else {
+        filterClause += ` AND dr."MaintenanceBatchId" = $${paramIdx++}`;
+        queryParams.push(filters.maintenanceBatchId);
+      }
+    }
 
-    // 1. New reports (Việc mới): created today, Status IN (1, 2)
-    // Wait, if it's checked in today, it's in activeReports. If completed, in completedReports.
-    // We will just fetch Status IN (1, 2) created today. We'll filter out active/completed via code or query.
-    // Actually, it's easier to use the exclude mechanism or explicit NOT EXISTS.
+    // 1. New reports (Việc mới phát sinh hôm nay): created today, NOT handled/completed today
     const newReportsRes = await pool.query(
       `SELECT 
          dr."ID" as id, dr."DeviceID" as "deviceId", dr."DamageLocation" as "damageLocation",
@@ -1444,10 +1541,21 @@ export class DamageReportService {
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
        WHERE dr."ReportDate" >= $${paramIdx} AND dr."ReportDate" <= $${paramIdx + 1}
-       AND CAST(dr."Status"::text AS INTEGER) IN (1, 2)
-       AND NOT EXISTS (
-         SELECT 1 FROM "DailyWorkLog" dwl WHERE dwl."DamageReportID" = dr."ID" AND dwl."WorkDate" = $${paramIdx + 2}::date
-       )
+         AND dr."ID" NOT IN (
+           -- Exclude reports handled today (Status 3 + activity)
+           SELECT dr2."ID" 
+           FROM "DamageReport" dr2
+           LEFT JOIN "DailyWorkLog" dwl ON dwl."DamageReportID" = dr2."ID" AND dwl."WorkDate" = $${paramIdx + 2}::date
+           WHERE CAST(dr2."Status"::text AS INTEGER) = 3
+             AND (dwl."DamageReportID" IS NOT NULL OR dr2."HandlerNotes" LIKE '%' || $${paramIdx + 2} || '%')
+         )
+         AND dr."ID" NOT IN (
+           -- Exclude reports completed today
+           SELECT dr3."ID" 
+           FROM "DamageReport" dr3
+           WHERE CAST(dr3."Status"::text AS INTEGER) = 4
+             AND dr3."CompletedDate" >= $${paramIdx} AND dr3."CompletedDate" <= $${paramIdx + 1}
+         )
        ${filterClause}
        ORDER BY dr."ReportDate" DESC`,
       [...queryParams, from, to, workDateStr]
@@ -1481,14 +1589,18 @@ export class DamageReportService {
          dwl."Notes" as "workNotes",
          s."Name" as "checkinStaffName"
        FROM "DamageReport" dr
-       INNER JOIN "DailyWorkLog" dwl ON dwl."DamageReportID" = dr."ID" AND dwl."WorkDate" = $${activeDateIdx}::date
-       INNER JOIN "Staff" s ON dwl."StaffID" = s."ID"
+       LEFT JOIN "DailyWorkLog" dwl ON dwl."DamageReportID" = dr."ID" AND dwl."WorkDate" = $${activeDateIdx}::date
+       LEFT JOIN "Staff" s ON dwl."StaffID" = s."ID"
        LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
        LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
        LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
-       WHERE CAST(dr."Status"::text AS INTEGER) NOT IN (4, 5, 6)
+       WHERE CAST(dr."Status"::text AS INTEGER) = 3
+         AND (
+           dwl."DamageReportID" IS NOT NULL 
+           OR (dr."HandlerNotes" IS NOT NULL AND dr."HandlerNotes" LIKE '%' || $${activeDateIdx} || '%')
+         )
        ${activeFilterClause}
        ORDER BY dr."ReportDate" ASC`,
       activeParams
@@ -1524,8 +1636,8 @@ export class DamageReportService {
       [...queryParams, from, to]
     );
 
-    // 4. Pending Reports (Việc chờ xử lý - Tồn đọng)
-    // Created BEFORE today, Status IN (1, 2), NOT checked in today
+    // 4. Pending Reports (Việc chờ xử lý):
+    // ALL reports with Status IN (1, 2) up to today
     const pendingReportsRes = await pool.query(
       `SELECT 
          dr."ID" as id, dr."DeviceID" as "deviceId", dr."DamageLocation" as "damageLocation",
@@ -1551,12 +1663,12 @@ export class DamageReportService {
        WHERE dr."ReportDate" <= $${paramIdx}
        AND CAST(dr."Status"::text AS INTEGER) IN (1, 2)
        ${filterClause}
-       ORDER BY dr."ReportDate" ASC`,
+       ORDER BY dr."ReportDate" DESC`,
       [...queryParams, to]
     );
 
-    // 5. Pending Active Reports (Việc đang xử lý - Tồn đọng)
-    // ALL reports with Status = 3, created on or before today
+    // 5. Pending Active Reports (Việc đang xử lý):
+    // ALL reports with Status = 3 up to today
     const pendingActiveReportsRes = await pool.query(
       `SELECT 
          dr."ID" as id, dr."DeviceID" as "deviceId", dr."DamageLocation" as "damageLocation",
@@ -1582,7 +1694,7 @@ export class DamageReportService {
        WHERE dr."ReportDate" <= $${paramIdx}
        AND CAST(dr."Status"::text AS INTEGER) = 3
        ${filterClause}
-       ORDER BY dr."ReportDate" ASC`,
+       ORDER BY dr."ReportDate" DESC`,
       [...queryParams, to]
     );
 

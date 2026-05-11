@@ -1025,7 +1025,8 @@ function MaintenancePageContent() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `Bao_cao_dot_bao_tri_${batchId}_${roundDate}.xlsx`);
+      const formattedRoundDate = roundDate.split('-').reverse().join('-');
+      link.setAttribute('download', `Bao_cao_dot_bao_tri_${batchId}_${formattedRoundDate}.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.parentNode?.removeChild(link);

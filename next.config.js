@@ -1,3 +1,5 @@
+process.env.TZ = 'Asia/Ho_Chi_Minh';
+
 const withPWA = require('next-pwa')({
   dest: 'public',
   register: true,

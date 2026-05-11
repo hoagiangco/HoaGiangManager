@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/auth/middleware';
 import pool from '@/lib/db';
 import { NotificationService, NotificationType, NotificationCategory } from '@/lib/services/notificationService';
+import { getVNNow } from '@/lib/utils/dateFormat';
 
 async function checkUpcomingMaintenance(isAdmin: boolean, staffId?: number) {
   if (!isAdmin) return; // Only admins get upcoming maintenance notifications for now
 
   try {
-    const today = new Date();
-    const nextWeek = new Date();
+    const today = getVNNow();
+    const nextWeek = getVNNow();
     nextWeek.setDate(today.getDate() + 7);
 
     // Get count of upcoming maintenance

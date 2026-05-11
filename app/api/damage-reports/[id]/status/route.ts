@@ -126,17 +126,9 @@ export async function PUT(
 
     await damageReportService.updateStatus(id, nextStatus as DamageReportStatus, user.userId, finalDeviceStatus);
 
-    // Khi chuyển từ Pending (1) sang InProgress (3), tự động gán ngày bắt đầu là ngày hiện tại
-    if (previousStatus === DamageReportStatus.Pending && nextStatus === DamageReportStatus.InProgress) {
-      const handlingDate = new Date();
-      await damageReportService.updateHandlingDate(id, handlingDate, user.userId);
-    }
-
-    // Khi đổi status thành Completed, tự động gán ngày hoàn thành là ngày hiện tại
     let completedAt: Date | null = null;
     if (nextStatus === DamageReportStatus.Completed) {
       completedAt = new Date();
-      await damageReportService.updateCompletionDate(id, completedAt, user.userId);
     }
 
     if (

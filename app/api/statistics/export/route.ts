@@ -3,6 +3,9 @@ import { authenticate } from '@/lib/auth/middleware';
 import pool from '@/lib/db';
 import { format } from 'date-fns';
 import { generateExcelFile } from '@/lib/utils/excelGenerator.server';
+import { getVNNow } from '@/lib/utils/dateFormat';
+
+export const dynamic = 'force-dynamic';
 
 function stripHtml(html: string) {
   if (!html) return '';
@@ -157,7 +160,7 @@ export async function GET(request: NextRequest) {
       const excelBuffer = await generateExcelFile({
         title: 'DANH SÁCH THIẾT BỊ',
         department: departmentId && departmentId !== '0' ? (result.rows[0]?.DepartmentName || 'Tất cả') : 'Tất cả bộ phận',
-        dateRange: `Ngày xuất: ${format(new Date(), 'dd/MM/yyyy')}`,
+        dateRange: `Ngày xuất: ${format(getVNNow(), 'dd/MM/yyyy')}`,
         headers: excelHeaders,
         rows: excelRows,
         fileName: 'Danh_Sach_Thiet_Bi.xlsx'

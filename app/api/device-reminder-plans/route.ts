@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/auth/middleware';
 import { DeviceReminderPlanService } from '@/lib/services/deviceReminderPlanService';
 import { DeviceReminderPlan, EventCategory } from '@/types';
+import { getVNNow } from '@/lib/utils/dateFormat';
 
 type IntervalUnit = 'day' | 'week' | 'month' | 'year';
 
@@ -32,6 +33,8 @@ const parseMetadata = (value: any): Record<string, any> | null => {
   }
   return null;
 };
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -170,9 +173,9 @@ export async function POST(request: NextRequest) {
       isActive: payload.isActive !== undefined ? Boolean(payload.isActive) : true,
       metadata,
       createdBy: user.userId,
-      createdAt: new Date(),
+      createdAt: getVNNow(),
       updatedBy: user.userId,
-      updatedAt: new Date(),
+      updatedAt: getVNNow(),
     };
 
     const service = new DeviceReminderPlanService();

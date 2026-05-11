@@ -17,7 +17,9 @@
     "test:api-auth": "npx tsx scripts/test-api-with-auth.ts",
     "migrate:data": "npx tsx scripts/migrate-data.ts",
     "migrate:maintenance-batch": "npx tsx scripts/run-migration.ts",
-    "check-reminders": "npx tsx scripts/check-maintenance-reminders.ts"
+    "check-reminders": "npx tsx scripts/check-maintenance-reminders.ts",
+    "db:backup": "node scripts/backup-db.js",
+    "db:restore": "node scripts/emergency-restore.js"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.1.0",

@@ -56,9 +56,9 @@ export function getDamageReportPermissions(userRoles: string[] | undefined): Use
   return {
     canView: user, // Cả User/Supervisor/Admin đều xem được (logic filter nằm ở backend)
     canCreate: user, // Ai cũng được tạo báo cáo
-    canEdit: admin, // Chỉ admin can edit toàn bộ
-    canDelete: admin, // Chỉ admin can delete
-    canUpdateStatus: user, // User/Supervisor tự cập nhật (chặn bằng handlerId ở UI)
+    canEdit: isSupervisor(userRoles), // Admin and Supervisor can edit all
+    canDelete: admin, // Only admin can delete
+    canUpdateStatus: user, // User/Supervisor self-update (handlerId check in UI)
   };
 }
 

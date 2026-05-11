@@ -2,6 +2,7 @@ import pool from '../db';
 import { User } from '@/types';
 import bcrypt from 'bcryptjs';
 import { PoolClient } from 'pg';
+import { getVNNow } from '../utils/dateFormat';
 
 export interface UserVM extends User {
   roles: string[];
@@ -144,7 +145,7 @@ export class UserService {
         uuidv4(),
         uuidv4(),
         userData.fullName || null,
-        new Date()
+        getVNNow()
       ]
     );
 

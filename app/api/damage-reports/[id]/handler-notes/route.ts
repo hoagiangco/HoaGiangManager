@@ -51,10 +51,11 @@ export async function PUT(
       }
     }
 
-    await damageReportService.updateHandlerNotes(id, handlerNotes || '', user.userId);
+    const updatedNotes = await damageReportService.updateHandlerNotes(id, handlerNotes || '', user.userId);
 
     return NextResponse.json({
-      status: true
+      status: true,
+      data: updatedNotes
     });
   } catch (error: any) {
     console.error('Update handler notes error:', error);

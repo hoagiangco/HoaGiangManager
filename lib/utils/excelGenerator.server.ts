@@ -176,8 +176,7 @@ export async function generateDailyReportExcel(data: {
 
   // 4. Detailed Sections
   data.sections.forEach(section => {
-    if (section.rows.length === 0) return;
-
+    // section title
     const secTitle = worksheet.addRow([section.title.toUpperCase()]);
     secTitle.font = { bold: true, size: 12, color: { argb: 'FF2563EB' } };
     worksheet.mergeCells(secTitle.number, 1, secTitle.number, section.headers.length);

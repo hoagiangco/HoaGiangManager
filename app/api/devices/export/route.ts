@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/auth/middleware';
 import pool from '@/lib/db';
-import { formatDateDisplay } from '@/lib/utils/dateFormat';
+import { formatDateDisplay, getVNNow, getVNTodayStr } from '@/lib/utils/dateFormat';
 import { generateExcelFile } from '@/lib/utils/excelGenerator.server';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -98,14 +100,14 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const fileName = `Danh_sach_thiet_bi_${new Date().toISOString().split('T')[0]}.xlsx`;
+    const fileName = `Danh_sach_thiet_bi_${getVNTodayStr()}.xlsx`;
     const headers = Object.keys(exportData[0] || {});
     const rows = exportData.map(item => Object.values(item));
 
     const excelBuffer = await generateExcelFile({
       title: 'DANH SÁCH THIẾT BỊ',
       department: 'Hệ thống quản lý',
-      dateRange: `Ngày xuất: ${formatDateDisplay(new Date())}`,
+      dateRange: `Ngày xuất: ${formatDateDisplay(getVNNow())}`,
       headers,
       rows,
       fileName,

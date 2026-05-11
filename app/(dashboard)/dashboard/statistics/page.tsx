@@ -208,7 +208,6 @@ export default function StatisticsPage() {
     };
 
     const renderTable = (tableData: any[], startIndex = 0) => {
-      if (tableData.length === 0) return '';
       return `
         <table>
           <thead>
@@ -217,15 +216,17 @@ export default function StatisticsPage() {
             </tr>
           </thead>
           <tbody>
-            ${tableData.map((row, i) => `
-              <tr>
-                ${visibleCols.map(c => {
-                  const val = getVal(row, c.id, startIndex + i);
-                  const isCenter = ['stt', 'id', 'reportDate', 'statusName', 'priorityName', 'completedDate', 'handlingDate'].includes(c.id);
-                  return `<td style="text-align: ${isCenter ? 'center' : 'left'}">${val}</td>`;
-                }).join('')}
-              </tr>
-            `).join('')}
+            ${tableData.length === 0 
+              ? `<tr><td colspan="${visibleCols.length}" style="text-align: center; color: #94a3b8; font-style: italic; padding: 15px;">Không có dữ liệu</td></tr>`
+              : tableData.map((row, i) => `
+                <tr>
+                  ${visibleCols.map(c => {
+                    const val = getVal(row, c.id, startIndex + i);
+                    const isCenter = ['stt', 'id', 'reportDate', 'statusName', 'priorityName', 'completedDate', 'handlingDate'].includes(c.id);
+                    return `<td style="text-align: ${isCenter ? 'center' : 'left'}">${val}</td>`;
+                  }).join('')}
+                </tr>
+              `).join('')}
           </tbody>
         </table>
       `;
@@ -238,16 +239,16 @@ export default function StatisticsPage() {
         <div class="summary-box">
           <div class="summary-item" style="border-bottom: 3px solid #06b6d4">Việc làm hôm nay: <span style="color: #06b6d4">${(summary?.totalNew || 0) + (summary?.totalActive || 0) + (summary?.totalCompleted || 0)}</span></div>
           <div class="summary-item" style="border-bottom: 3px solid #3b82f6">Việc hoàn thành: <span style="color: #3b82f6">${summary?.totalCompleted || 0}</span></div>
-          <div class="summary-item" style="border-bottom: 3px solid #ef4444">Việc tồn đọng: <span style="color: #ef4444">${(summary?.totalPending || 0) + (summary?.totalPendingActive || 0)}</span></div>
+          <div className="summary-item" style="border-bottom: 3px solid #ef4444">Việc tồn đọng: <span style="color: #ef4444">${(summary?.totalPending || 0) + (summary?.totalPendingActive || 0)}</span></div>
         </div>
         <div class="section-title">1. VIỆC TRONG NGÀY</div>
-        ${renderTable(data.filter((r: any) => (r.section || r.dailyCategory) === '1. VIỆC TRONG NGÀY'))}
+        ${renderTable(data.filter((r: any) => (r.allSections || [r.section || r.dailyCategory]).includes('1. VIỆC TRONG NGÀY')))}
         
         <div class="section-title">2. VIỆC ĐANG XỬ LÝ</div>
-        ${renderTable(data.filter((r: any) => (r.section || r.dailyCategory) === '2. VIỆC ĐANG XỬ LÝ'))}
+        ${renderTable(data.filter((r: any) => (r.allSections || [r.section || r.dailyCategory]).includes('2. VIỆC ĐANG XỬ LÝ')))}
 
         <div class="section-title">3. VIỆC CHỜ XỬ LÝ</div>
-        ${renderTable(data.filter((r: any) => (r.section || r.dailyCategory) === '3. VIỆC CHỜ XỬ LÝ'))}
+        ${renderTable(data.filter((r: any) => (r.allSections || [r.section || r.dailyCategory]).includes('3. VIỆC CHỜ XỬ LÝ')))}
       `;
     } else {
       contentHtml = renderTable(data);
@@ -422,8 +423,16 @@ export default function StatisticsPage() {
   // Normalize report list for pagination
   const reportList = useMemo(() => {
      if (!reportListResponse?.data) return { data: [], total: 0 };
-     
-     // Sort newest first based on reportDate or createdAt
+
+     // In Daily Mode, we preserve the section-based order from the server
+     if (reportFilters.dailyMode) {
+       return {
+         data: reportListResponse.data,
+         total: reportListResponse.recordCount || reportListResponse.data.length
+       };
+     }
+
+     // Otherwise, sort newest first based on reportDate or createdAt
      const sortedData = [...reportListResponse.data].sort((a: any, b: any) => {
        const dateA = new Date(a.reportDate || a.createdAt || 0).getTime();
        const dateB = new Date(b.reportDate || b.createdAt || 0).getTime();
@@ -434,7 +443,7 @@ export default function StatisticsPage() {
        data: sortedData,
        total: reportListResponse.recordCount || reportListResponse.data.length
      };
-  }, [reportListResponse]);
+  }, [reportListResponse, reportFilters.dailyMode]);
 
   const reportListPaginated = useMemo(() => {
      const start = (reportPage - 1) * pageSize;
@@ -694,12 +703,22 @@ export default function StatisticsPage() {
         
         // Generate a nice filename
         let fileName = tab === 'reports' ? 'Bao_Cao_Cong_Viec' : 'Danh_Sach_Thiet_Bi';
+        
+        const toVNFileDate = (dateStr: string) => {
+          if (!dateStr) return '';
+          const parts = dateStr.split('-');
+          if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+          return dateStr;
+        };
+
         if (tab === 'reports') {
           if (filters.dailyMode) {
-            fileName = `Bao_Cao_Ngay_${filters.fromDate || getLocalDateStr()}`;
+            fileName = `Bao_Cao_Ngay_${toVNFileDate(filters.fromDate || getLocalDateStr())}`;
           } else {
-            fileName = `Bao_Cao_Tong_Hop_${filters.fromDate || ''}_den_${filters.toDate || ''}`;
+            fileName = `Bao_Cao_Tong_Hop_${toVNFileDate(filters.fromDate)}__${toVNFileDate(filters.toDate)}`;
           }
+        } else {
+          fileName = `Danh_Sach_Thiet_Bi_${toVNFileDate(getLocalDateStr())}`;
         }
         
         link.setAttribute('download', `${fileName}.xlsx`);
@@ -763,7 +782,8 @@ export default function StatisticsPage() {
                       ...prev, 
                       dailyMode: isDaily,
                       fromDate: isDaily ? getLocalDateStr() : getFirstDayOfMonthStr(),
-                      toDate: getLocalDateStr()
+                      toDate: getLocalDateStr(),
+                      maintenanceBatchId: isDaily ? '' : prev.maintenanceBatchId
                     }));
                     if (isDaily) setShowPreview(prev => ({ ...prev, reports: true }));
                   }}
@@ -875,7 +895,7 @@ export default function StatisticsPage() {
           {activeTab === 'devices' && (
             <div>
               <div className="row g-2 align-items-end mb-2 bg-light p-2 rounded-3 mx-0 border d-print-none">
-                <div className="col-6 col-md-2">
+                <div className="col-6 col-md-auto" style={{ minWidth: '150px' }}>
                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Phòng ban</label>
                   <select 
                     className="form-select form-select-xs border shadow-none"
@@ -886,7 +906,7 @@ export default function StatisticsPage() {
                     {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
                   </select>
                 </div>
-                <div className="col-6 col-md-2">
+                <div className="col-6 col-md-auto" style={{ minWidth: '120px' }}>
                    <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Vị trí</label>
                    <select 
                     className="form-select form-select-xs border shadow-none"
@@ -897,7 +917,7 @@ export default function StatisticsPage() {
                     {locations.map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}
                   </select>
                 </div>
-                <div className="col-6 col-md-2">
+                <div className="col-6 col-md-auto" style={{ minWidth: '150px' }}>
                    <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Danh mục</label>
                    <select 
                     className="form-select form-select-xs border shadow-none"
@@ -908,7 +928,7 @@ export default function StatisticsPage() {
                     {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
-                <div className="col-6 col-md-2">
+                <div className="col-6 col-md-auto" style={{ minWidth: '150px' }}>
                    <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Trạng thái</label>
                    <select 
                     className="form-select form-select-xs border shadow-none"
@@ -958,7 +978,7 @@ export default function StatisticsPage() {
           {activeTab === 'reports' && (
             <div>
               <div className="row g-2 align-items-end mb-2 bg-light p-2 rounded-3 mx-0 border d-print-none">
-                <div className="col-6 col-md-2">
+                <div className="col-6 col-md-auto" style={{ minWidth: '150px' }}>
                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Phòng ban</label>
                   <select 
                     className="form-select form-select-xs border shadow-none"
@@ -971,7 +991,7 @@ export default function StatisticsPage() {
                 </div>
 
                 {reportFilters.dailyMode ? (
-                  <div className="col-6 col-md-2">
+                  <div className="col-6 col-md-auto" style={{ minWidth: '150px' }}>
                     <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Nhân viên</label>
                     <select 
                       className="form-select form-select-xs border shadow-none"
@@ -983,7 +1003,7 @@ export default function StatisticsPage() {
                     </select>
                   </div>
                 ) : (
-                  <div className="col-6 col-md-2">
+                  <div className="col-6 col-md-auto" style={{ minWidth: '120px' }}>
                     <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Mức độ</label>
                     <select 
                       className="form-select form-select-xs border shadow-none"
@@ -999,7 +1019,7 @@ export default function StatisticsPage() {
                   </div>
                 )}
 
-                <div className="col-6 col-md-2">
+                <div className="col-6 col-md-auto" style={{ minWidth: '150px' }}>
                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">{reportFilters.dailyMode ? 'Danh mục' : 'Trạng thái'}</label>
                   {reportFilters.dailyMode ? (
                     <select 
@@ -1029,7 +1049,7 @@ export default function StatisticsPage() {
                   )}
                 </div>
 
-                <div className="col-6 col-md-2">
+                <div className="col-6 col-md-auto" style={{ minWidth: '120px' }}>
                   <label className="form-label x-small fw-bold text-muted mb-1 uppercase">{reportFilters.dailyMode ? 'Ngày xem' : 'Từ ngày'}</label>
                   <div className="position-relative">
                     <input 
@@ -1054,7 +1074,7 @@ export default function StatisticsPage() {
                 </div>
                 
                 {!reportFilters.dailyMode && (
-                  <div className="col-6 col-md-2">
+                  <div className="col-6 col-md-auto" style={{ minWidth: '120px' }}>
                     <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Đến ngày</label>
                     <div className="position-relative">
                       <input 
@@ -1071,6 +1091,27 @@ export default function StatisticsPage() {
                         value={reportFilters.toDate} 
                         onChange={e => setReportFilters(prev => ({ ...prev, toDate: e.target.value }))} 
                       />
+                    </div>
+                  </div>
+                )}
+
+                {!reportFilters.dailyMode && (
+                  <div className="col-6 col-md-auto" style={{ minWidth: '120px' }}>
+                    <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Loại</label>
+                    <div className="form-check form-switch d-flex align-items-center h-100 mt-0">
+                      <input 
+                        className="form-check-input mt-0" 
+                        type="checkbox" 
+                        id="onlyMaintenanceSwitch"
+                        checked={reportFilters.maintenanceBatchId === 'only-maintenance'}
+                        onChange={e => setReportFilters(prev => ({ 
+                          ...prev, 
+                          maintenanceBatchId: e.target.checked ? 'only-maintenance' : '' 
+                        }))}
+                      />
+                      <label className="form-check-label x-small fw-bold ms-2 mb-0 text-primary" htmlFor="onlyMaintenanceSwitch">
+                        CHỈ BẢO TRÌ
+                      </label>
                     </div>
                   </div>
                 )}

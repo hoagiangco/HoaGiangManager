@@ -6,8 +6,30 @@ import { put, list, del } from '@vercel/blob';
 import axios from 'axios';
 
 import { Client } from 'pg';
+import { getVNNow } from '../utils/dateFormat';
 
 const execPromise = promisify(exec);
+
+/**
+ * Helper to find PostgreSQL binaries on Windows
+ */
+function getPgBin(binName: string): string {
+  if (process.platform !== 'win32') return binName;
+  
+  const searchPaths = [
+    `C:\\Program Files\\PostgreSQL\\18\\bin\\${binName}.exe`,
+    `C:\\Program Files\\PostgreSQL\\17\\bin\\${binName}.exe`,
+    `C:\\Program Files\\PostgreSQL\\16\\bin\\${binName}.exe`,
+    `C:\\Program Files\\PostgreSQL\\15\\bin\\${binName}.exe`,
+    `C:\\Program Files\\PostgreSQL\\14\\bin\\${binName}.exe`,
+  ];
+
+  for (const p of searchPaths) {
+    if (fs.existsSync(p)) return `"${p}"`;
+  }
+  
+  return binName;
+}
 
 export interface BackupItem {
   name: string;
@@ -29,27 +51,41 @@ export class BackupService {
       throw new Error('DATABASE_URL is not defined');
     }
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `backup-${timestamp}.sql`;
+    const now = getVNNow();
+    const timestamp = now.getFullYear() +
+      String(now.getMonth() + 1).padStart(2, '0') +
+      String(now.getDate()).padStart(2, '0') +
+      '-' +
+      String(now.getHours()).padStart(2, '0') +
+      String(now.getMinutes()).padStart(2, '0') +
+      String(now.getSeconds()).padStart(2, '0');
+    const filename = `backup-${timestamp}.dump`;
     
     // Ensure backup directory exists (for local fallback)
     if (!fs.existsSync(this.backupDir)) {
       fs.mkdirSync(this.backupDir, { recursive: true });
     }
 
-    const localPath = path.join(this.backupDir, filename);
+    let localPath = path.join(this.backupDir, filename);
 
     try {
-      // 1. Try running pg_dump
+      // 1. Try running pg_dump with Custom Format (-Fc)
+      let usedCustomFormat = true;
       try {
-        console.log(`Attempting pg_dump to ${localPath}...`);
-        await execPromise(`pg_dump "${databaseUrl}" -f "${localPath}"`);
+        const pgDump = getPgBin('pg_dump');
+        console.log(`Attempting ${pgDump} (custom format) to ${localPath}...`);
+        // Use custom format (-Fc), blobs, and clean flags for easy restore
+        await execPromise(`${pgDump} --no-owner --no-privileges --clean --if-exists --format=c --blobs --file="${localPath}" "${databaseUrl}"`);
       } catch (execError: any) {
         console.warn('pg_dump failed, falling back to JS-based backup:', execError.message);
-        // 2. Fallback to JS-based backup
+        // Fallback to JS-based backup (always plain SQL)
+        usedCustomFormat = false;
+        const sqlFilename = `backup-${timestamp}.sql`;
+        localPath = path.join(this.backupDir, sqlFilename);
         await this.jsBackup(databaseUrl, localPath);
       }
       
+      const finalFilename = path.basename(localPath);
       console.log(`Backup created at ${localPath}`);
 
       // 2. Check if Vercel Blob is configured
@@ -59,9 +95,9 @@ export class BackupService {
 
       if (hasBlobToken) {
         const fileBuffer = fs.readFileSync(localPath);
-        const blob = await put(`backups/${filename}`, fileBuffer, {
+        const blob = await put(`backups/${finalFilename}`, fileBuffer, {
           access: 'public',
-          contentType: 'application/sql',
+          contentType: usedCustomFormat ? 'application/octet-stream' : 'application/sql',
         });
         
         console.log(`Backup uploaded to Vercel Blob: ${blob.url}`);
@@ -112,7 +148,7 @@ export class BackupService {
     if (fs.existsSync(this.backupDir)) {
       const files = fs.readdirSync(this.backupDir);
       files.forEach(file => {
-        if (file.endsWith('.sql')) {
+        if (file.endsWith('.sql') || file.endsWith('.dump') || file.endsWith('.bak')) {
           const stats = fs.statSync(path.join(this.backupDir, file));
           // Don't duplicate if already in blob (matching by name)
           if (!backups.find(b => b.name === file)) {
@@ -177,15 +213,29 @@ export class BackupService {
         fs.writeFileSync(restorePath, Buffer.from(response.data));
       }
 
-      // 3. Run psql or JS-based restore
+      // 3. Run pg_restore, psql or JS-based restore
       console.log(`Restoring database from ${restorePath}...`);
       
+      const isCustomFormat = restorePath.endsWith('.dump') || restorePath.endsWith('.bak');
+
       try {
-        await execPromise(`psql "${databaseUrl}" -f "${restorePath}"`);
+        if (isCustomFormat) {
+          // Use pg_restore for custom format
+          const pgRestore = getPgBin('pg_restore');
+          await execPromise(`${pgRestore} --no-owner --no-privileges --clean --if-exists --dbname="${databaseUrl}" --verbose "${restorePath}"`);
+        } else {
+          // Use psql for plain SQL
+          const psql = getPgBin('psql');
+          await execPromise(`${psql} "${databaseUrl}" -f "${restorePath}"`);
+        }
       } catch (execError: any) {
-        console.warn('psql failed, falling back to JS-based restore:', execError.message);
-        // Fallback to JS-based restore
-        await this.jsRestore(databaseUrl, restorePath);
+        console.warn('Command-line restore failed, falling back to JS-based restore:', execError.message);
+        // Fallback to JS-based restore (only works for plain SQL)
+        if (!isCustomFormat) {
+          await this.jsRestore(databaseUrl, restorePath);
+        } else {
+          throw new Error(`Cannot restore custom format backup via JS fallback. Please ensure pg_restore is installed. Error: ${execError.message}`);
+        }
       }
       
       console.log('Restore completed successfully');
@@ -219,7 +269,7 @@ export class BackupService {
 
       const tables = tablesRes.rows.map(r => r.table_name);
       
-      let sql = `-- Hoa Giang Manager Backup\n-- Created: ${new Date().toISOString()}\n\n`;
+      let sql = `-- Hoa Giang Manager Backup\n-- Created: ${getVNNow().toLocaleString('vi-VN')}\n\n`;
       sql += `SET statement_timeout = 0;\nSET client_encoding = 'UTF8';\n\n`;
 
       for (const table of tables) {

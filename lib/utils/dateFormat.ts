@@ -1,5 +1,25 @@
 import { format } from 'date-fns';
 
+/**
+ * Get current time in Vietnam (Asia/Ho_Chi_Minh)
+ * This works regardless of the server's local timezone.
+ */
+export const getVNNow = (): Date => {
+  const now = new Date();
+  return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+};
+
+/**
+ * Get today's date string in YYYY-MM-DD format (Vietnam time)
+ */
+export const getVNTodayStr = (): string => {
+  const now = getVNNow();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 // Format date for display: dd/MM/yyyy
 export const formatDateDisplay = (value?: string | Date | null): string => {
   if (!value) return '';
@@ -85,7 +105,7 @@ export const formatDateFilename = (value?: string | Date | null): string => {
     const month = parts.find(p => p.type === 'month')?.value || '';
     const day = parts.find(p => p.type === 'day')?.value || '';
     
-    return `${year}${month}${day}`;
+    return `${day}-${month}-${year}`;
   } catch (error) {
     return '';
   }
@@ -100,4 +120,5 @@ export const formatDateRange = (fromDate?: Date | string | null, toDate?: Date |
   const to = formatDateDisplay(toDate) || '...';
   return `${from} đến ${to}`;
 };
+
 

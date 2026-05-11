@@ -20,28 +20,33 @@ async function runBackup() {
     fs.mkdirSync(backupDir);
   }
 
-  const filename = `backup-${timestamp}.sql`;
+  const filename = `backup-${timestamp}.dump`;
   const filepath = path.join(backupDir, filename);
 
   console.log(`Starting backup to ${filepath}...`);
 
-  // We use pg_dump. On Windows, ensure it's in your PATH or provide full path.
-  // We use double quotes around URL to handle special characters.
-  const command = `pg_dump "${databaseUrl}" -f "${filepath}"`;
+  // We use pg_dump with Custom format (-Fc) which is best for pg_restore and pgAdmin.
+  // --clean and --if-exists make it easier to restore over an existing database.
+  // --no-owner and --no-privileges make the backup more portable.
+  const command = `pg_dump --no-owner --no-privileges --clean --if-exists --format=c --blobs --verbose --file="${filepath}" "${databaseUrl}"`;
 
   exec(command, (error, stdout, stderr) => {
     if (error) {
       console.error(`Backup failed: ${error.message}`);
+      console.log('Ensure pg_dump is in your PATH. If not, you can provide the full path to pg_dump.exe');
       return;
     }
-    if (stderr) {
-      console.error(`stderr: ${stderr}`);
+    // Note: pg_dump often writes verbose info to stderr even on success
+    if (stderr && !stderr.includes('dumping contents')) {
+      console.warn(`pg_dump info/warnings:\n${stderr}`);
     }
-    console.log(`Backup completed successfully: ${filename}`);
-    
-    // Optional: Compression
-    // const gzipCommand = `gzip "${filepath}"`;
-    // exec(gzipCommand, ...);
+    console.log(`\n✅ Backup completed successfully: ${filename}`);
+    console.log(`📍 Location: ${filepath}`);
+    console.log('💡 To restore this file in pgAdmin4:');
+    console.log('   1. Right-click your database');
+    console.log('   2. Select "Restore"');
+    console.log(`   3. Select "${filename}" as the filename`);
+    console.log('   4. In "Restore options", you can leave defaults.');
   });
 }
 

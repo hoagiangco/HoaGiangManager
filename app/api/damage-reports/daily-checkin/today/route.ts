@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/auth/middleware';
-import { StaffService } from '@/lib/services/staffService';
 import pool from '@/lib/db';
+import { getVNTodayStr } from '@/lib/utils/dateFormat';
+
+export const dynamic = 'force-dynamic';
 
 // GET: Lấy tất cả check-in của ngày hôm nay (hoặc ngày cụ thể)
 export async function GET(request: NextRequest) {
@@ -13,7 +15,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get('date');
-    const workDate = dateParam || new Date().toISOString().split('T')[0];
+    const workDate = dateParam || getVNTodayStr();
 
     // Lấy tất cả log trong ngày
     const result = await pool.query(

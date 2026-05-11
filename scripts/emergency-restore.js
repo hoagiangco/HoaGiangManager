@@ -37,13 +37,24 @@ async function emergencyRestore() {
     await pool.query(dropSql);
     console.log('✅ Public schema recreated.');
 
-    console.log('2. Running psql restore...');
-    // We use -1 to run as a single transaction if possible, or just standard
-    // Adding --quiet to reduce output noise
-    const { stdout, stderr } = await execPromise(`psql "${databaseUrl}" -f "${backupFile}"`);
+    console.log('2. Running restore...');
+    // If it's a .dump file, use pg_restore. If .sql, use psql.
+    const isCustomFormat = backupFile.endsWith('.dump') || backupFile.endsWith('.bak');
+    let command;
     
-    if (stderr && !stderr.includes('NOTICE')) {
-      console.warn('⚠️ psql stderr:', stderr);
+    if (isCustomFormat) {
+      // --no-owner and --no-privileges to avoid permission issues
+      // --clean and --if-exists are redundant here since we recreated public schema, 
+      // but good to have for general use.
+      command = `pg_restore --no-owner --no-privileges --dbname="${databaseUrl}" --verbose "${backupFile}"`;
+    } else {
+      command = `psql "${databaseUrl}" -f "${backupFile}"`;
+    }
+
+    const { stdout, stderr } = await execPromise(command);
+    
+    if (stderr && !stderr.includes('NOTICE') && !stderr.includes('finished')) {
+      console.warn('⚠️ Restore stderr/info:', stderr);
     }
     
     console.log('✅ Restore command completed.');

@@ -8,8 +8,11 @@
  * Schedule with cron: 0 9 * * * (9 AM daily)
  */
 
+process.env.TZ = 'Asia/Ho_Chi_Minh';
+
 import pool from '../lib/db';
 import { EventStatus } from '../types';
+import { getVNNow } from '../lib/utils/dateFormat';
 
 type IntervalUnit = 'day' | 'week' | 'month' | 'year';
 
@@ -43,12 +46,13 @@ async function checkMaintenanceReminders() {
   
   try {
     console.log('=== Bắt đầu kiểm tra kế hoạch bảo trì ===');
-    console.log(`Thời gian: ${new Date().toISOString()}`);
+    console.log(`Thời gian: ${getVNNow().toISOString()}`);
 
-    const today = new Date();
+    const today = getVNNow();
     today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrow = getVNNow();
+    tomorrow.setDate(today.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
 
     // Get all active reminder plans due today
     const result = await client.query(
@@ -165,7 +169,7 @@ async function checkMaintenanceReminders() {
               newEventStatus = EventStatus.Completed;
               if (report.HandlingDate) startDate = report.HandlingDate;
               if (report.CompletedDate) endDate = report.CompletedDate;
-              else endDate = new Date();
+              else endDate = getVNNow();
             } else if (report.Status === 5 || report.Status === 6) { // Cancelled or Rejected
               newEventStatus = EventStatus.Cancelled;
             }
@@ -183,7 +187,7 @@ async function checkMaintenanceReminders() {
         );
 
         let eventId;
-        const now = new Date();
+        const now = getVNNow();
 
         if (checkExistingEvent.rows.length > 0) {
            eventId = checkExistingEvent.rows[0].ID;

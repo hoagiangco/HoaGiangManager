@@ -152,7 +152,7 @@ function BackupPageContent() {
                           target="_blank" 
                           rel="noopener noreferrer" 
                           className="btn btn-sm btn-outline-primary"
-                          title="Tải về file SQL"
+                          title={`Tải về file ${b.name.endsWith('.dump') ? 'Dump' : 'SQL'}`}
                           download={b.name}
                         >
                           <i className="fas fa-download"></i>
@@ -186,8 +186,9 @@ function BackupPageContent() {
             <div>
               <p className="mb-1 fw-bold text-warning-emphasis">Lưu ý quan trọng về tính năng Khôi phục:</p>
               <ul className="mb-0 ps-3 text-muted">
-                <li>Bản sao lưu dưới dạng file SQL, bao gồm toàn bộ cấu trúc và dữ liệu hệ thống.</li>
-                <li>Nút <i className="fas fa-book-open"></i> sẽ hiển thị <strong>hướng dẫn khôi phục thủ công</strong> an toàn qua lệnh <code>psql</code>.</li>
+                <li>Bản sao lưu có thể ở dạng <strong>.dump</strong> (định dạng Custom) hoặc <strong>.sql</strong> (định dạng Văn bản).</li>
+                <li>Định dạng <strong>.dump</strong> khuyên dùng để khôi phục qua <strong>pgAdmin4</strong> hoặc lệnh <code>pg_restore</code>.</li>
+                <li>Nút <i className="fas fa-book-open"></i> sẽ hiển thị hướng dẫn khôi phục thủ công chi tiết.</li>
                 <li>Khuyến nghị: Luôn tạo bản sao lưu mới trước khi thực hiện bất kỳ thay đổi lớn nào.</li>
               </ul>
             </div>
@@ -214,13 +215,25 @@ function BackupPageContent() {
 
                 <h6 className="fw-bold mt-3">Các bước thực hiện:</h6>
                 <ol className="mb-3">
-                  <li className="mb-2">Nhấn nút <strong>Tải về</strong> để tải file SQL về máy tính.</li>
-                  <li className="mb-2">Mở terminal/PowerShell trên máy tính có cài đặt <code>psql</code>.</li>
-                  <li className="mb-2">Chạy lệnh <strong>xóa schema cũ</strong> trước:
-                    <pre className="bg-dark text-light p-2 rounded small mt-2" style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{`psql "${process.env.NEXT_PUBLIC_DB_URL || '<DATABASE_URL>'}" -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO neondb_owner; GRANT ALL ON SCHEMA public TO public;"`}</pre>
+                  <li className="mb-2">Nhấn nút <strong>Tải về</strong> để tải file về máy tính.</li>
+                  <li className="mb-2">Mở terminal hoặc PowerShell.</li>
+                  <li className="mb-2">
+                    <strong>Trường hợp file .dump (Khuyên dùng):</strong>
+                    <p className="mb-1 mt-1 small">Cách 1: Sử dụng pgAdmin4 (Dễ nhất)</p>
+                    <ul className="small mb-2">
+                      <li>Chuột phải vào Database → <strong>Restore</strong>.</li>
+                      <li>Chọn file vừa tải về và nhấn nút Restore.</li>
+                    </ul>
+                    <p className="mb-1 small">Cách 2: Sử dụng lệnh <code>pg_restore</code></p>
+                    <pre className="bg-dark text-light p-2 rounded small" style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
+                      {`pg_restore --no-owner --no-privileges --clean --if-exists --dbname="<DATABASE_URL>" --verbose "${restoreGuideName}"`}
+                    </pre>
                   </li>
-                  <li className="mb-2">Chạy lệnh <strong>khôi phục</strong> từ file vừa tải:
-                    <pre className="bg-dark text-light p-2 rounded small mt-2" style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{`psql "<DATABASE_URL>" -f "<đường_dẫn_đến_file_sql>"`}</pre>
+                  <li className="mb-2">
+                    <strong>Trường hợp file .sql:</strong>
+                    <pre className="bg-dark text-light p-2 rounded small mt-2" style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
+                      {`psql "<DATABASE_URL>" -f "${restoreGuideName}"`}
+                    </pre>
                   </li>
                   <li>Đăng nhập lại sau khi khôi phục hoàn tất.</li>
                 </ol>
@@ -238,7 +251,7 @@ function BackupPageContent() {
                   className="btn btn-warning"
                   onClick={() => setShowRestoreGuideModal(false)}
                 >
-                  <i className="fas fa-download me-2"></i>Tải file SQL ngay
+                  <i className="fas fa-download me-2"></i>Tải file ngay
                 </a>
               </div>
             </div>

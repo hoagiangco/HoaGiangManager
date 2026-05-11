@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/auth/middleware';
 import { EventService } from '@/lib/services/eventService';
 import { EventStatus } from '@/types';
+import { getVNNow } from '@/lib/utils/dateFormat';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -125,9 +128,9 @@ export async function POST(request: NextRequest) {
       relatedReportId: payload.relatedReportId ? Number(payload.relatedReportId) : null,
       metadata: metadata || null,
       createdBy: user.userId,
-      createdAt: new Date(),
+      createdAt: getVNNow(),
       updatedBy: user.userId,
-      updatedAt: new Date(),
+      updatedAt: getVNNow(),
     };
 
     const eventService = new EventService();

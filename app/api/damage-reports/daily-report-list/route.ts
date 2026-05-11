@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/auth/middleware';
 import { DamageReportService } from '@/lib/services/damageReportService';
 import { DamageReportPriority } from '@/types';
+import { getVNTodayStr } from '@/lib/utils/dateFormat';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,18 +23,12 @@ export async function GET(request: NextRequest) {
     const staffId = parseInt(searchParams.get('staffId') || '0');
     const category = searchParams.get('category') || 'all'; // all, pending, completed, backlog, priority
 
-    const targetDate = dateParam ? new Date(dateParam) : new Date(); // kept for any display usage
-
     // Use date string directly for getDailyReportData to avoid UTC timezone shift
     let targetDateStr: string;
     if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
       targetDateStr = dateParam;
     } else {
-      const now = new Date();
-      const y = now.getFullYear();
-      const m = String(now.getMonth() + 1).padStart(2, '0');
-      const d = String(now.getDate()).padStart(2, '0');
-      targetDateStr = `${y}-${m}-${d}`;
+      targetDateStr = getVNTodayStr();
     }
 
     const damageReportService = new DamageReportService();

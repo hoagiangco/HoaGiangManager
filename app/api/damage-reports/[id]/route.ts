@@ -68,15 +68,31 @@ export async function PUT(
     const id = parseInt(params.id);
     const body = await request.json();
     
-    const { isAdmin } = await import('@/lib/auth/permissions');
+    const { isAdmin, isSupervisor } = await import('@/lib/auth/permissions');
     const isAdminUser = isAdmin(user.roles);
+    const isSupervisorUser = isSupervisor(user.roles);
 
-    // Only Admin can edit damage reports
-    if (!isAdminUser) {
+    const damageReportService = new DamageReportService();
+    const existingReport = await damageReportService.getById(id);
+
+    if (!existingReport) {
       return NextResponse.json(
-        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được chỉnh sửa báo cáo' },
-        { status: 403 }
+        { status: false, error: 'Báo cáo không tồn tại' },
+        { status: 404 }
       );
+    }
+
+    // Only Admin, Supervisor or the assigned Handler can edit damage reports
+    if (!isAdminUser && !isSupervisorUser) {
+      const staffService = new (await import('@/lib/services/staffService')).StaffService();
+      const staff = await staffService.getByUserId(user.userId);
+      
+      if (!staff || (existingReport.handlerId !== staff.id && existingReport.reporterId !== staff.id)) {
+        return NextResponse.json(
+          { status: false, error: 'Forbidden: Bạn không có quyền chỉnh sửa báo cáo này' },
+          { status: 403 }
+        );
+      }
     }
 
     // Build safe payload
@@ -84,8 +100,6 @@ export async function PUT(
 
     // Set updatedBy
     reportData.updatedBy = user.userId;
-
-    const damageReportService = new DamageReportService();
 
     await damageReportService.update(reportData);
 

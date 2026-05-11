@@ -1,5 +1,6 @@
 import pool from '../db';
 import { DeviceReminderPlan } from '@/types';
+import { getVNNow } from '../utils/dateFormat';
 
 const parsePlanRow = (row: any): DeviceReminderPlan => ({
   id: row.id,
@@ -162,9 +163,9 @@ export class DeviceReminderPlanService {
         plan.isActive ?? true,
         plan.metadata ? JSON.stringify(plan.metadata) : null,
         plan.createdBy || null,
-        plan.createdAt || new Date(),
+        plan.createdAt || getVNNow(),
         plan.updatedBy || plan.createdBy || null,
-        plan.updatedAt || new Date(),
+        plan.updatedAt || getVNNow(),
       ]
     );
 

@@ -9,6 +9,8 @@ import { formatDateDisplay, formatDateTime, formatDateRange, formatDateFilename 
 import { generateExcelFile, generateDailyReportExcel } from '@/lib/utils/excelGenerator.server';
 import { formatTimelineForExcel } from '@/lib/utils/formatTimeline';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const { user, error } = await authenticate(request);
@@ -132,17 +134,42 @@ export async function GET(request: NextRequest) {
 
     if (dailyMode && fromDateStr) {
       // Use daily report service logic - pass date string directly to avoid timezone issues
-      const data = await damageReportService.getDailyReportData(fromDateStr, { departmentId: selectedDeptId, handlerId: selectedHandlerId });
+      const data = await damageReportService.getDailyReportData(fromDateStr, { 
+        departmentId: selectedDeptId, 
+        handlerId: selectedHandlerId,
+        maintenanceBatchId: maintenanceBatchId || undefined
+      });
       dailySummary = data.summary;
       
-      // Categorize like the UI does
+      // 1. Tag for Sections (Allowed to overlap in full report data)
       const taggedNew = data.newReports.map((r: any) => ({ ...r, dailyCategory: 'Chưa làm', section: '1. VIỆC TRONG NGÀY' }));
       const taggedActive = data.activeReports.map((r: any) => ({ ...r, dailyCategory: 'Đang xử lý', section: '1. VIỆC TRONG NGÀY' }));
       const taggedCompleted = data.completedReports.map((r: any) => ({ ...r, dailyCategory: 'Hoàn thành', section: '1. VIỆC TRONG NGÀY' }));
       const taggedPendingActive = data.pendingActiveReports.map((r: any) => ({ ...r, dailyCategory: 'Đang xử lý', section: '2. VIỆC ĐANG XỬ LÝ' }));
       const taggedPending = data.pendingReports.map((r: any) => ({ ...r, dailyCategory: 'Tồn đọng', section: '3. VIỆC CHỜ XỬ LÝ' }));
 
+      // For the full report (Excel), we keep all sections with duplicates
       allReports = [...taggedNew, ...taggedActive, ...taggedCompleted, ...taggedPendingActive, ...taggedPending];
+
+      // For the UI Preview List (Danh sách), we MUST NOT have duplicates in the main array
+      // but we need to know all sections a report belongs to for the Print function.
+      if (isPreview) {
+        const uniqueMap = new Map();
+        allReports.forEach(report => {
+          if (uniqueMap.has(report.id)) {
+            const existing = uniqueMap.get(report.id);
+            if (!existing.allSections.includes(report.section)) {
+              existing.allSections.push(report.section);
+            }
+          } else {
+            uniqueMap.set(report.id, { 
+              ...report, 
+              allSections: [report.section] 
+            });
+          }
+        });
+        allReports = Array.from(uniqueMap.values());
+      }
 
       // Filter by category
       if (category !== 'all') {
@@ -151,6 +178,9 @@ export async function GET(request: NextRequest) {
         else if (category === 'completed') allReports = allReports.filter((r: any) => r.dailyCategory === 'Hoàn thành');
         else if (category === 'backlog') allReports = allReports.filter((r: any) => r.section === '2. VIỆC ĐANG XỬ LÝ' || r.section === '3. VIỆC CHỜ XỬ LÝ');
         else if (category === 'priority') allReports = allReports.filter((r: any) => r.priority >= DamageReportPriority.High);
+        else if (category === 'today') allReports = allReports.filter((r: any) => r.section === '1. VIỆC TRONG NGÀY');
+        else if (category === 'pendingActive') allReports = allReports.filter((r: any) => r.section === '2. VIỆC ĐANG XỬ LÝ');
+        else if (category === 'pending') allReports = allReports.filter((r: any) => r.section === '3. VIỆC CHỜ XỬ LÝ');
       }
     } else {
       // Standard filtering
@@ -330,9 +360,27 @@ export async function GET(request: NextRequest) {
           totalPendingActive: dataForSections.summary.totalPendingActive,
         },
         sections: [
-          { title: '1. VIỆC TRONG NGÀY', headers, rows: mapToRow([...dataForSections.newReports, ...dataForSections.activeReports, ...dataForSections.completedReports]) },
-          { title: '2. VIỆC ĐANG XỬ LÝ', headers, rows: mapToRow(dataForSections.pendingActiveReports) },
-          { title: '3. VIỆC CHỜ XỬ LÝ', headers, rows: mapToRow(dataForSections.pendingReports) },
+          { 
+            title: '1. VIỆC TRONG NGÀY', 
+            headers, 
+            rows: (category === 'all' || category === 'today' || category === 'new' || category === 'active' || category === 'completed' || (category === 'priority' && [...dataForSections.newReports, ...dataForSections.activeReports, ...dataForSections.completedReports].some(r => r.priority >= DamageReportPriority.High))) 
+              ? mapToRow([...dataForSections.newReports, ...dataForSections.activeReports, ...dataForSections.completedReports].filter(r => category !== 'priority' || r.priority >= DamageReportPriority.High)) 
+              : [] 
+          },
+          { 
+            title: '2. VIỆC ĐANG XỬ LÝ', 
+            headers, 
+            rows: (category === 'all' || category === 'pendingActive' || category === 'backlog' || (category === 'priority' && dataForSections.pendingActiveReports.some(r => r.priority >= DamageReportPriority.High)))
+              ? mapToRow(dataForSections.pendingActiveReports.filter(r => category !== 'priority' || r.priority >= DamageReportPriority.High)) 
+              : [] 
+          },
+          { 
+            title: '3. VIỆC CHỜ XỬ LÝ', 
+            headers, 
+            rows: (category === 'all' || category === 'pending' || category === 'backlog' || (category === 'priority' && dataForSections.pendingReports.some(r => r.priority >= DamageReportPriority.High)))
+              ? mapToRow(dataForSections.pendingReports.filter(r => category !== 'priority' || r.priority >= DamageReportPriority.High)) 
+              : [] 
+          },
         ],
       });
     } else {
