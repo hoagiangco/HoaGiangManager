@@ -7,25 +7,7 @@ import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
 import FileManager from '@/components/FileManager';
 import { isAdmin } from '@/lib/auth/permissions';
-
-// Parse handlerNotes JSON to timeline entries
-const parseTimeline = (value: string | undefined | null): TimelineEntry[] => {
-  if (!value) return [];
-  try {
-    const parsed = JSON.parse(value);
-    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].hasOwnProperty('timestamp')) {
-      return parsed;
-    }
-  } catch (e) {}
-  return [{ id: 'legacy', timestamp: new Date().toISOString(), author: 'Hệ thống', content: value, type: 'legacy' }];
-};
-
-const formatDateLabel = (dateString: string) => {
-  try {
-    const d = new Date(dateString);
-    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-  } catch { return ''; }
-};
+import { parseTimeline } from '@/components/HandlerNotesEditor';
 
 interface QuickViewReportModalProps {
   reportId: number;
@@ -175,17 +157,26 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
     setHasChanges(true);
   };
 
+  const formatDateLabel = (dateString: string) => {
+    try {
+      const d = new Date(dateString);
+      return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+    } catch {
+      return '';
+    }
+  };
+
   const canManageImages = isAdmin(currentUser?.roles);
-  const isHandler = getCurrentUserStaffId() === report?.handlerId;
+  const currentStaffId = getCurrentUserStaffId();
+  const isHandler = report && currentStaffId === report.handlerId;
   const canAddImages = canManageImages || isHandler;
-  const isTerminalStatus = [DamageReportStatus.Completed, DamageReportStatus.Cancelled, DamageReportStatus.Rejected].includes(report?.status as DamageReportStatus);
+  const isTerminalStatus = report && [DamageReportStatus.Completed, DamageReportStatus.Cancelled, DamageReportStatus.Rejected].includes(report.status);
   const showAddButton = canAddImages && !isTerminalStatus;
 
   if (!isOpen) return null;
 
   return (
-    <>
-      {/* Modal Overlay */}
+    <React.Fragment>
       <div 
         className="modal show d-block" 
         tabIndex={-1} 
@@ -197,7 +188,6 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '16px', overflow: 'hidden' }}>
-            {/* Header - Compact */}
             <div className="modal-header bg-white border-bottom p-2 px-4 shadow-sm">
               <div className="d-flex align-items-center">
                 <div className="bg-primary bg-opacity-10 p-2 rounded-3 me-3">
@@ -226,7 +216,6 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
                 <div className="container-fluid p-0">
                   <div className="d-flex flex-column gap-3">
                     
-                    {/* Maintenance Notice */}
                     {report.maintenanceBatchId && (
                       <div className="alert alert-info py-2 px-3 mb-1 d-flex align-items-center gap-3 border-0 shadow-sm" style={{ fontSize: '0.75rem', borderRadius: '12px', backgroundColor: '#eef6ff' }}>
                         <div className="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style={{ width: '24px', height: '24px', minWidth: '24px' }}>
@@ -239,7 +228,6 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
                       </div>
                     )}
 
-                    {/* Location Card - More Compact */}
                     <div className="bg-white p-3 rounded-4 shadow-sm border-0">
                       <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <div className="flex-grow-1">
@@ -257,9 +245,7 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Content & Response - Side-by-side on large screens */}
                     <div className="row g-3">
-                      {/* Description */}
                       <div className="col-lg-6">
                         <div className="bg-white p-3 rounded-4 shadow-sm h-100 d-flex flex-column">
                           <h6 className="text-primary fw-bold text-uppercase mb-2 d-flex align-items-center" style={{ fontSize: '0.65rem', letterSpacing: '0.05em' }}>
@@ -277,13 +263,12 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
                         </div>
                       </div>
 
-                      {/* Handler Note */}
                       <div className="col-lg-6">
                         <div className="bg-white p-3 rounded-4 shadow-sm h-100 d-flex flex-column">
-                           <h6 className="text-success fw-bold text-uppercase mb-2 d-flex align-items-center" style={{ fontSize: '0.65rem', letterSpacing: '0.05em' }}>
+                          <h6 className="text-success fw-bold text-uppercase mb-2 d-flex align-items-center" style={{ fontSize: '0.65rem', letterSpacing: '0.05em' }}>
                             <i className="fas fa-clipboard-check me-2"></i>Ghi chú xử lý
                           </h6>
-                          <div className="flex-grow-1 d-flex flex-column gap-1" style={{ maxHeight: '120px', overflowY: 'auto' }}>
+                          <div className="flex-grow-1 d-flex flex-column gap-1" style={{ maxHeight: '180px', overflowY: 'auto' }}>
                             {(() => {
                               const entries = parseTimeline(report.handlerNotes).filter(e => e.type !== 'auto');
                               if (entries.length === 0) {
@@ -305,7 +290,6 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Images Section - Shrunken grid */}
                     <div className="bg-white p-3 rounded-4 shadow-sm">
                       <div className="d-flex justify-content-between align-items-center mb-2">
                         <h6 className="text-dark fw-bold text-uppercase m-0" style={{ fontSize: '0.65rem', letterSpacing: '0.05em' }}>
@@ -327,7 +311,6 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
                         {newImages.length > 0 ? (
                           newImages.map((img, idx) => (
                             <div key={`${img}-${idx}`} className="image-wrapper">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
                                 src={img}
                                 alt={`Hình ảnh ${idx + 1}`}
@@ -355,7 +338,6 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
                         )}
                       </div>
 
-                      {/* After Images - Inline if possible */}
                       {Array.isArray(report.afterImages) && report.afterImages.length > 0 && (
                         <div className="mt-2 pt-2 border-top">
                           <h6 className="text-success fw-bold text-uppercase mb-2" style={{ fontSize: '0.65rem', letterSpacing: '0.05em' }}>
@@ -364,7 +346,6 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
                           <div className="image-grid">
                             {report.afterImages.map((img, idx) => (
                               <div key={`${img}-${idx}`} className="image-wrapper border-success border-opacity-10">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                   src={img}
                                   alt={`Sau xử lý ${idx + 1}`}
@@ -413,7 +394,6 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
         </div>
       </div>
 
-      {/* FileManager */}
       {showFileManager && (
         <FileManager
           isOpen={showFileManager}
@@ -485,7 +465,7 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
           color: white;
           display: flex;
           align-items: center;
-          justifyContent: center;
+          justify-content: center;
           z-index: 10;
           font-size: 0.6rem;
           box-shadow: 0 1px 3px rgba(0,0,0,0.2);
@@ -494,7 +474,7 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
           border-style: dashed !important;
         }
       `}</style>
-    </>
+    </React.Fragment>
   );
 };
 
