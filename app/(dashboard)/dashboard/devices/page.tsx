@@ -574,7 +574,10 @@ function DevicesPageContent() {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (isContinue: boolean = false) => {
+    // Handle event object if called directly via onClick={handleSave}
+    const shouldContinue = isContinue === true;
+
     if (!formData.name) {
       toast.error('Vui lòng nhập tên thiết bị');
       return;
@@ -603,7 +606,26 @@ function DevicesPageContent() {
         toast.success('Thêm mới thành công');
       }
 
-      setShowModal(false);
+      if (shouldContinue && !isEdit) {
+        // Reset form but keep Category, Department, Location
+        setFormData({
+          ...formData,
+          id: 0,
+          name: '',
+          serial: '',
+          description: '',
+          img: '',
+          warrantyDate: '',
+          useDate: '',
+          endDate: '',
+        });
+        setHtmlSource('');
+        setQuillValue('');
+        setShowImagePreview(false);
+      } else {
+        setShowModal(false);
+      }
+      
       loadData();
     } catch (error) {
       toast.error(isEdit ? 'Lỗi khi cập nhật' : 'Lỗi khi thêm mới');
@@ -1618,12 +1640,21 @@ function DevicesPageContent() {
                 >
                   Đóng
                 </button>
+                {!isEdit && (
+                  <button
+                    type="button"
+                    className="btn btn-success"
+                    onClick={() => handleSave(true)}
+                  >
+                    <i className="fas fa-plus-circle me-1"></i> Lưu & Tiếp tục
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={handleSave}
+                  onClick={() => handleSave(false)}
                 >
-                  Lưu
+                  <i className="fas fa-save me-1"></i> {isEdit ? 'Cập nhật' : 'Lưu'}
                 </button>
               </div>
             </div>

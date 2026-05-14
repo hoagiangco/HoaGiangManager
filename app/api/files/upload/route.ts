@@ -85,16 +85,17 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_VERCEL_URL
     );
     const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN && process.env.BLOB_READ_WRITE_TOKEN !== 'your_blob_token_here' && !process.env.BLOB_READ_WRITE_TOKEN.startsWith('YOUR_');
+    const uploadProvider = process.env.UPLOAD_PROVIDER || (hasToken ? 'vercel' : 'local');
 
-    console.log('Environment check:', { isVercel, hasToken, nodeEnv: process.env.NODE_ENV });
+    console.log('Environment check:', { isVercel, hasToken, uploadProvider, nodeEnv: process.env.NODE_ENV });
 
-    // Try Vercel Blob first — works both locally and on Vercel when token is set
+    // Try Vercel Blob first if provider is vercel
     let blobUrl: string | null = null;
-    try {
-      blobUrl = await uploadToBlob(fileName, buffer, file.type || 'application/octet-stream');
-    } catch (blobError: any) {
-      // If blob upload failed (token exists but error occurred), return error
-      if (hasToken) {
+    
+    if (uploadProvider === 'vercel' && hasToken) {
+      try {
+        blobUrl = await uploadToBlob(fileName, buffer, file.type || 'application/octet-stream');
+      } catch (blobError: any) {
         console.error('Vercel Blob upload failed:', blobError);
         return NextResponse.json(
           { 
@@ -104,27 +105,27 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
-      // No token → fall through to local storage
-      console.warn('No BLOB_READ_WRITE_TOKEN, falling back to local storage');
-    }
-    
-    if (blobUrl) {
-      console.log('File uploaded to Vercel Blob:', fileName, blobUrl);
-      return NextResponse.json({
-        success: true,
-        url: blobUrl,
-        path: blobUrl,
-        name: originalName,
-        size: file.size,
-      });
+      
+      if (blobUrl) {
+        console.log('File uploaded to Vercel Blob:', fileName, blobUrl);
+        return NextResponse.json({
+          success: true,
+          url: blobUrl,
+          path: blobUrl,
+          name: originalName,
+          size: file.size,
+        });
+      }
     }
 
-    // On Vercel without blob: filesystem is read-only, cannot save locally
-    if (isVercel && !blobUrl) {
+    // On Vercel but trying to use local storage: filesystem is read-only, cannot save locally
+    if (isVercel && uploadProvider === 'local') {
+      console.warn('Warning: Attempting to use local storage on Vercel environment. This may not persist files.');
+    } else if (isVercel && !blobUrl) {
       return NextResponse.json(
         { 
-          error: 'Vercel Blob Store chưa được cấu hình. Vui lòng thêm BLOB_READ_WRITE_TOKEN vào environment variables.',
-          troubleshooting: '1. Vào Vercel Dashboard → Storage → Tạo/Kết nối Blob Store. 2. Đảm bảo BLOB_READ_WRITE_TOKEN được set. 3. Redeploy project.'
+          error: 'Vercel Blob Store chưa được cấu hình hoặc gặp lỗi. Vui lòng kiểm tra BLOB_READ_WRITE_TOKEN.',
+          troubleshooting: '1. Vào Vercel Dashboard → Storage → Tạo/Kết nối Blob Store. 2. Đảm bảo BLOB_READ_WRITE_TOKEN được set.'
         },
         { status: 500 }
       );
@@ -132,8 +133,17 @@ export async function POST(request: NextRequest) {
 
     // ONLY for local development: save to public/uploads
     // This code should NEVER run on Vercel
-    console.log('Using local file storage (development mode)');
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+    console.log(`Using local file storage (provider: ${uploadProvider})`);
+    
+    // Resolve upload directory from env or fallback to default
+    let uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+    if (process.env.UPLOAD_DIR) {
+      // If UPLOAD_DIR is absolute, use it directly, otherwise resolve relative to cwd
+      uploadsDir = path.isAbsolute(process.env.UPLOAD_DIR) 
+        ? process.env.UPLOAD_DIR 
+        : path.join(process.cwd(), process.env.UPLOAD_DIR);
+    }
+
     if (!existsSync(uploadsDir)) {
       await mkdir(uploadsDir, { recursive: true });
     }

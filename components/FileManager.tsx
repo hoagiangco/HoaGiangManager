@@ -690,7 +690,16 @@ export default function FileManager({
                                   objectFit: 'contain',
                                 }}
                                 onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display = 'none';
+                                  // If image fails to load, mark it as not an image so we show the icon instead
+                                  const target = e.target as HTMLImageElement;
+                                  const parent = target.parentElement;
+                                  if (parent) {
+                                    const iconDiv = document.createElement('div');
+                                    iconDiv.className = 'py-2';
+                                    iconDiv.innerHTML = `<i class="fas ${getFileIcon(file.name)} fa-3x text-muted"></i>`;
+                                    target.style.display = 'none';
+                                    parent.appendChild(iconDiv);
+                                  }
                                 }}
                               />
                             ) : (

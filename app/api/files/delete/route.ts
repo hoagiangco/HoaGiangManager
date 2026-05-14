@@ -27,8 +27,9 @@ export async function DELETE(request: NextRequest) {
       process.env.NEXT_PUBLIC_VERCEL_URL
     );
     const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN && process.env.BLOB_READ_WRITE_TOKEN !== 'your_blob_token_here' && !process.env.BLOB_READ_WRITE_TOKEN.startsWith('YOUR_');
+    const uploadProvider = process.env.UPLOAD_PROVIDER || (hasToken ? 'vercel' : 'local');
 
-    if (hasToken) {
+    if (uploadProvider === 'vercel' && hasToken) {
       try {
         const { del, list } = await import('@vercel/blob');
         const token = process.env.BLOB_READ_WRITE_TOKEN as string;
@@ -155,7 +156,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid file name' }, { status: 400 });
     }
 
-    const filePath = path.join(process.cwd(), 'public', 'uploads', fileName);
+    let uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+    if (process.env.UPLOAD_DIR) {
+      uploadsDir = path.isAbsolute(process.env.UPLOAD_DIR) 
+        ? process.env.UPLOAD_DIR 
+        : path.join(process.cwd(), process.env.UPLOAD_DIR);
+    }
+
+    const filePath = path.join(uploadsDir, fileName);
 
     try {
       await unlink(filePath);

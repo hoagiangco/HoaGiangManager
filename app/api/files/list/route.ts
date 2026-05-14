@@ -120,11 +120,12 @@ export async function GET(request: NextRequest) {
       process.env.NEXT_PUBLIC_VERCEL_URL
     );
     const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN && process.env.BLOB_READ_WRITE_TOKEN !== 'your_blob_token_here' && !process.env.BLOB_READ_WRITE_TOKEN.startsWith('YOUR_');
+    const uploadProvider = process.env.UPLOAD_PROVIDER || (hasToken ? 'vercel' : 'local');
 
-    console.log('List files - Storage check:', { isVercel, hasToken, VERCEL: !!process.env.VERCEL, HAS_TOKEN: hasToken });
+    console.log('List files - Storage check:', { isVercel, hasToken, uploadProvider, VERCEL: !!process.env.VERCEL, HAS_TOKEN: hasToken });
 
-    // If has token, prioritize Vercel Blob (even on local)
-    if (hasToken) {
+    // If provider is vercel and has token, list from Vercel Blob
+    if (uploadProvider === 'vercel' && hasToken) {
       console.log('Attempting to list files from Vercel Blob (Prioritized)...');
       try {
         const { files: blobFiles } = await listBlobFiles();
@@ -190,8 +191,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fallback: Local filesystem (ONLY for development, NOT on Vercel)
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+    // Fallback: Local filesystem
+    let uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+    if (process.env.UPLOAD_DIR) {
+      uploadsDir = path.isAbsolute(process.env.UPLOAD_DIR) 
+        ? process.env.UPLOAD_DIR 
+        : path.join(process.cwd(), process.env.UPLOAD_DIR);
+    }
     
     if (!existsSync(uploadsDir)) {
       return NextResponse.json({ files: [], ...(debug ? { debug: { isVercel, hasToken } } : {}) }, {
