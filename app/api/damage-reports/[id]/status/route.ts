@@ -131,9 +131,15 @@ export async function PUT(
       completedAt = new Date();
     }
 
+    // Only update handler notes when:
+    // - A non-undefined value was sent (field was included in request)
+    // - The new value is non-empty OR the previous value was also plain text (not a JSON timeline)
+    // This prevents an empty completion-modal field from wiping an existing JSON timeline
+    const previousIsTimeline = previousHandlerNotes.trim().startsWith('[');
     if (
       trimmedHandlerNotes !== undefined &&
-      trimmedHandlerNotes !== previousHandlerNotes
+      trimmedHandlerNotes !== previousHandlerNotes &&
+      (trimmedHandlerNotes !== '' || !previousIsTimeline)
     ) {
       await damageReportService.updateHandlerNotes(id, trimmedHandlerNotes, user.userId);
     }
@@ -147,10 +153,14 @@ export async function PUT(
     
     if (isMaintenanceReport) {
       // Use the newly created service method for maintenance sync
+      // If the form sent empty handlerNotes, fall back to previousHandlerNotes so Event.notes is not wiped
+      const effectiveHandlerNotes = (trimmedHandlerNotes !== undefined && trimmedHandlerNotes !== '')
+        ? trimmedHandlerNotes
+        : previousHandlerNotes || null;
       await damageReportService.syncMaintenanceBatchEvents(id, nextStatus, user.userId, {
         handlerId: report.handlerId,
         handlingDate: report.handlingDate,
-        handlerNotes: trimmedHandlerNotes ?? previousHandlerNotes ?? null,
+        handlerNotes: effectiveHandlerNotes,
         damageContent: report.damageContent,
         eventTypeId: parsedEventTypeId,
         eventTitle: trimmedTitle,
@@ -183,7 +193,20 @@ export async function PUT(
           
           if (trimmedTitle) updateData.title = trimmedTitle;
           if (trimmedDescription) updateData.description = trimmedDescription;
-          if (trimmedHandlerNotes !== undefined) updateData.notes = trimmedHandlerNotes;
+          if (trimmedHandlerNotes !== undefined) {
+             let eventNotesStr = trimmedHandlerNotes;
+             try {
+               if (typeof eventNotesStr === 'string' && eventNotesStr.trim().startsWith('[')) {
+                 const tl = JSON.parse(eventNotesStr);
+                 if (Array.isArray(tl) && tl.length > 0) {
+                   const userEntries = tl.filter((e: any) => e.type !== 'auto');
+                   const lastEntry = userEntries.length > 0 ? userEntries[userEntries.length - 1] : tl[tl.length - 1];
+                   eventNotesStr = lastEntry?.content || '';
+                 }
+               }
+             } catch {}
+             updateData.notes = eventNotesStr.substring(0, 200);
+          }
           if (resolvedDeviceId) updateData.deviceId = resolvedDeviceId;
           
           // Ensure startDate is preserved or set if missing
@@ -196,13 +219,28 @@ export async function PUT(
       } else if (nextStatus === DamageReportStatus.Completed && parsedEventTypeId && resolvedDeviceId) {
         // For regular reports completion, create a single event (only if one doesn't exist)
         if (!completedAt) completedAt = new Date();
+        // Extract plain-text content from handlerNotes JSON timeline to fit in Event.notes (varchar 200)
+        let eventNotesStr = trimmedHandlerNotes || previousHandlerNotes || '';
+        try {
+          if (typeof eventNotesStr === 'string' && eventNotesStr.trim().startsWith('[')) {
+            const tl = JSON.parse(eventNotesStr);
+            if (Array.isArray(tl) && tl.length > 0) {
+              const userEntries = tl.filter((e: any) => e.type !== 'auto');
+              const lastEntry = userEntries.length > 0 ? userEntries[userEntries.length - 1] : tl[tl.length - 1];
+              eventNotesStr = lastEntry?.content || '';
+            }
+          }
+        } catch {}
         
+        // Truncate to 200 chars max to be safe for Event.Notes DB schema
+        eventNotesStr = eventNotesStr.substring(0, 200);
+
         await eventService.create({
           title: trimmedTitle || (report.deviceName ? `Hoàn thành xử lý - ${report.deviceName}` : `Hoàn thành xử lý báo cáo #${id}`),
           deviceId: resolvedDeviceId || null,
           eventTypeId: parsedEventTypeId,
           description: trimmedDescription || report.damageContent || '',
-          notes: trimmedHandlerNotes || previousHandlerNotes || '',
+          notes: eventNotesStr,
           status: EventStatus.Completed,
           eventDate: completedAt,
           startDate: report.handlingDate ? new Date(report.handlingDate) : completedAt,

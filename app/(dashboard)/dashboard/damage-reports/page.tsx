@@ -1293,7 +1293,10 @@ export default function DamageReportsPage() {
         status: (shouldOpenCompletion && formData.deviceSelection === 'other') ? DamageReportStatus.Completed : formData.status,
         priority: formData.priority,
         notes: null, // Bỏ ghi chú chung
-        handlerNotes: formData.handlerNotes || null,
+        // When editing: HandlerNotesEditor saves notes independently via /handler-notes API.
+        // Do NOT re-send handlerNotes here to avoid double-write or JSON timeline overwrite.
+        // When creating: include handlerNotes if user typed something in the textarea.
+        handlerNotes: isEdit ? undefined : (formData.handlerNotes || null),
         rejectionReason: formData.rejectionReason || null,
         maintenanceBatchId: formData.maintenanceBatchId || null,
       };
@@ -3675,20 +3678,48 @@ export default function DamageReportsPage() {
                 )}
 
                 <div className="mb-3">
+                  {/* Show existing HandlerNotes timeline (read-only) */}
+                  {(() => {
+                    const existingNotes = completionModal.report?.handlerNotes;
+                    if (!existingNotes) return null;
+                    const timeline = parseTimeline(existingNotes).filter(e => e.type !== 'auto');
+                    if (timeline.length === 0) return null;
+                    return (
+                      <div className="mb-2 p-2 rounded border" style={{ backgroundColor: '#f8f9fa', borderColor: '#dee2e6', fontSize: '0.78rem' }}>
+                        <div className="d-flex align-items-center gap-1 mb-1" style={{ color: '#6c757d', fontWeight: 600 }}>
+                          <i className="fas fa-history" style={{ fontSize: '0.7rem' }}></i>
+                          <span>Ghi chú đã có ({timeline.length} mục) — sẽ được giữ nguyên</span>
+                        </div>
+                        <div style={{ maxHeight: 120, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {timeline.map((entry, idx) => (
+                            <div key={idx} style={{ borderLeft: '3px solid #0d6efd', paddingLeft: 8, color: '#212529' }}>
+                              <span style={{ color: '#6c757d', fontSize: '0.7rem', marginRight: 6 }}>
+                                {entry.timestamp ? new Date(entry.timestamp).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+                              </span>
+                              {entry.content}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <label className="form-label">
-                    {completionModal.targetStatus === DamageReportStatus.Completed ? 'Ghi chú người xử lý' : 'Lý do / Ghi chú'}
+                    {completionModal.targetStatus === DamageReportStatus.Completed
+                      ? <><i className="fas fa-plus-circle me-1 text-success"></i>Thêm ghi chú hoàn thành <span className="text-muted fw-normal">(tùy chọn)</span></>
+                      : 'Lý do / Ghi chú'}
                   </label>
                   <textarea
                     className="form-control"
                     rows={completionModal.targetStatus === DamageReportStatus.Completed ? 2 : 4}
                     value={completionModal.handlerNotes}
                     onChange={(e) => updateCompletionModal({ handlerNotes: e.target.value })}
-                    placeholder={completionModal.targetStatus === DamageReportStatus.Completed ? "Ghi chú nội bộ cho báo cáo" : "Nhập lý do cụ thể..."}
+                    placeholder={completionModal.targetStatus === DamageReportStatus.Completed ? "Nhập ghi chú bổ sung khi hoàn thành (có thể để trống)..." : "Nhập lý do cụ thể..."}
                     disabled={completionModal.submitting}
                   />
                   <small className="text-muted">
-                    {completionModal.targetStatus === DamageReportStatus.Completed 
-                      ? 'Nội dung này sẽ được lưu vào mục "Ghi chú người xử lý" của báo cáo và gắn vào sự kiện.'
+                    {completionModal.targetStatus === DamageReportStatus.Completed
+                      ? <>Nếu nhập, nội dung sẽ được <strong>thêm vào</strong> lịch sử ghi chú. Để trống để giữ nguyên ghi chú hiện có.</>
                       : 'Nội dung này sẽ được lưu vào mục "Ghi chú người xử lý" của báo cáo.'}
                   </small>
                 </div>
@@ -3809,15 +3840,48 @@ export default function DamageReportsPage() {
                   )}
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">Ghi chú người xử lý</label>
+                  {/* Show existing HandlerNotes timeline (read-only) */}
+                  {(() => {
+                    // Find original report to get existing notes since pendingMaintenanceReport.handlerNotes was cleared
+                    const originalReport = reports.find(r => r.id === pendingMaintenanceReport.id) || allReports.find(r => r.id === pendingMaintenanceReport.id);
+                    const existingNotes = originalReport?.handlerNotes;
+                    if (!existingNotes) return null;
+                    const timeline = parseTimeline(existingNotes).filter(e => e.type !== 'auto');
+                    if (timeline.length === 0) return null;
+                    return (
+                      <div className="mb-3 p-2 rounded border" style={{ backgroundColor: '#f8f9fa', borderColor: '#dee2e6', fontSize: '0.78rem' }}>
+                        <div className="d-flex align-items-center gap-1 mb-1" style={{ color: '#6c757d', fontWeight: 600 }}>
+                          <i className="fas fa-history" style={{ fontSize: '0.7rem' }}></i>
+                          <span>Ghi chú đã có ({timeline.length} mục) — sẽ được giữ nguyên</span>
+                        </div>
+                        <div style={{ maxHeight: 120, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {timeline.map((entry, idx) => (
+                            <div key={idx} style={{ borderLeft: '3px solid #0d6efd', paddingLeft: 8, color: '#212529' }}>
+                              <span style={{ color: '#6c757d', fontSize: '0.7rem', marginRight: 6 }}>
+                                {entry.timestamp ? new Date(entry.timestamp).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+                              </span>
+                              {entry.content}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  <label className="form-label">
+                    <i className="fas fa-plus-circle me-1 text-success"></i>
+                    Thêm ghi chú hoàn thành <span className="text-muted fw-normal">(tùy chọn)</span>
+                  </label>
                   <textarea
                     className="form-control"
                     rows={3}
-                    placeholder="Nhập ghi chú hoặc công việc đã thực hiện..."
+                    placeholder="Nhập ghi chú bổ sung khi hoàn thành (có thể để trống)..."
                     value={pendingMaintenanceReport.handlerNotes || ''}
                     onChange={(e) => setPendingMaintenanceReport(prev => prev ? { ...prev, handlerNotes: e.target.value } : null)}
                   />
-                  <small className="text-muted d-block mt-1">Ghi chú này sẽ được lưu lại làm nội dung sự kiện hoàn thành.</small>
+                  <small className="text-muted d-block mt-1">
+                    Nếu nhập, nội dung sẽ được <strong>thêm vào</strong> lịch sử ghi chú. Để trống để giữ nguyên ghi chú hiện có.
+                  </small>
                 </div>
               </div>
               <div className="modal-footer">

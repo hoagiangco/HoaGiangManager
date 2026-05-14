@@ -681,35 +681,34 @@ export class DamageReportService {
     const oldDeviceId = currentResult.rows[0]?.DeviceID;
 
     // Handle HandlerNotes timeline protection
+    // RULE: If the DB already has a JSON timeline, NEVER overwrite it with null/undefined/empty/plain-text
+    // from a general edit form. Only the dedicated handler-notes API should modify the timeline.
     let finalHandlerNotes = report.handlerNotes;
-    if (finalHandlerNotes && typeof finalHandlerNotes === 'string' && !finalHandlerNotes.startsWith('[')) {
-      if (currentHandlerNotes && typeof currentHandlerNotes === 'string' && currentHandlerNotes.startsWith('[')) {
-        try {
-          const timeline = JSON.parse(currentHandlerNotes);
-          if (Array.isArray(timeline) && timeline.length > 0) {
-            // Find the latest manual note content
-            const userTimeline = timeline.filter((e: any) => e.type !== 'auto');
-            const latestContent = userTimeline.length > 0 
-              ? userTimeline[userTimeline.length - 1].content 
-              : timeline[timeline.length - 1].content;
-
-            if (finalHandlerNotes === latestContent) {
-              // No change to content, preserve the full timeline
-              finalHandlerNotes = currentHandlerNotes;
-            } else if (finalHandlerNotes.trim() === '') {
-              // User cleared the field in Edit modal, preserve timeline
-              finalHandlerNotes = currentHandlerNotes;
-            } else {
-              // Content changed, append as new note to preserve history
-              // We'll use the existing append logic (simplified here or we can call appendTimelineNote later)
-              // For now, let's just use the currentHandlerNotes and we will handle the append separately if needed
-              // But the simplest is to just preserve the timeline if they are using the general Edit modal
-              finalHandlerNotes = currentHandlerNotes;
-            }
-          }
-        } catch (e) {}
-      }
+    
+    // Case 1: incoming is null/undefined/empty → preserve existing timeline
+    const isIncomingEmpty = !finalHandlerNotes || (typeof finalHandlerNotes === 'string' && finalHandlerNotes.trim() === '');
+    if (isIncomingEmpty && currentHandlerNotes) {
+      finalHandlerNotes = currentHandlerNotes;
     }
+    // Case 2: incoming is a plain string (not a JSON array) and DB already has a JSON timeline → preserve timeline
+    else if (
+      finalHandlerNotes &&
+      typeof finalHandlerNotes === 'string' &&
+      !finalHandlerNotes.startsWith('[') &&
+      currentHandlerNotes &&
+      typeof currentHandlerNotes === 'string' &&
+      currentHandlerNotes.startsWith('[')
+    ) {
+      try {
+        const timeline = JSON.parse(currentHandlerNotes);
+        if (Array.isArray(timeline) && timeline.length > 0) {
+          // Always preserve the full JSON timeline when coming from general Edit form
+          // (handler-notes dedicated API handles appending/editing entries)
+          finalHandlerNotes = currentHandlerNotes;
+        }
+      } catch (e) {}
+    }
+    // Case 3: incoming is a valid JSON timeline → use it directly (from handler-notes editor)
 
     // Handle date clearing and auto-setting based on status transition for full update
     let finalHandlingDate: Date | null | undefined = report.handlingDate;
@@ -1348,6 +1347,27 @@ export class DamageReportService {
       };
       
       const eventPromises = uniqueMissingPlans.map((plan: any) => {
+        // Extract plain-text content from handlerNotes JSON timeline (avoid storing raw JSON in Event.notes)
+        const rawNotes = options?.handlerNotes || report.HandlerNotes || '';
+        let eventNotes = '';
+        if (rawNotes) {
+          try {
+            if (typeof rawNotes === 'string' && rawNotes.trim().startsWith('[')) {
+              const tl = JSON.parse(rawNotes);
+              if (Array.isArray(tl) && tl.length > 0) {
+                const userEntries = tl.filter((e: any) => e.type !== 'auto');
+                const lastEntry = userEntries.length > 0 ? userEntries[userEntries.length - 1] : tl[tl.length - 1];
+                eventNotes = lastEntry?.content || '';
+              }
+            } else {
+              eventNotes = rawNotes;
+            }
+          } catch { eventNotes = rawNotes; }
+        }
+        
+        // Truncate to 200 chars max to fit Event.Notes varchar(200) constraint
+        eventNotes = eventNotes.substring(0, 200);
+
         return eventService.create({
           title: options?.eventTitle || (plan.deviceName 
             ? `Bảo trì định kỳ - ${plan.deviceName}` 
@@ -1355,7 +1375,7 @@ export class DamageReportService {
           deviceId: plan.deviceId,
           eventTypeId: options?.eventTypeId || plan.eventTypeId || 1,
           description: options?.eventDescription || options?.damageContent || report.DamageContent || plan.title || '',
-          notes: options?.handlerNotes || report.HandlerNotes || '',
+          notes: eventNotes,
           status: mappedStatus,
           eventDate: now,
           startDate: options?.handlingDate ? new Date(options?.handlingDate) : (s === DamageReportStatus.InProgress || s === DamageReportStatus.Completed ? now : null),
