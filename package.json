@@ -18,6 +18,7 @@
     "migrate:data": "npx tsx scripts/migrate-data.ts",
     "migrate:maintenance-batch": "npx tsx scripts/run-migration.ts",
     "check-reminders": "npx tsx scripts/check-maintenance-reminders.ts",
+    "check-work-plans": "npx tsx scripts/check-work-plan-reminders.ts",
     "db:backup": "node scripts/backup-db.js",
     "db:restore": "node scripts/emergency-restore.js"
   },

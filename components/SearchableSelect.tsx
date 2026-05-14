@@ -69,16 +69,20 @@ export default function SearchableSelect({
 
       {isOpen && (
         <div
-          className="dropdown-menu show w-100 p-0 shadow border"
+          className="dropdown-menu show p-0 shadow-lg border"
           style={{
             position: 'absolute',
             top: '100%',
             left: 0,
-            zIndex: 9999,
-            maxHeight: '280px',
+            zIndex: 1050,
+            minWidth: '100%',
+            width: 'max-content',
+            maxWidth: '500px',
+            maxHeight: '350px',
             display: 'flex',
             flexDirection: 'column',
-            marginTop: '2px',
+            marginTop: '4px',
+            borderRadius: '8px'
           }}
         >
           <div className="p-2 border-bottom bg-light position-sticky top-0" style={{ zIndex: 1 }}>

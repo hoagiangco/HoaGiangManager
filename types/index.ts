@@ -293,3 +293,37 @@ export interface TimelineEntry {
   content: string;
   type: 'manual' | 'auto' | 'legacy';
 }
+
+// Work Plan types
+export interface WorkPlanDraftData {
+  deviceId?: number;
+  damageLocation?: string;
+  damageContent: string;
+  priority: DamageReportPriority;
+  images?: string[];
+  reporterId?: number;
+  reportingDepartmentId?: number;
+}
+
+export interface WorkPlanItem {
+  id: number;
+  planDate: string; // ISO Date string
+  staffId: number;
+  damageReportId?: number | null;
+  isNewTask: boolean;
+  title: string;
+  draftData?: WorkPlanDraftData | null;
+  isImplemented: boolean;
+  createdBy?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface WorkPlanItemVM extends WorkPlanItem {
+  staffName?: string;
+  reportStatus?: DamageReportStatus;
+  reportStatusName?: string;
+  deviceName?: string;
+  location?: string;
+  deptName?: string;
+}

@@ -24,9 +24,10 @@ async function runSqlMigration() {
     process.exit(1);
   }
 
+  const isLocalhost = dbUrl.includes('localhost') || dbUrl.includes('127.0.0.1');
   const client = new Client({
     connectionString: dbUrl,
-    ssl: { rejectUnauthorized: false }
+    ssl: isLocalhost ? false : { rejectUnauthorized: false }
   });
 
   try {
