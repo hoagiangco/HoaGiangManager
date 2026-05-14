@@ -327,3 +327,52 @@ export interface WorkPlanItemVM extends WorkPlanItem {
   location?: string;
   deptName?: string;
 }
+
+// Spare Part types
+export interface SparePartCategory {
+  id: number;
+  name: string;
+  description?: string;
+}
+
+export interface SparePart {
+  id: number;
+  name: string;
+  unit?: string;
+  categoryId?: number;
+  minQuantity: number;
+  currentQuantity: number;
+  description?: string;
+  imageUrl?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface SparePartVM extends SparePart {
+  categoryName?: string;
+  isLowStock?: boolean;
+}
+
+export enum SparePartTransactionType {
+  In = 'IN',
+  Out = 'OUT'
+}
+
+export interface SparePartTransaction {
+  id: number;
+  sparePartId: number;
+  type: SparePartTransactionType;
+  quantity: number;
+  transactionDate: Date;
+  note?: string;
+  relatedReportId?: number;
+  createdBy?: string;
+  createdAt?: Date;
+}
+
+export interface SparePartTransactionVM extends SparePartTransaction {
+  sparePartName?: string;
+  sparePartUnit?: string;
+  createdByName?: string;
+  relatedReportCode?: string;
+}

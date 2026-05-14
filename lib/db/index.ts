@@ -2,6 +2,8 @@ import { Pool } from 'pg';
 import dotenv from 'dotenv';
 
 dotenv.config();
+// Also load from .env.local if it exists
+dotenv.config({ path: '.env.local', override: true });
 
 const isLocalhost = process.env.DATABASE_URL?.includes('localhost') || process.env.DATABASE_URL?.includes('127.0.0.1');
 

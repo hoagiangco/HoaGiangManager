@@ -144,6 +144,13 @@ export default function DashboardLayout({
         ]
       },
       {
+        title: 'Quản lý kho',
+        items: [
+          { href: '/dashboard/spare-parts', label: 'Vật tư dự phòng', icon: 'fas fa-boxes' },
+          { href: '/dashboard/spare-part-transactions', label: 'Nhập / Xuất kho', icon: 'fas fa-exchange-alt' }
+        ]
+      },
+      {
         title: 'Hệ thống',
         items: [
           { href: '/dashboard/staff', label: 'Nhân viên', icon: 'fas fa-users' },
