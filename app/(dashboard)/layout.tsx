@@ -169,6 +169,7 @@ export default function DashboardLayout({
       {
         title: 'Hoạt động',
         items: [
+          { href: '/dashboard/work-plan', label: 'Kế hoạch công việc', icon: 'fas fa-calendar-check' },
           { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' },
           { href: '/dashboard/maintenance', label: 'Bảo trì', icon: 'fas fa-wrench' }
         ]
@@ -186,6 +187,7 @@ export default function DashboardLayout({
       {
         title: 'Hoạt động',
         items: [
+          { href: '/dashboard/work-plan', label: 'Kế hoạch công việc', icon: 'fas fa-calendar-check' },
           { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' },
           { href: '/dashboard/maintenance', label: 'Bảo trì', icon: 'fas fa-wrench' }
         ]

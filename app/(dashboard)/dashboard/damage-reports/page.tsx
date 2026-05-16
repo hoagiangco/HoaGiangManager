@@ -325,7 +325,7 @@ export default function DamageReportsPage() {
   const [showModal, setShowModal] = useState(false);
   const [showDoneConfirm, setShowDoneConfirm] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [editingNoteReportId, setEditingNoteReportId] = useState<number | null>(null);
+  const [editingNoteReportId, setEditingNoteReportId] = useState<string | null>(null);
 
   // View mode state: 'table' or 'card', default to 'card' on mobile
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
@@ -2529,8 +2529,8 @@ export default function DamageReportsPage() {
                               onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
                               canEdit={(userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && report.status !== DamageReportStatus.Completed}
                               isAdmin={isAdmin(currentUser?.roles)}
-                              isAdding={editingNoteReportId === report.id}
-                              setIsAdding={(adding) => setEditingNoteReportId(adding ? report.id : null)}
+                              isAdding={editingNoteReportId === `table-${report.id}`}
+                              setIsAdding={(adding) => setEditingNoteReportId(adding ? `table-${report.id}` : null)}
                             />
                           </td>
                         </tr>
@@ -2859,8 +2859,8 @@ export default function DamageReportsPage() {
                                      report.status !== DamageReportStatus.Cancelled && 
                                      report.status !== DamageReportStatus.Rejected}
                             isAdmin={isAdmin(currentUser?.roles)}
-                            isAdding={editingNoteReportId === report.id}
-                            setIsAdding={(adding) => setEditingNoteReportId(adding ? report.id : null)}
+                            isAdding={editingNoteReportId === `card-${report.id}`}
+                            setIsAdding={(adding) => setEditingNoteReportId(adding ? `card-${report.id}` : null)}
                           />
                         </div>
                         )}
@@ -3352,8 +3352,8 @@ export default function DamageReportsPage() {
                             }}
                             canEdit={(userPermissions.canEdit || (currentUserStaffId !== null && formData.handlerId === currentUserStaffId)) && ![DamageReportStatus.Completed, DamageReportStatus.Cancelled, DamageReportStatus.Rejected].includes(formData.status)}
                             isAdmin={isAdmin(currentUser?.roles)}
-                            isAdding={editingNoteReportId === formData.id}
-                            setIsAdding={(adding) => setEditingNoteReportId(adding ? formData.id : null)}
+                            isAdding={editingNoteReportId === `modal-${formData.id}`}
+                            setIsAdding={(adding) => setEditingNoteReportId(adding ? `modal-${formData.id}` : null)}
                             inline={true}
                           />
                         </div>

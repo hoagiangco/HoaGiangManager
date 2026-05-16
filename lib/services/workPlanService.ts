@@ -59,7 +59,7 @@ export class WorkPlanService {
       LEFT JOIN "Staff" h ON dr."HandlerID" = h."ID"
       LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
       LEFT JOIN "Department" dep ON dr."ReportingDepartmentID" = dep."ID"
-      WHERE wpi."PlanDate" = $1 AND (wpi."StaffID" = $2 OR $2 = 0)
+      WHERE wpi."PlanDate" = $1 AND (COALESCE(dr."HandlerID", wpi."StaffID") = $2 OR $2 = 0)
       ORDER BY wpi."ID" ASC`,
       [date, staffId]
     );
@@ -84,10 +84,11 @@ export class WorkPlanService {
 
   async getActiveDates(startDate: string, endDate: string, staffId: number): Promise<string[]> {
     const query = {
-      text: `SELECT DISTINCT "PlanDate" 
-             FROM "WorkPlanItem" 
-             WHERE "PlanDate" >= $1 AND "PlanDate" <= $2 
-             ${staffId > 0 ? 'AND "StaffID" = $3' : ''}`,
+      text: `SELECT DISTINCT wpi."PlanDate" 
+             FROM "WorkPlanItem" wpi
+             LEFT JOIN "DamageReport" dr ON wpi."DamageReportID" = dr."ID"
+             WHERE wpi."PlanDate" >= $1 AND wpi."PlanDate" <= $2 
+             ${staffId > 0 ? 'AND COALESCE(dr."HandlerID", wpi."StaffID") = $3' : ''}`,
       values: staffId > 0 ? [startDate, endDate, staffId] : [startDate, endDate]
     };
     const result = await pool.query(query.text, query.values);
@@ -143,7 +144,13 @@ export class WorkPlanService {
   async delete(id: number, staffId: number, isAdmin: boolean = false): Promise<boolean> {
     const query = isAdmin 
       ? { text: 'DELETE FROM "WorkPlanItem" WHERE "ID" = $1', values: [id] }
-      : { text: 'DELETE FROM "WorkPlanItem" WHERE "ID" = $1 AND "StaffID" = $2', values: [id, staffId] };
+      : { 
+          text: `DELETE FROM "WorkPlanItem" WHERE "ID" = $1 AND (
+                  "StaffID" = $2 OR 
+                  "DamageReportID" IN (SELECT "ID" FROM "DamageReport" WHERE "HandlerID" = $2)
+                )`, 
+          values: [id, staffId] 
+        };
     
     const result = await pool.query(query.text, query.values);
     return (result.rowCount ?? 0) > 0;
@@ -151,7 +158,9 @@ export class WorkPlanService {
 
   async implement(id: number, staffId: number, userId: string): Promise<number | null> {
     const result = await pool.query(
-      'SELECT * FROM "WorkPlanItem" WHERE "ID" = $1 AND "StaffID" = $2',
+      `SELECT wpi.* FROM "WorkPlanItem" wpi 
+       LEFT JOIN "DamageReport" dr ON wpi."DamageReportID" = dr."ID"
+       WHERE wpi."ID" = $1 AND COALESCE(dr."HandlerID", wpi."StaffID") = $2`,
       [id, staffId]
     );
 

@@ -58,9 +58,13 @@ export default function WorkPlanPage() {
       if (staffRes.data.status) {
         const staffData = staffRes.data.data;
         setStaff(staffData);
-        if (viewStaffId === undefined) setViewStaffId(staffData.id);
-
-        const targetStaffId = viewStaffId === undefined ? staffData.id : viewStaffId;
+        let targetStaffId = viewStaffId;
+        if (targetStaffId === undefined) {
+          targetStaffId = staffData.id;
+          setViewStaffId(targetStaffId);
+        } else if (!isAdmin) {
+          targetStaffId = staffData.id;
+        }
         const dateStr = format(selectedDate, 'yyyy-MM-dd');
         const planRes = await api.get(`/work-plans?date=${dateStr}&staffId=${targetStaffId}`);
         if (planRes.data.status) setPlanItems(planRes.data.data);
@@ -104,7 +108,7 @@ export default function WorkPlanPage() {
     try {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       
-      const targetStaffId = viewStaffId === undefined ? staff.id : viewStaffId;
+      const targetStaffId = !isAdmin ? staff.id : (viewStaffId === undefined ? staff.id : viewStaffId);
       // Assign to the DamageReport Handler if available, else target viewed staff, else current staff
       const assignToStaffId = reportHandlerId || (targetStaffId !== 0 ? targetStaffId : staff.id);
 
@@ -251,21 +255,23 @@ export default function WorkPlanPage() {
               <div className="text-muted small fw-medium">
                 {format(selectedDate, 'dd/MM/yyyy')}
               </div>
-              <div className="ms-3 ps-3 border-start d-flex align-items-center gap-2">
-                <span className="small text-muted fw-bold text-uppercase" style={{ fontSize: '0.65rem' }}>Xem của:</span>
-                <div style={{ width: '220px' }}>
-                  <SearchableSelect 
-                    options={[
-                      { id: 0, name: '--- TẤT CẢ NHÂN VIÊN ---' },
-                      ...allStaff.map(s => ({ id: s.id, name: s.name }))
-                    ]} 
-                    value={viewStaffId === undefined ? 0 : viewStaffId} 
-                    onChange={(val) => setViewStaffId(val)} 
-                    placeholder="Chọn nhân viên..." 
-                    className="form-select-sm border-0 bg-white shadow-sm fw-bold text-primary"
-                  />
+              {isAdmin && (
+                <div className="ms-3 ps-3 border-start d-flex align-items-center gap-2">
+                  <span className="small text-muted fw-bold text-uppercase" style={{ fontSize: '0.65rem' }}>Xem của:</span>
+                  <div style={{ width: '220px' }}>
+                    <SearchableSelect 
+                      options={[
+                        { id: 0, name: '--- TẤT CẢ NHÂN VIÊN ---' },
+                        ...allStaff.map(s => ({ id: s.id, name: s.name }))
+                      ]} 
+                      value={viewStaffId === undefined ? 0 : viewStaffId} 
+                      onChange={(val) => setViewStaffId(val)} 
+                      placeholder="Chọn nhân viên..." 
+                      className="form-select-sm border-0 bg-white shadow-sm fw-bold text-primary"
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -486,7 +492,7 @@ export default function WorkPlanPage() {
                   <div className="col-md-12">
                     <label className="form-label small fw-bold text-uppercase ls-1">Người thực hiện</label>
                     <SearchableSelect 
-                      options={allStaff.map(s => ({ id: s.id, name: s.name }))} 
+                      options={isAdmin ? allStaff.map(s => ({ id: s.id, name: s.name })) : (staff ? [{ id: staff.id, name: staff.name }] : [])} 
                       value={newTask.staffId || 0} 
                       onChange={(val) => setNewTask({...newTask, staffId: val})} 
                       placeholder="Chọn nhân viên..." 
