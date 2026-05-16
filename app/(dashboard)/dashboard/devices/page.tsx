@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, useRef, useMemo } from 'react';
 import React from 'react';
 import api from '@/lib/utils/api';
@@ -9,7 +11,7 @@ import { toast } from 'react-toastify';
 import { DeviceVM, DeviceStatus, DeviceCategory, Department, Location, DeviceHistorySummary, DeviceHistoryEvent, EventStatus, DamageReportStatus } from '@/types';
 import { formatDateDisplay, formatDateInput, formatDateTime } from '@/lib/utils/dateFormat';
 import DateInput from '@/components/DateInput';
-import dynamic from 'next/dynamic';
+import nextDynamic from 'next/dynamic';
 import FileManager from '@/components/FileManager';
 import AdminRoute from '@/components/AdminRoute';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
@@ -18,7 +20,7 @@ import Loading from '@/components/Loading';
 
 
 // Dynamically import ReactQuill to avoid SSR issues
-const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
+const ReactQuill = nextDynamic(() => import('react-quill'), { ssr: false });
 import 'react-quill/dist/quill.snow.css';
 
 function DevicesPageContent() {

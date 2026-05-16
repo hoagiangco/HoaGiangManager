@@ -548,9 +548,9 @@ export class DamageReportService {
   }
 
   async create(report: Omit<DamageReport, 'id'>): Promise<number> {
-    // Validate: Must have deviceId OR damageLocation OR maintenanceBatchId
-    if (!report.deviceId && (!report.damageLocation || report.damageLocation.trim() === '') && !report.maintenanceBatchId) {
-      throw new Error('Phải chọn thiết bị hoặc nhập vị trí sự cố');
+    // Validate: Must have damageContent (device/location optional for general tasks)
+    if (!report.damageContent || report.damageContent.trim() === '') {
+      throw new Error('Vui lòng nhập nội dung công việc');
     }
 
     const result = await pool.query(
@@ -663,9 +663,9 @@ export class DamageReportService {
   }
 
   async update(report: DamageReport): Promise<number> {
-    // Validate: Must have deviceId OR damageLocation OR maintenanceBatchId
-    if (!report.deviceId && (!report.damageLocation || report.damageLocation.trim() === '') && !report.maintenanceBatchId) {
-      throw new Error('Phải chọn thiết bị hoặc nhập vị trí sự cố');
+    // Validate: Must have damageContent (device/location optional for general tasks)
+    if (!report.damageContent || report.damageContent.trim() === '') {
+      throw new Error('Vui lòng nhập nội dung công việc');
     }
 
     const currentResult = await pool.query(

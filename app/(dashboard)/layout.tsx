@@ -4,9 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { PushNotificationManager } from '@/components/PushNotificationManager';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { AuthProvider } from '@/lib/contexts/AuthContext';
 import api from '@/lib/utils/api';
 import useSWR from 'swr';
 import { fetcher } from '@/lib/utils/swr-fetcher';
@@ -196,8 +194,7 @@ export default function DashboardLayout({
   }
 
   return (
-    <AuthProvider>
-      <div className="dashboard-wrapper">
+    <div className="dashboard-wrapper">
       {/* Mobile Overlay */}
       {mobileMenuOpen && (
         <div className="mobile-overlay" onClick={() => setMobileMenuOpen(false)}></div>
@@ -302,10 +299,7 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
-
-      <ToastContainer position="bottom-right" />
-      </div>
-    </AuthProvider>
+    </div>
   );
 }
 

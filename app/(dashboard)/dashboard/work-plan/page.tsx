@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import api from '@/lib/utils/api';
@@ -7,8 +9,9 @@ import {
   WorkPlanItemVM, 
   DamageReportStatus, 
   DamageReportPriority, 
-  Device, 
-  Location
+  DeviceVM, 
+  Location,
+  Staff
 } from '@/types';
 import { toast } from 'react-toastify';
 import DatePicker from 'react-datepicker';
@@ -25,7 +28,7 @@ export default function WorkPlanPage() {
   const isFutureDate = isAfter(startOfDay(selectedDate), startOfDay(new Date()));
   const [planItems, setPlanItems] = useState<WorkPlanItemVM[]>([]);
   const [pendingReports, setPendingReports] = useState<any[]>([]);
-  const [devices, setDevices] = useState<Device[]>([]);
+  const [devices, setDevices] = useState<DeviceVM[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [allStaff, setAllStaff] = useState<Staff[]>([]);
   const [viewStaffId, setViewStaffId] = useState<number | undefined>(undefined);
@@ -142,7 +145,7 @@ export default function WorkPlanPage() {
     setNewTask(prev => ({
       ...prev,
       deviceId: devId,
-      damageLocation: dev?.location || prev.damageLocation
+      damageLocation: dev?.locationName || prev.damageLocation
     }));
   };
 
@@ -260,33 +263,48 @@ export default function WorkPlanPage() {
                     <div key={item.id} className={`task-card mb-2 ${item.isImplemented ? 'implemented' : ''}`}>
                       <div className="task-number">{idx + 1}</div>
                       <div className="task-content">
-                        <div className="d-flex align-items-center gap-2 mb-1">
-                          <h6 className="task-title m-0">
-                            {item.isNewTask ? item.title : item.title}
-                          </h6>
-                          {item.isNewTask ? 
-                            <span className="mini-badge bg-info">Draft</span> : 
-                            <span className="mini-badge bg-warning">Tồn</span>
-                          }
-                        </div>
-                        <div className="task-meta">
-                          <div className="text-muted small lh-sm">
-                            {item.isNewTask 
-                              ? (item.draftData?.damageContent || '') 
-                              : `#${item.damageReportId} - ${item.deviceName || item.location || item.deptName || 'Báo cáo sự cố'}`}
-                          </div>
-                          <div className="mt-1 d-flex align-items-center gap-2">
-                            <span className="badge bg-light text-dark fw-normal border" style={{ fontSize: '0.7rem' }}>
-                              <i className="fas fa-user me-1 text-primary"></i>
-                              {item.staffName || 'Chưa phân công'}
+                        {/* Device / Location label */}
+                        {!item.isNewTask && (item.deviceName || item.location) && (
+                          <div className="task-location mb-1">
+                            <i className="fas fa-map-marker-alt me-1 text-danger" style={{ fontSize: '0.65rem' }}></i>
+                            <span className="text-muted" style={{ fontSize: '0.72rem' }}>
+                              {item.deviceName
+                                ? `${item.deviceName}${item.location ? ` — ${item.location}` : ''}`
+                                : item.location}
                             </span>
-                            {item.damageReportId && (
-                              <span className="badge bg-light text-secondary fw-normal border" style={{ fontSize: '0.7rem' }}>
-                                <i className="fas fa-info-circle me-1"></i>
-                                {item.reportStatusName}
+                            <span className="ms-2 mini-badge bg-warning">Tồn</span>
+                          </div>
+                        )}
+                        {item.isNewTask && (
+                          <div className="task-location mb-1">
+                            <span className="mini-badge bg-info">Mới</span>
+                            {item.draftData?.damageLocation && (
+                              <span className="text-muted ms-2" style={{ fontSize: '0.72rem' }}>
+                                <i className="fas fa-map-marker-alt me-1"></i>{item.draftData.damageLocation}
                               </span>
                             )}
                           </div>
+                        )}
+
+                        {/* Full content */}
+                        <div className="task-body-content">
+                          {item.isNewTask
+                            ? (item.draftData?.damageContent || item.title)
+                            : (item.damageContent || item.title)}
+                        </div>
+
+                        {/* Footer badges */}
+                        <div className="mt-1 d-flex align-items-center gap-2 flex-wrap">
+                          <span className="badge bg-light text-dark fw-normal border" style={{ fontSize: '0.7rem' }}>
+                            <i className="fas fa-user me-1 text-primary"></i>
+                            {item.staffName || 'Chưa phân công'}
+                          </span>
+                          {item.damageReportId && (
+                            <span className="badge bg-light text-secondary fw-normal border" style={{ fontSize: '0.7rem' }}>
+                              <i className="fas fa-info-circle me-1"></i>
+                              #{item.damageReportId} · {item.reportStatusName}
+                            </span>
+                          )}
                         </div>
                       </div>
                         <div className="task-actions">
@@ -385,6 +403,13 @@ export default function WorkPlanPage() {
                     </div>
                   )}
 
+                  {taskTab === 'general' && (
+                    <div className="col-12 animate-fade-in">
+                      <label className="form-label small fw-bold text-uppercase ls-1">Vị trí / Khu vực <span className="text-muted fw-normal">(tuỳ chọn)</span></label>
+                      <input type="text" className="form-control form-control-premium" value={newTask.damageLocation} onChange={e => setNewTask({...newTask, damageLocation: e.target.value})} placeholder="Vd: Vườn rau, Nhà bếp, Sân vườn..." />
+                    </div>
+                  )}
+
                   <div className="col-md-12">
                     <label className="form-label small fw-bold text-uppercase ls-1">Người thực hiện</label>
                     <SearchableSelect 
@@ -468,8 +493,10 @@ export default function WorkPlanPage() {
         .task-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); border-color: #e9ecef; }
         .task-card.implemented { opacity: 0.7; background: #f8f9fa; }
         .task-number { width: 28px; height: 28px; border-radius: 50%; background: #e9ecef; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; color: #495057; margin-right: 16px; }
-        .task-content { flex: 1; }
+        .task-content { flex: 1; min-width: 0; }
         .task-title { font-size: 0.95rem; font-weight: 600; color: #212529; }
+        .task-location { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+        .task-body-content { font-size: 0.88rem; font-weight: 500; color: #212529; line-height: 1.5; word-break: break-word; }
         .task-meta { font-size: 0.75rem; margin-top: 2px; }
         .mini-badge { padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 700; color: white; text-transform: uppercase; }
         

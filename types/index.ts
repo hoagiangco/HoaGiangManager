@@ -163,13 +163,13 @@ export interface DamageReport {
   estimatedCompletionDate?: Date;       // Ngày dự kiến hoàn thành
   damageContent: string;                // Mô tả chi tiết hư hỏng
   images?: string[];                    // Mảng đường dẫn hình ảnh
-  afterImages?: string[];                // Mảng đường dẫn hình ảnh sau khi xử lý
+  afterImages?: string[];               // Mảng đường dẫn hình ảnh sau khi xử lý
   status: DamageReportStatus;          // Trạng thái
   priority: DamageReportPriority;       // Mức độ ưu tiên
   notes?: string;                       // Ghi chú chung
   handlerNotes?: string;                // Ghi chú của người xử lý
   rejectionReason?: string;             // Lý do từ chối/hủy
-  maintenanceBatchId?: string;          // ID của batch bảo trì (nếu phiếu này liên quan đến bảo trì)
+  maintenanceBatchId?: string;          // ID của batch bảo trì
   createdBy?: string;                   // User tạo báo cáo
   updatedBy?: string;                   // User cập nhật cuối
   createdAt?: Date;                     // Thời gian tạo
@@ -314,9 +314,10 @@ export interface WorkPlanItem {
   title: string;
   draftData?: WorkPlanDraftData | null;
   isImplemented: boolean;
-  createdBy?: string;
-  createdAt?: Date;
-  updatedAt?: Date;
+  createdBy?: string | null;
+  createdAt?: Date | null;
+  updatedBy?: string | null;
+  updatedAt?: Date | null;
 }
 
 export interface WorkPlanItemVM extends WorkPlanItem {
@@ -326,7 +327,9 @@ export interface WorkPlanItemVM extends WorkPlanItem {
   deviceName?: string;
   location?: string;
   deptName?: string;
+  damageContent?: string; // Full damage content from linked report
 }
+
 
 // Spare Part types
 export interface SparePartCategory {

@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import React, { useState, useEffect, useRef } from 'react';
 import api from '@/lib/utils/api';
 import useSWR, { mutate as globalMutate } from 'swr';
@@ -249,24 +251,42 @@ function MaintenancePageContent() {
   const findExistingReportForBatch = (batchId: string) => {
     if (!batchId || batchId === 'no-batch') return null;
     
-    // Chỉ lấy các báo cáo chưa hoàn thành (Pending, Assigned, InProgress)
-    // Các báo cáo đã hoàn thành hoặc hủy (4, 5, 6) thuộc về chu kỳ bảo trì trước đó
+    // Ưu tiên 1: báo cáo đang active (Pending, Assigned, InProgress)
     const activeReports = maintenanceReports.filter(r => 
       String(r.maintenanceBatchId) === String(batchId) && 
       [1, 2, 3].includes(r.status)
     );
 
-    // Sort to prioritize InProgress (3), then Pending (1), then Assigned (2)
-    const sortedReports = [...activeReports].sort((a, b) => {
-      const getPriority = (s: number) => {
-        if (s === 3) return 0; // Highest priority: InProgress
-        if (s === 1 || s === 2) return 1; // Then other active states
-        return 2; // Everything else
-      };
-      return getPriority(a.status) - getPriority(b.status);
-    });
+    if (activeReports.length > 0) {
+      // Sort to prioritize InProgress (3), then Pending (1), then Assigned (2)
+      const sortedReports = [...activeReports].sort((a, b) => {
+        const getPriority = (s: number) => {
+          if (s === 3) return 0; // Highest priority: InProgress
+          if (s === 1 || s === 2) return 1; // Then other active states
+          return 2; // Everything else
+        };
+        return getPriority(a.status) - getPriority(b.status);
+      });
+      return sortedReports[0];
+    }
 
-    return sortedReports.length > 0 ? sortedReports[0] : null;
+    // Ưu tiên 2 (fallback): báo cáo đã hoàn thành gần nhất.
+    // Dùng để tránh tạo báo cáo trùng lặp khi user check hoàn thành nhiều lần
+    // từ Lịch bảo trì trong khi báo cáo đã được hoàn thành từ trang Báo cáo.
+    const completedReports = maintenanceReports.filter(r =>
+      String(r.maintenanceBatchId) === String(batchId) &&
+      r.status === 4
+    );
+
+    if (completedReports.length > 0) {
+      return completedReports.sort((a: any, b: any) => {
+        const dateA = a.completedDate ? new Date(a.completedDate).getTime() : 0;
+        const dateB = b.completedDate ? new Date(b.completedDate).getTime() : 0;
+        return dateB - dateA;
+      })[0];
+    }
+
+    return null;
   };
 
   // Helper to create or update a report in the background
@@ -280,7 +300,7 @@ function MaintenancePageContent() {
         return false;
       }
       
-      // Lấy thông tin phòng ban của nhân viên nếu có (Sử dụng dữ liệu từ SWR staffData cho tin cậy)
+      // Lấy thông tin phòng ban của nhân viên (ưu tiên cache SWR, fallback API)
       let departmentId = 0;
       const staffListToSearch = staffData?.status ? staffData.data : [];
       const staff = staffListToSearch.find((s: any) => s.id === effectiveStaffId);
@@ -288,9 +308,23 @@ function MaintenancePageContent() {
         departmentId = staff.departmentId;
       }
 
+      // Fallback: nếu không tìm thấy trong cache, fetch trực tiếp từ API
       if (departmentId === 0) {
-        toast.error('Nhân viên thực hiện chưa được gán phòng ban. Vui lòng cập nhật thông tin nhân viên trong phần Quản lý nhân viên.');
-        return false;
+        try {
+          const staffRes = await api.get(`/staff/${effectiveStaffId}`);
+          if (staffRes.data?.status && staffRes.data?.data?.departmentId) {
+            departmentId = staffRes.data.data.departmentId;
+          }
+        } catch (e) {
+          // ignore fetch error, will use departmentId = 0 fallback below
+        }
+      }
+
+      if (departmentId === 0) {
+        // Dùng phòng ban mặc định (1) để không chặn tạo báo cáo
+        // Cảnh báo nhẹ thay vì block hoàn toàn
+        departmentId = 1;
+        console.warn(`Staff ${effectiveStaffId} has no departmentId, using default department 1`);
       }
 
       const damageContentText = `${batch.title} - ${batch.batchId}`;
@@ -317,8 +351,27 @@ function MaintenancePageContent() {
 
       // Tìm báo cáo đã tồn tại cho đợt bảo trì này
       const existingReport = findExistingReportForBatch(batch.batchId);
+      
+      let reportToUpdate = existingReport;
 
-      if (existingReport) {
+      if (reportToUpdate && reportToUpdate.status === 4) {
+        if (statusParam !== 4) {
+          // Bắt đầu chu kỳ mới (status=3) nhưng báo cáo cũ đã Hoàn thành -> ÉP TẠO MỚI
+          reportToUpdate = null;
+        } else {
+          // Đang ghi nhận Hoàn thành (status=4), kiểm tra xem báo cáo cũ là của chu kỳ này hay chu kỳ trước
+          // Nếu báo cáo cũ được hoàn thành cùng ngày hôm nay, coi như user click trùng -> bỏ qua
+          // Nếu không, coi như user đang Hoàn thành chu kỳ mới mà chưa bấm Bắt đầu -> TẠO MỚI
+          const isCompletedToday = reportToUpdate.completedDate && new Date(reportToUpdate.completedDate).toDateString() === new Date().toDateString();
+          if (isCompletedToday) {
+            return true;
+          } else {
+            reportToUpdate = null; // Ép tạo mới
+          }
+        }
+      }
+
+      if (reportToUpdate) {
         // Tự động tìm ID Bảo trì để pass vào status API
         let resolvedEventTypeId = 1;
         const maintenanceType = eventTypes.find((t: any) => 
@@ -330,7 +383,7 @@ function MaintenancePageContent() {
         }
 
         // UPDATE báo cáo đã có thông qua API status để kích hoạt đồng bộ 2 chiều và tránh lỗi 403
-        await api.put(`/damage-reports/${existingReport.id}/status`, {
+        await api.put(`/damage-reports/${reportToUpdate.id}/status`, {
           status: statusParam,
           handlerNotes: notes ? notes : undefined,
           eventTypeId: resolvedEventTypeId,
@@ -1339,6 +1392,13 @@ function MaintenancePageContent() {
       return;
     }
 
+    // Add validation for staff ID if auto create report is on
+    const effectiveStaffId = batchStartStaffId || currentUserStaffId || 0;
+    if (batchAutoCreateReport && effectiveStaffId === 0) {
+      toast.error('Vui lòng chọn Nhân viên thực hiện để hệ thống tạo báo cáo tự động.');
+      return;
+    }
+
     if (!confirm(`Bạn có chắc chắn muốn bắt đầu bảo trì cho tất cả ${selectedGroup.plans.filter(p => p.isActive).length} thiết bị trong nhóm này?`)) {
       return;
     }
@@ -1461,6 +1521,8 @@ function MaintenancePageContent() {
         loadBatchDetails(selectedBatchId);
       }
       loadAllPlans();
+      mutateReports(); // Làm mới danh sách báo cáo để card hiển thị đúng
+
 
     } catch (error: any) {
       console.error('Error starting batch:', error);
@@ -1471,6 +1533,13 @@ function MaintenancePageContent() {
   const handleBatchComplete = async () => {
     if (!selectedGroup || !batchCompleteDate) {
       toast.error('Vui lòng chọn ngày hoàn thành');
+      return;
+    }
+
+    // Add validation for staff ID if auto create report is on
+    const effectiveStaffId = batchCompleteStaffId || currentUserStaffId || 0;
+    if (batchAutoCreateReport && effectiveStaffId === 0) {
+      toast.error('Vui lòng chọn Nhân viên thực hiện để hệ thống tạo báo cáo tự động.');
       return;
     }
 

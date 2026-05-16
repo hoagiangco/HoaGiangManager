@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import useSWR from 'swr';
 import { fetcher } from '@/lib/utils/swr-fetcher';

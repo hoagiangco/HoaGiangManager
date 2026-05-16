@@ -25,6 +25,7 @@ export class WorkPlanService {
       deviceName: row.deviceName,
       location: row.location,
       deptName: row.deptName,
+      damageContent: row.damageContent,
     };
   }
 
@@ -45,6 +46,7 @@ export class WorkPlanService {
         s."Name" as "staffName",
         dr."Status" as "reportStatus",
         dr."DamageLocation" as "location",
+        dr."DamageContent" as "damageContent",
         dep."Name" as "deptName",
         d."Name" as "deviceName"
       FROM "WorkPlanItem" wpi
@@ -141,15 +143,15 @@ export class WorkPlanService {
     if (item.IsNewTask && !damageReportId) {
       // Create new damage report from draft data
       const draft: WorkPlanDraftData = item.DraftData;
-      const combinedContent = item.Title ? `${item.Title}: ${draft.damageContent}` : draft.damageContent;
+      const combinedContent = draft.damageContent;
       
       // Get staff details for reporter
       const staffRes = await pool.query('SELECT "DepartmentID" FROM "Staff" WHERE "ID" = $1', [staffId]);
       const reportingDeptId = staffRes.rows[0]?.DepartmentID || 1;
 
       damageReportId = await this.damageReportService.create({
-        deviceId: draft.deviceId || null,
-        damageLocation: draft.damageLocation,
+        deviceId: draft.deviceId || undefined,
+        damageLocation: draft.damageLocation || item.Title || null,
         reporterId: staffId,
         reportingDepartmentId: reportingDeptId,
         damageContent: combinedContent,

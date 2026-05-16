@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '@/lib/utils/api';
 import useSWR, { mutate as globalMutate } from 'swr';

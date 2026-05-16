@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+
 import React, { useEffect, useState } from 'react';
 import AdminRoute from '@/components/AdminRoute';
 import api from '@/lib/utils/api';

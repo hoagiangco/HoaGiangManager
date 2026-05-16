@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from 'next';
+
+export const dynamic = 'force-dynamic';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -31,6 +33,8 @@ export const viewport: Viewport = {
   themeColor: '#0d6efd',
 };
 
+import ClientProviders from '@/components/ClientProviders';
+
 export default function RootLayout({
   children,
 }: {
@@ -41,7 +45,11 @@ export default function RootLayout({
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </head>
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        <ClientProviders>
+          {children}
+        </ClientProviders>
+      </body>
     </html>
   );
 }
