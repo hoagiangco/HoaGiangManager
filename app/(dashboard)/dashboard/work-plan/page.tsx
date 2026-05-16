@@ -37,6 +37,10 @@ export default function WorkPlanPage() {
   const [modalMode, setModalMode] = useState<'pending' | 'new'>('pending');
   const [taskTab, setTaskTab] = useState<'general' | 'device'>('general');
 
+  const [copyTaskModalData, setCopyTaskModalData] = useState<WorkPlanItemVM | null>(null);
+  const [copyTargetDate, setCopyTargetDate] = useState<Date>(addDays(new Date(), 1));
+  const [activeDates, setActiveDates] = useState<Date[]>([]);
+
   const [newTask, setNewTask] = useState({
     title: '',
     deviceId: undefined as number | undefined,
@@ -63,6 +67,13 @@ export default function WorkPlanPage() {
 
         const pendingRes = await api.get(`/work-plans/pending?staffId=${targetStaffId}`);
         if (pendingRes.data.status) setPendingReports(pendingRes.data.data);
+
+        const startYear = new Date(selectedDate).getFullYear() - 1;
+        const endYear = new Date(selectedDate).getFullYear() + 1;
+        const activeRes = await api.get(`/work-plans/active-dates?startDate=${startYear}-01-01&endDate=${endYear}-12-31&staffId=${targetStaffId}`);
+        if (activeRes.data.status) {
+          setActiveDates(activeRes.data.data.map((d: string) => new Date(d)));
+        }
       }
 
       const [devRes, locRes, allStaffRes] = await Promise.all([
@@ -89,11 +100,16 @@ export default function WorkPlanPage() {
     }
   }, [staff, newTask.staffId]);
 
-  const handleAddPending = async (reportId: number, content: string) => {
+  const handleAddPending = async (reportId: number, content: string, reportHandlerId?: number) => {
     try {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
+      
+      const targetStaffId = viewStaffId === undefined ? staff.id : viewStaffId;
+      // Assign to the DamageReport Handler if available, else target viewed staff, else current staff
+      const assignToStaffId = reportHandlerId || (targetStaffId !== 0 ? targetStaffId : staff.id);
+
       const res = await api.post('/work-plans', {
-        planDate: dateStr, staffId: staff.id, damageReportId: reportId,
+        planDate: dateStr, staffId: assignToStaffId, damageReportId: reportId,
         isNewTask: false, title: content.substring(0, 50), createdBy: user?.id
       });
       if (res.data.status) { toast.success('Đã thêm việc'); loadData(); }
@@ -164,6 +180,26 @@ export default function WorkPlanPage() {
     } catch (error) { toast.error('Lỗi khi xóa'); }
   };
 
+  const handleCopyTask = async () => {
+    if (!copyTaskModalData) return;
+    try {
+      const dateStr = format(copyTargetDate, 'yyyy-MM-dd');
+      const res = await api.post('/work-plans', {
+        planDate: dateStr,
+        staffId: copyTaskModalData.staffId,
+        isNewTask: true,
+        title: copyTaskModalData.title,
+        draftData: copyTaskModalData.draftData,
+        createdBy: user?.id
+      });
+      if (res.data.status) {
+        toast.success(`Đã copy sang ngày ${format(copyTargetDate, 'dd/MM/yyyy')}`);
+        setCopyTaskModalData(null);
+        loadData();
+      }
+    } catch (error) { toast.error('Lỗi khi copy công việc'); }
+  };
+
   const getDateLabel = () => {
     if (isToday(selectedDate)) return 'Hôm nay';
     if (isTomorrow(selectedDate)) return 'Ngày mai';
@@ -201,8 +237,9 @@ export default function WorkPlanPage() {
                 <div className="position-relative">
                   <DatePicker
                     selected={selectedDate}
-                    onChange={(date: Date) => setSelectedDate(date)}
+                    onChange={(date: Date) => setSelectedDate(date || new Date())}
                     dateFormat="dd/MM/yyyy"
+                    highlightDates={activeDates}
                     customInput={
                       <button className="btn btn-xs px-3 rounded-2 btn-ghost">
                         <i className="fas fa-calendar-alt me-1"></i>Chọn ngày
@@ -293,11 +330,10 @@ export default function WorkPlanPage() {
                             : (item.damageContent || item.title)}
                         </div>
 
-                        {/* Footer badges */}
                         <div className="mt-1 d-flex align-items-center gap-2 flex-wrap">
                           <span className="badge bg-light text-dark fw-normal border" style={{ fontSize: '0.7rem' }}>
-                            <i className="fas fa-user me-1 text-primary"></i>
-                            {item.staffName || 'Chưa phân công'}
+                            <i className="fas fa-user-cog me-1 text-primary"></i>
+                            Người xử lý: <span className="fw-bold ms-1">{item.reportHandlerName || item.staffName || 'Chưa phân công'}</span>
                           </span>
                           {item.damageReportId && (
                             <span className="badge bg-light text-secondary fw-normal border" style={{ fontSize: '0.7rem' }}>
@@ -308,6 +344,11 @@ export default function WorkPlanPage() {
                         </div>
                       </div>
                         <div className="task-actions">
+                          {item.isNewTask && !item.isImplemented && (
+                            <button className="btn btn-icon btn-copy" onClick={() => setCopyTaskModalData(item)} title="Copy sang ngày khác">
+                              <i className="fas fa-copy"></i>
+                            </button>
+                          )}
                           {!item.isImplemented ? (
                             !isFutureDate && (
                               <button className="btn btn-icon btn-confirm" onClick={() => handleImplement(item.id)} title="Xác nhận">
@@ -350,7 +391,7 @@ export default function WorkPlanPage() {
                       </div>
                       <button 
                         className={`btn btn-sm rounded-circle ${isInPlan ? 'btn-light disabled' : 'btn-soft-primary'}`}
-                        onClick={() => !isInPlan && handleAddPending(report.id, report.content)}
+                        onClick={() => !isInPlan && handleAddPending(report.id, report.content, report.handlerId)}
                       >
                         <i className={`fas ${isInPlan ? 'fa-check' : 'fa-plus'}`}></i>
                       </button>
@@ -362,6 +403,38 @@ export default function WorkPlanPage() {
           </div>
         </div>
       </div>
+
+      {/* Copy Task Modal */}
+      {copyTaskModalData && (
+        <div className="custom-modal-overlay">
+          <div className="custom-modal glass-card p-0 shadow-lg border-0" style={{ maxWidth: '400px' }}>
+            <div className="modal-header-premium p-3 border-bottom bg-white d-flex justify-content-between align-items-center" style={{ borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
+              <h5 className="m-0 fw-bold text-dark">Copy công việc</h5>
+              <button className="btn-close-custom" onClick={() => setCopyTaskModalData(null)}><i className="fas fa-times"></i></button>
+            </div>
+            <div className="modal-body p-4 bg-white text-center" style={{ borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
+              <p className="mb-3 text-muted small">Chọn ngày để copy công việc này:</p>
+              <div className="d-flex justify-content-center mb-4">
+                <DatePicker
+                  selected={copyTargetDate}
+                  onChange={(date: Date) => setCopyTargetDate(date || new Date())}
+                  dateFormat="dd/MM/yyyy"
+                  highlightDates={activeDates}
+                  className="form-control form-control-premium text-center fw-bold"
+                  minDate={new Date()}
+                />
+              </div>
+              <div className="d-flex gap-2 justify-content-center">
+                <button className="btn btn-light px-4" onClick={() => setCopyTaskModalData(null)}>Hủy</button>
+                <button className="btn btn-primary px-4 d-flex align-items-center gap-2" onClick={handleCopyTask}>
+                  <i className="fas fa-copy"></i>
+                  <span>Copy ngay</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Premium Modal */}
       {isModalOpen && (
@@ -507,7 +580,30 @@ export default function WorkPlanPage() {
         .btn-confirm:hover { background: #0d6efd; color: white; }
         .btn-delete { background: #fff5f5; color: #fa5252; }
         .btn-delete:hover { background: #fa5252; color: white; }
+        .btn-copy { background: #e0f2fe; color: #0ea5e9; }
+        .btn-copy:hover { background: #0ea5e9; color: white; }
         .implemented-check { color: #40c057; font-size: 1.1rem; margin-right: 8px; }
+
+        /* DatePicker Highlights */
+        :global(.react-datepicker__day--highlighted) {
+          font-weight: bold;
+          position: relative;
+        }
+        :global(.react-datepicker__day--highlighted::after) {
+          content: '';
+          position: absolute;
+          bottom: 3px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background-color: #ff9800;
+        }
+        :global(.react-datepicker__day--selected.react-datepicker__day--highlighted::after),
+        :global(.react-datepicker__day--keyboard-selected.react-datepicker__day--highlighted::after) {
+          background-color: #ffffff;
+        }
 
         /* Suggest Items */
         .suggest-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-radius: 10px; border: 1px solid transparent; transition: all 0.2s; }

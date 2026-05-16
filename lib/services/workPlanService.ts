@@ -22,6 +22,8 @@ export class WorkPlanService {
       staffName: row.staffName,
       reportStatus: row.reportStatus ? parseInt(row.reportStatus) : undefined,
       reportStatusName: row.reportStatusName,
+      reportHandlerId: row.reportHandlerId,
+      reportHandlerName: row.reportHandlerName,
       deviceName: row.deviceName,
       location: row.location,
       deptName: row.deptName,
@@ -47,11 +49,14 @@ export class WorkPlanService {
         dr."Status" as "reportStatus",
         dr."DamageLocation" as "location",
         dr."DamageContent" as "damageContent",
+        dr."HandlerID" as "reportHandlerId",
+        h."Name" as "reportHandlerName",
         dep."Name" as "deptName",
         d."Name" as "deviceName"
       FROM "WorkPlanItem" wpi
       LEFT JOIN "Staff" s ON wpi."StaffID" = s."ID"
       LEFT JOIN "DamageReport" dr ON wpi."DamageReportID" = dr."ID"
+      LEFT JOIN "Staff" h ON dr."HandlerID" = h."ID"
       LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
       LEFT JOIN "Department" dep ON dr."ReportingDepartmentID" = dep."ID"
       WHERE wpi."PlanDate" = $1 AND (wpi."StaffID" = $2 OR $2 = 0)
@@ -77,6 +82,22 @@ export class WorkPlanService {
     });
   }
 
+  async getActiveDates(startDate: string, endDate: string, staffId: number): Promise<string[]> {
+    const query = {
+      text: `SELECT DISTINCT "PlanDate" 
+             FROM "WorkPlanItem" 
+             WHERE "PlanDate" >= $1 AND "PlanDate" <= $2 
+             ${staffId > 0 ? 'AND "StaffID" = $3' : ''}`,
+      values: staffId > 0 ? [startDate, endDate, staffId] : [startDate, endDate]
+    };
+    const result = await pool.query(query.text, query.values);
+    return result.rows.map(r => {
+      // Return YYYY-MM-DD string format
+      const date = new Date(r.PlanDate);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    });
+  }
+
   async getPendingReports(staffId: number): Promise<any[]> {
     // Get reports where staff is reporter OR handler and not completed/cancelled/rejected
     // If staffId is 0, get ALL pending reports
@@ -87,6 +108,7 @@ export class WorkPlanService {
         dr."DamageLocation" as location,
         dr."ReportDate" as "reportDate",
         dr."Status" as status,
+        dr."HandlerID" as "handlerId",
         d."Name" as "deviceName"
       FROM "DamageReport" dr
       LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"

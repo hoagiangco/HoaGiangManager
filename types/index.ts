@@ -328,6 +328,8 @@ export interface WorkPlanItemVM extends WorkPlanItem {
   location?: string;
   deptName?: string;
   damageContent?: string; // Full damage content from linked report
+  reportHandlerId?: number;
+  reportHandlerName?: string;
 }
 
 

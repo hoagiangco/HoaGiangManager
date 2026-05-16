@@ -24,6 +24,7 @@ export default function SparePartsPage() {
   
   const [showTransModal, setShowTransModal] = useState(false);
   const [transType, setTransType] = useState<SparePartTransactionType>(SparePartTransactionType.In);
+  const [isPrintingReport, setIsPrintingReport] = useState(false);
 
   const { data: categoriesData } = useSWR('/spare-part-categories', fetcher);
   const categories = categoriesData?.data || [];
@@ -60,9 +61,22 @@ export default function SparePartsPage() {
     setShowTransModal(true);
   };
 
+  const handlePrintReport = () => {
+    setIsPrintingReport(true);
+    setTimeout(() => {
+      window.print();
+    }, 100);
+  };
+
+  useEffect(() => {
+    const afterPrint = () => setIsPrintingReport(false);
+    window.addEventListener('afterprint', afterPrint);
+    return () => window.removeEventListener('afterprint', afterPrint);
+  }, []);
+
   return (
     <AdminRoute>
-      <div className="container-fluid px-3 py-2">
+      <div className={`container-fluid px-3 py-2 main-content-wrapper ${isPrintingReport ? 'printing-item' : ''}`}>
         {/* Compact Header */}
         <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-2 gap-2 bg-white p-2 px-3 rounded-3 shadow-sm border">
           <div className="d-flex align-items-center">
@@ -77,6 +91,9 @@ export default function SparePartsPage() {
             </div>
           </div>
           <div className="d-flex gap-1">
+            <button className="btn btn-outline-secondary btn-sm px-3 fw-bold shadow-sm bg-white" onClick={handlePrintReport}>
+              <i className="fas fa-print me-1"></i> In báo cáo
+            </button>
             <button className="btn btn-success btn-sm px-3 fw-bold shadow-sm" onClick={() => handleTransaction(null, SparePartTransactionType.In)}>
               <i className="fas fa-plus-circle me-1"></i> Nhập kho
             </button>
@@ -260,7 +277,68 @@ export default function SparePartsPage() {
         />
       </div>
 
-      <style jsx>{`
+      {/* Print Report Template */}
+      {isPrintingReport && (
+        <div className="print-report-container">
+          <div className="text-center mb-4">
+            <h2 className="fw-bold mb-1 text-uppercase">BÁO CÁO TỒN KHO VẬT TƯ</h2>
+            <p className="mb-0 fs-5">
+              Thời điểm báo cáo: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN')}
+            </p>
+            {categoryId > 0 && (
+              <p className="mb-0 text-muted fs-6">
+                Danh mục: {categories.find((c: any) => c.id === categoryId)?.name || ''}
+              </p>
+            )}
+          </div>
+          
+          <table className="table table-bordered mb-5">
+            <thead className="table-light">
+              <tr>
+                <th className="text-center py-2" style={{ width: '50px' }}>STT</th>
+                <th className="py-2 text-center" style={{ width: '80px' }}>Mã VT</th>
+                <th className="py-2">Tên vật tư</th>
+                <th className="py-2">Danh mục</th>
+                <th className="text-center py-2" style={{ width: '100px' }}>Tồn kho</th>
+                <th className="text-center py-2" style={{ width: '100px' }}>Cảnh báo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {response?.data?.map((item: SparePartVM, idx: number) => (
+                <tr key={item.id}>
+                  <td className="text-center fs-6">{idx + 1 + (page - 1) * itemsPerPage}</td>
+                  <td className="text-center fs-6">#{item.id}</td>
+                  <td className="fs-6 fw-bold">{item.name}</td>
+                  <td className="fs-6">{item.categoryName || '-'}</td>
+                  <td className="text-center fs-6 fw-bold">{item.currentQuantity} <span className="fw-normal">{item.unit}</span></td>
+                  <td className="text-center fs-6">{item.minQuantity} {item.unit}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          
+          <div className="row text-center mt-5 pt-4">
+            <div className="col-6">
+              <p className="fw-bold fs-5 mb-5 pb-5">Người lập báo cáo</p>
+              <p className="text-muted mt-5 pt-3">(Ký, họ tên)</p>
+            </div>
+            <div className="col-6">
+              <p className="fw-bold fs-5 mb-5 pb-5">Thủ trưởng đơn vị</p>
+              <p className="text-muted mt-5 pt-3">(Ký, họ tên)</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isPrintingReport && (
+        <style dangerouslySetInnerHTML={{ __html: `
+          @media print {
+            @page { size: A4 portrait; margin: 0; }
+          }
+        `}} />
+      )}
+
+      <style jsx global>{`
         .small-font { font-size: 0.85rem; }
         .x-small { font-size: 0.75rem; }
         .btn-xs { padding: 0.15rem 0.4rem; font-size: 0.7rem; }
@@ -268,6 +346,28 @@ export default function SparePartsPage() {
         .custom-dense-table tbody tr { height: 40px; }
         .page-link { min-width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; }
         .page-item.active .page-link { background-color: #2c3e50 !important; }
+        
+        @media screen {
+          .print-report-container { display: none !important; }
+        }
+        
+        @media print {
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          
+          .top-navbar, .sidebar, .card-footer, .btn, .card:first-child { display: none !important; }
+          .main-content { margin-left: 0 !important; padding: 0 !important; }
+          .container-fluid { padding: 0 !important; }
+          .card { border: none !important; box-shadow: none !important; }
+          
+          .printing-item { display: none !important; }
+          .print-report-container { 
+            display: block !important; 
+            padding: 2cm !important;
+            font-family: 'Times New Roman', Times, serif;
+            background: white;
+          }
+          .table-bordered th, .table-bordered td { border: 1px solid #000 !important; }
+        }
       `}</style>
     </AdminRoute>
   );

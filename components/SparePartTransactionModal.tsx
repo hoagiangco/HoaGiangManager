@@ -48,6 +48,7 @@ export default function SparePartTransactionModal({ show, onClose, onSave, item,
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.sparePartId && !item) { toast.error('Vui lòng chọn vật tư'); return; }
+    if (!formData.note.trim()) { toast.error('Vui lòng nhập ghi chú'); return; }
 
     try {
       await api.post('/spare-part-transactions', {
@@ -129,8 +130,8 @@ export default function SparePartTransactionModal({ show, onClose, onSave, item,
               )}
               
               <div className="mb-0">
-                <label className="x-small-label fw-bold text-muted">GHI CHÚ</label>
-                <textarea className="form-control form-control-sm" rows={2} value={formData.note} onChange={(e) => setFormData({ ...formData, note: e.target.value })} placeholder="Lý do, người nhận..."></textarea>
+                <label className="x-small-label fw-bold text-muted">GHI CHÚ <span className="text-danger">*</span></label>
+                <textarea className="form-control form-control-sm" rows={2} value={formData.note} onChange={(e) => setFormData({ ...formData, note: e.target.value })} placeholder="Lý do, người nhận..." required></textarea>
               </div>
             </div>
             <div className="modal-footer py-2 px-3 bg-light border-0">
