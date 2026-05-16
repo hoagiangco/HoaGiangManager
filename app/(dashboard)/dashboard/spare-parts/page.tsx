@@ -91,8 +91,8 @@ export default function SparePartsPage() {
             </div>
           </div>
           <div className="d-flex gap-1">
-            <button className="btn btn-outline-secondary btn-sm px-3 fw-bold shadow-sm bg-white" onClick={handlePrintReport}>
-              <i className="fas fa-print me-1"></i> In báo cáo
+            <button className="btn btn-light border shadow-sm btn-sm px-3 fw-bold text-dark" onClick={handlePrintReport}>
+              <i className="fas fa-print text-primary me-1"></i> In báo cáo
             </button>
             <button className="btn btn-success btn-sm px-3 fw-bold shadow-sm" onClick={() => handleTransaction(null, SparePartTransactionType.In)}>
               <i className="fas fa-plus-circle me-1"></i> Nhập kho

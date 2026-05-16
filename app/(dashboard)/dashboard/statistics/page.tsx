@@ -814,11 +814,11 @@ export default function StatisticsPage() {
                 />
 
                 <button 
-                  className="btn btn-xs btn-outline-dark px-2" 
+                  className="btn btn-light border shadow-sm btn-xs px-2 fw-bold text-dark" 
                   onClick={handlePrint}
                   title="In báo cáo"
                 >
-                  <i className="fas fa-print me-1"></i>In
+                  <i className="fas fa-print text-primary me-1"></i>In
                 </button>
 
                 <button 
@@ -850,11 +850,11 @@ export default function StatisticsPage() {
                 />
 
                 <button 
-                   className="btn btn-xs btn-outline-dark px-2" 
+                   className="btn btn-light border shadow-sm btn-xs px-2 fw-bold text-dark" 
                    onClick={handlePrint}
                    title="In danh sách"
                 >
-                   <i className="fas fa-print me-1"></i>In
+                   <i className="fas fa-print text-primary me-1"></i>In
                 </button>
 
                 <button 

@@ -88,8 +88,8 @@ export default function SparePartTransactionsPage() {
             </div>
             <h1 className="h6 mb-0 text-dark fw-bold text-uppercase">Danh sách phiếu Nhập / Xuất kho</h1>
           </div>
-          <button className="btn btn-outline-secondary btn-sm px-3 fw-bold bg-white" onClick={handlePrintReport}>
-            <i className="fas fa-print me-1"></i> In báo cáo
+          <button className="btn btn-light border shadow-sm btn-sm px-3 fw-bold text-dark" onClick={handlePrintReport}>
+            <i className="fas fa-print text-primary me-1"></i> In báo cáo
           </button>
         </div>
 

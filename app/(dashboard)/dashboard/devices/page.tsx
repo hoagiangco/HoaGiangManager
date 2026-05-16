@@ -1453,12 +1453,26 @@ function DevicesPageContent() {
                     </div>
                     <div className="form-group mb-3">
                       <label>Serial (nếu có)</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        value={formData.serial}
-                        onChange={(e) => setFormData({ ...formData, serial: e.target.value })}
-                      />
+                      <div className="input-group">
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={formData.serial}
+                          onChange={(e) => setFormData({ ...formData, serial: e.target.value })}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary"
+                          onClick={() => {
+                            const timestamp = Date.now().toString(36).toUpperCase();
+                            const randomChars = Math.random().toString(36).substring(2, 6).toUpperCase();
+                            setFormData({ ...formData, serial: `HG-${timestamp}-${randomChars}` });
+                          }}
+                          title="Tạo mã ngẫu nhiên"
+                        >
+                          <i className="fas fa-random"></i> Tạo mã
+                        </button>
+                      </div>
                     </div>
                     <div className="row">
                       <div className="col-md-6">
