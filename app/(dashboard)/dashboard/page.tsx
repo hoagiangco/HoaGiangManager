@@ -215,6 +215,16 @@ export default function DashboardPage() {
                 </Link>
               </div>
             )}
+            {notifications.pendingEvents > 0 && (
+              <div className="col-lg-3 col-md-6">
+                <Link href="/dashboard/events" className="alert-item-compact border-left-primary h-100">
+                  <i className="fas fa-tools text-primary"></i>
+                  <div className="alert-item-text text-primary">
+                    {notifications.pendingEvents} bảo trì được phân công
+                  </div>
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       )}

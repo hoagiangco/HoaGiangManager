@@ -71,7 +71,7 @@ export default function WorkPlanPage() {
           api.get(`/work-plans?date=${dateStr}&staffId=${targetStaffId}`).then(res => {
             if (res.data.status) setPlanItems(res.data.data);
           }),
-          api.get(`/work-plans/pending?staffId=${targetStaffId}`).then(res => {
+          api.get(`/work-plans/pending?staffId=${isAdmin ? 0 : targetStaffId}`).then(res => {
             if (res.data.status) setPendingReports(res.data.data);
           }),
           api.get(`/work-plans/active-dates?startDate=${new Date(selectedDate).getFullYear() - 1}-01-01&endDate=${new Date(selectedDate).getFullYear() + 1}-12-31&staffId=${targetStaffId}`).then(res => {
@@ -248,6 +248,7 @@ export default function WorkPlanPage() {
                     onChange={(date: Date) => setSelectedDate(date || new Date())}
                     dateFormat="dd/MM/yyyy"
                     highlightDates={activeDates}
+                    portalId="root-portal"
                     customInput={
                       <button className="btn btn-xs px-2 px-sm-3 rounded-2 btn-ghost text-nowrap">
                         <i className="fas fa-calendar-alt me-1"></i>Chọn ngày
@@ -268,13 +269,10 @@ export default function WorkPlanPage() {
               <span className="small text-muted fw-bold text-uppercase text-nowrap" style={{ fontSize: '0.65rem' }}>Xem của:</span>
               <div className="flex-grow-1" style={{ minWidth: '160px' }}>
                 <SearchableSelect 
-                  options={[
-                    { id: 0, name: 'Tất cả nhân viên' },
-                    ...allStaff.map(s => ({ id: s.id, name: s.name }))
-                  ]} 
+                  options={allStaff.map(s => ({ id: s.id, name: s.name }))} 
                   value={viewStaffId === undefined ? 0 : viewStaffId} 
                   onChange={(val) => setViewStaffId(val)} 
-                  placeholder="Chọn nhân viên..." 
+                  placeholder="Tất cả nhân viên" 
                   className="form-select-sm border-0 bg-light shadow-none fw-bold text-primary w-100"
                 />
               </div>
@@ -432,6 +430,7 @@ export default function WorkPlanPage() {
                   highlightDates={activeDates}
                   className="form-control form-control-premium text-center fw-bold"
                   minDate={new Date()}
+                  portalId="root-portal"
                 />
               </div>
               <div className="d-flex gap-2 justify-content-center">
@@ -595,6 +594,9 @@ export default function WorkPlanPage() {
         .implemented-check { color: #40c057; font-size: 1.1rem; margin-right: 8px; }
 
         /* DatePicker Highlights */
+        :global(.react-datepicker-popper) {
+          z-index: 1060 !important;
+        }
         :global(.react-datepicker__day--highlighted) {
           font-weight: bold;
           position: relative;
