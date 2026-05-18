@@ -24,6 +24,33 @@ export class SparePartService {
     return result.rows[0].ID;
   }
 
+  async updateCategory(id: number, category: Partial<SparePartCategory>): Promise<void> {
+    const fields: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (category.name !== undefined) { fields.push(`"Name" = $${idx++}`); values.push(category.name); }
+    if (category.description !== undefined) { fields.push(`"Description" = $${idx++}`); values.push(category.description); }
+
+    if (fields.length === 0) return;
+
+    values.push(id);
+    await pool.query(
+      `UPDATE "SparePartCategory" SET ${fields.join(', ')} WHERE "ID" = $${idx}`,
+      values
+    );
+  }
+
+  async deleteCategory(id: number): Promise<void> {
+    const countResult = await pool.query('SELECT COUNT(*) FROM "SparePart" WHERE "CategoryID" = $1', [id]);
+    const count = parseInt(countResult.rows[0].count);
+    if (count > 0) {
+      throw new Error('Không thể xóa danh mục này vì đang có vật tư thuộc danh mục.');
+    }
+    
+    await pool.query('DELETE FROM "SparePartCategory" WHERE "ID" = $1', [id]);
+  }
+
   // --- Spare Part Methods ---
   async getPaginated(filters: {
     page: number;

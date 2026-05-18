@@ -87,7 +87,8 @@ export default function SparePartsPage() {
             <div className="vr mx-3 d-none d-md-block" style={{ height: '20px' }}></div>
             <div className="d-none d-md-flex gap-3">
               <span className="small text-muted">Tổng: <strong>{response?.total || 0}</strong></span>
-              <span className="small text-danger">Sắp hết: <strong>{response?.data?.filter((i: SparePartVM) => i.isLowStock).length || 0}</strong></span>
+              <span className="small text-warning-emphasis">Sắp hết: <strong>{response?.data?.filter((i: SparePartVM) => i.isLowStock && i.currentQuantity > 0).length || 0}</strong></span>
+              <span className="small text-danger">Hết hàng: <strong>{response?.data?.filter((i: SparePartVM) => i.currentQuantity <= 0).length || 0}</strong></span>
             </div>
           </div>
           <div className="d-flex gap-1">
@@ -182,13 +183,16 @@ export default function SparePartsPage() {
                       </td>
                     </tr>
                   ) : (
-                    response?.data?.map((item: SparePartVM, index: number) => (
-                      <tr key={item.id} className={item.isLowStock ? 'bg-danger-subtle bg-opacity-10' : ''}>
+                    response?.data?.map((item: SparePartVM, index: number) => {
+                      const isOutOfStock = item.currentQuantity <= 0;
+                      const isWarning = item.isLowStock && !isOutOfStock;
+                      return (
+                      <tr key={item.id} className={isOutOfStock ? 'bg-danger-subtle bg-opacity-10' : isWarning ? 'bg-warning-subtle bg-opacity-10' : ''}>
                         <td className="px-3 text-muted x-small">#{item.id}</td>
                         <td className="py-1">
                           <div className="d-flex align-items-center">
-                            <div className={`p-1 rounded-1 me-2 d-flex align-items-center justify-content-center border ${item.isLowStock ? 'bg-danger text-white border-danger' : 'bg-light text-primary border-light-subtle'}`} style={{ width: '28px', height: '28px' }}>
-                              <i className={`fas ${item.isLowStock ? 'fa-exclamation x-small' : 'fa-box x-small'}`}></i>
+                            <div className={`p-1 rounded-1 me-2 d-flex align-items-center justify-content-center border ${isOutOfStock ? 'bg-danger text-white border-danger' : isWarning ? 'bg-warning text-dark border-warning' : 'bg-light text-primary border-light-subtle'}`} style={{ width: '28px', height: '28px' }}>
+                              <i className={`fas ${isOutOfStock ? 'fa-exclamation-triangle x-small' : isWarning ? 'fa-exclamation x-small' : 'fa-box x-small'}`}></i>
                             </div>
                             <div className="lh-sm">
                               <div className="fw-bold text-dark small-font">{item.name}</div>
@@ -202,13 +206,14 @@ export default function SparePartsPage() {
                           </span>
                         </td>
                         <td className="text-center">
-                          <div className={`fw-bold small-font ${item.isLowStock ? 'text-danger' : 'text-success'}`}>
+                          <div className={`fw-bold small-font ${isOutOfStock ? 'text-danger' : isWarning ? 'text-warning-emphasis' : 'text-success'}`}>
                             {item.currentQuantity} <span className="opacity-50 fw-normal">{item.unit}</span>
                           </div>
                         </td>
                         <td className="text-center">
                           <span className="x-small text-muted">{item.minQuantity} {item.unit}</span>
-                          {item.isLowStock && <div className="text-danger fw-bold x-small">HẾT HÀNG!</div>}
+                          {isOutOfStock && <div className="text-danger fw-bold x-small mt-1">HẾT HÀNG!</div>}
+                          {isWarning && <div className="text-warning-emphasis fw-bold x-small mt-1">SẮP HẾT!</div>}
                         </td>
                         <td className="px-3 text-end">
                           <div className="btn-group btn-group-xs shadow-none">
@@ -227,7 +232,7 @@ export default function SparePartsPage() {
                           </div>
                         </td>
                       </tr>
-                    ))
+                    )})
                   )}
                 </tbody>
               </table>
