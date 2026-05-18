@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
     `;
     const pendingEventsParams: any[] = [];
     if (!isAdmin) {
-      pendingEventsQuery += ` AND e."StaffId" IN (SELECT "ID" FROM "Staff" WHERE "UserId" = $1)`;
+      pendingEventsQuery += ` AND e."StaffID" IN (SELECT "ID" FROM "Staff" WHERE "UserId" = $1)`;
       pendingEventsParams.push(userId);
     }
     const pendingEventsResult = await pool.query(pendingEventsQuery, pendingEventsParams);
