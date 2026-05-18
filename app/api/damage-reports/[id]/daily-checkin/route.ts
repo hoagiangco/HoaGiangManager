@@ -124,10 +124,11 @@ export async function POST(
       [reportId, staff.id, workDate, notes]
     );
 
-    // Auto-append to timeline
+    // Auto-upsert to timeline
     const damageReportService = new DamageReportService();
-    const autoNote = notes ? `Ghi nhận xử lý hôm nay: ${notes}` : 'Ghi nhận xử lý hôm nay';
-    await damageReportService.appendTimelineNote(reportId, autoNote, 'auto', staff.name, user.userId);
+    // Nếu có ghi chú thì chỉ hiện ghi chú (ẩn "Ghi nhận xử lý hôm nay")
+    const autoNote = notes && notes.trim() !== '' ? notes : 'Ghi nhận xử lý hôm nay';
+    await damageReportService.upsertDailyCheckinNote(reportId, autoNote, staff.name, user.userId);
 
     return NextResponse.json({
       status: true,
@@ -172,9 +173,9 @@ export async function DELETE(
       [reportId, workDate]
     );
 
-    // Auto-append to timeline
+    // Auto-upsert to timeline
     const damageReportService = new DamageReportService();
-    await damageReportService.appendTimelineNote(reportId, 'Đã hủy ghi nhận xử lý hôm nay', 'auto', staff.name, user.userId);
+    await damageReportService.upsertDailyCheckinNote(reportId, 'Đã hủy ghi nhận xử lý hôm nay', staff.name, user.userId);
 
     return NextResponse.json({ status: true, message: 'Đã hủy ghi nhận' });
   } catch (error: any) {

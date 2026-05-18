@@ -736,6 +736,37 @@ export class DamageReportService {
       }
     }
 
+    // Validation for date logic
+    if (finalHandlingDate && report.reportDate) {
+      const hDate = new Date(finalHandlingDate);
+      const rDate = new Date(report.reportDate);
+      if (hDate < rDate) {
+        throw new Error('Ngày bắt đầu xử lý không thể nhỏ hơn ngày báo cáo.');
+      }
+      if (hDate > now) {
+        throw new Error('Ngày bắt đầu xử lý không thể vượt quá thời gian hiện tại.');
+      }
+    }
+
+    if (finalCompletedDate) {
+      const cDate = new Date(finalCompletedDate);
+      if (cDate > now) {
+        throw new Error('Ngày hoàn thành không thể vượt quá thời gian hiện tại.');
+      }
+      if (report.reportDate) {
+        const rDate = new Date(report.reportDate);
+        if (cDate < rDate) {
+          throw new Error('Ngày hoàn thành không thể nhỏ hơn ngày báo cáo.');
+        }
+      }
+      if (finalHandlingDate) {
+        const hDate = new Date(finalHandlingDate);
+        if (cDate < hDate) {
+          throw new Error('Ngày hoàn thành không thể nhỏ hơn ngày bắt đầu xử lý.');
+        }
+      }
+    }
+
     await pool.query(
       `UPDATE "DamageReport" SET
         "DeviceID" = $1,
@@ -852,7 +883,8 @@ export class DamageReportService {
       // Get current info
       const currentRes = await client.query(
         `SELECT dr."Status" as status, dr."DeviceID" as device_id, dr."HandlerID" as handler_id, 
-                dr."DamageContent" as damage_content, s."Name" as handler_name
+                dr."DamageContent" as damage_content, s."Name" as handler_name,
+                dr."ReportDate" as report_date, dr."HandlingDate" as handling_date
          FROM "DamageReport" dr
          LEFT JOIN "Staff" s ON dr."HandlerID" = s."ID"
          WHERE dr."ID" = $1`,
@@ -868,6 +900,8 @@ export class DamageReportService {
       const deviceId = row.device_id;
       const damageContent = row.damage_content || '';
       const handlerName = row.handler_name || 'Nhân viên';
+      const reportDate = row.report_date ? new Date(row.report_date) : null;
+      const handlingDate = row.handling_date ? new Date(row.handling_date) : null;
 
       // Handle date clearing and auto-setting based on status transition
       let updateQuery = `UPDATE "DamageReport" SET "Status" = $1, "UpdatedBy" = $2, "UpdatedAt" = CURRENT_TIMESTAMP`;
@@ -879,6 +913,12 @@ export class DamageReportService {
         updateQuery += `, "HandlingDate" = NULL, "CompletedDate" = NULL`;
       } else if (status === DamageReportStatus.Completed) {
         // 2. Chuyển sang Hoàn thành (4) -> Gán ngày hoàn thành
+        if (handlingDate && now < handlingDate) {
+          throw new Error('Ngày hoàn thành không thể nhỏ hơn ngày bắt đầu xử lý. Vui lòng kiểm tra lại thời gian trên hệ thống.');
+        }
+        if (reportDate && now < reportDate) {
+          throw new Error('Ngày hoàn thành không thể nhỏ hơn ngày báo cáo. Vui lòng kiểm tra lại thời gian báo cáo.');
+        }
         updateQuery += `, "CompletedDate" = $4`;
         updateParams.push(now);
       } else {
@@ -887,8 +927,10 @@ export class DamageReportService {
         
         // Nếu chuyển sang Đang xử lý (3) -> Gán ngày xử lý nếu chưa có
         if (status === DamageReportStatus.InProgress) {
-          const handlingRes = await client.query('SELECT "HandlingDate" FROM "DamageReport" WHERE "ID" = $1', [id]);
-          if (!handlingRes.rows[0]?.HandlingDate) {
+          if (!handlingDate) {
+            if (reportDate && now < reportDate) {
+              throw new Error('Ngày bắt đầu xử lý không thể nhỏ hơn ngày báo cáo. Vui lòng kiểm tra lại thời gian báo cáo.');
+            }
             updateQuery += `, "HandlingDate" = $${updateParams.length + 1}`;
             updateParams.push(now);
           }
@@ -1088,6 +1130,60 @@ export class DamageReportService {
     };
 
     timeline.push(newEntry);
+    const newNotesJson = JSON.stringify(timeline);
+
+    await pool.query(
+      `UPDATE "DamageReport" SET "HandlerNotes" = $1, "UpdatedBy" = $2, "UpdatedAt" = CURRENT_TIMESTAMP WHERE "ID" = $3`,
+      [newNotesJson, updatedBy, id]
+    );
+
+    // Track change in history if notes actually changed
+    await pool.query(
+      `INSERT INTO "DamageReportHistory" ("DamageReportID", "FieldName", "OldValue", "NewValue", "ChangedBy")
+       VALUES ($1, 'HandlerNotes', $2, $3, $4)`,
+      [id, currentHandlerNotes || '', newNotesJson, updatedBy]
+    );
+
+    return newNotesJson;
+  }
+
+  async upsertDailyCheckinNote(id: number, content: string, authorName: string, updatedBy: string): Promise<string> {
+    const currentResult = await pool.query(
+      `SELECT "HandlerNotes" FROM "DamageReport" WHERE "ID" = $1`,
+      [id]
+    );
+    
+    if (currentResult.rows.length === 0) {
+      throw new Error('Báo cáo không tồn tại');
+    }
+
+    const currentHandlerNotes = currentResult.rows[0].HandlerNotes;
+    const timeline = this.parseTimelineNotes(currentHandlerNotes);
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // Find the last 'auto' note from today
+    let existingIndex = -1;
+    for (let i = timeline.length - 1; i >= 0; i--) {
+      if (timeline[i].type === 'auto' && timeline[i].timestamp.startsWith(todayStr)) {
+        existingIndex = i;
+        break;
+      }
+    }
+
+    if (existingIndex !== -1) {
+      timeline[existingIndex].content = content;
+      timeline[existingIndex].timestamp = new Date().toISOString();
+    } else {
+      const newEntry: TimelineEntry = {
+        id: Math.random().toString(36).substring(2, 9) + Date.now().toString(36),
+        timestamp: new Date().toISOString(),
+        author: authorName,
+        content,
+        type: 'auto'
+      };
+      timeline.push(newEntry);
+    }
+
     const newNotesJson = JSON.stringify(timeline);
 
     await pool.query(

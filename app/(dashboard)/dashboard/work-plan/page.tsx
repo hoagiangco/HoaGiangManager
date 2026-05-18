@@ -54,7 +54,7 @@ export default function WorkPlanPage() {
     if (!user) return;
     setLoading(true);
     try {
-      const staffRes = await api.get(`/staff/me?userId=${user.id}`);
+      const staffRes = await api.get(`/staff/me?userId=${user.id}`).catch(() => ({ data: { status: false } }));
       if (staffRes.data.status) {
         const staffData = staffRes.data.data;
         setStaff(staffData);
@@ -66,34 +66,38 @@ export default function WorkPlanPage() {
           targetStaffId = staffData.id;
         }
         const dateStr = format(selectedDate, 'yyyy-MM-dd');
-        const planRes = await api.get(`/work-plans?date=${dateStr}&staffId=${targetStaffId}`);
-        if (planRes.data.status) setPlanItems(planRes.data.data);
 
-        const pendingRes = await api.get(`/work-plans/pending?staffId=${targetStaffId}`);
-        if (pendingRes.data.status) setPendingReports(pendingRes.data.data);
-
-        const startYear = new Date(selectedDate).getFullYear() - 1;
-        const endYear = new Date(selectedDate).getFullYear() + 1;
-        const activeRes = await api.get(`/work-plans/active-dates?startDate=${startYear}-01-01&endDate=${endYear}-12-31&staffId=${targetStaffId}`);
-        if (activeRes.data.status) {
-          setActiveDates(activeRes.data.data.map((d: string) => new Date(d)));
-        }
+        await Promise.allSettled([
+          api.get(`/work-plans?date=${dateStr}&staffId=${targetStaffId}`).then(res => {
+            if (res.data.status) setPlanItems(res.data.data);
+          }),
+          api.get(`/work-plans/pending?staffId=${targetStaffId}`).then(res => {
+            if (res.data.status) setPendingReports(res.data.data);
+          }),
+          api.get(`/work-plans/active-dates?startDate=${new Date(selectedDate).getFullYear() - 1}-01-01&endDate=${new Date(selectedDate).getFullYear() + 1}-12-31&staffId=${targetStaffId}`).then(res => {
+            if (res.data.status) setActiveDates(res.data.data.map((d: string) => new Date(d)));
+          })
+        ]);
       }
 
-      const [devRes, locRes, allStaffRes] = await Promise.all([
-        api.get('/devices?limit=1000'),
-        api.get('/locations'),
-        api.get('/staff?departmentId=0')
+      await Promise.allSettled([
+        api.get('/devices?limit=1000').then(res => {
+          if (res.data.status) setDevices(res.data.data);
+        }),
+        api.get('/locations').then(res => {
+          if (res.data.status) setLocations(res.data.data);
+        }),
+        api.get('/staff?departmentId=0').then(res => {
+          if (res.data.status) setAllStaff(res.data.data);
+        })
       ]);
-      if (devRes.data.status) setDevices(devRes.data.data);
-      if (locRes.data.status) setLocations(locRes.data.data);
-      if (allStaffRes.data.status) setAllStaff(allStaffRes.data.data);
     } catch (error) {
-      toast.error('Không thể tải dữ liệu');
+      console.error('Lỗi tải dữ liệu work-plan:', error);
+      toast.error('Có lỗi xảy ra khi tải một số dữ liệu.');
     } finally {
       setLoading(false);
     }
-  }, [user, selectedDate, viewStaffId]);
+  }, [user, selectedDate, viewStaffId, isAdmin]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -215,68 +219,68 @@ export default function WorkPlanPage() {
   return (
     <div className="work-plan-container container-fluid p-3">
       {/* Header Section */}
-      <div className="plan-header glass-card p-3 mb-3 d-flex flex-wrap align-items-center justify-content-between gap-3">
-        <div className="d-flex align-items-center gap-4">
-          <div className="date-badge-modern">
+      <div className="plan-header glass-card p-3 mb-3 d-flex flex-column flex-md-row justify-content-between gap-3">
+        <div className="d-flex align-items-sm-center gap-3 w-100">
+          <div className="date-badge-modern flex-shrink-0">
             <div className="db-month">{format(selectedDate, 'MMM', { locale: vi })}</div>
             <div className="db-day">{format(selectedDate, 'dd')}</div>
           </div>
-          <div className="header-info">
-            <h3 className="m-0 fw-bold text-dark d-flex align-items-center gap-2">
+          <div className="header-info min-w-0 flex-grow-1">
+            <h3 className="m-0 fw-bold text-dark d-flex flex-wrap align-items-center gap-2 mb-2">
               {getDateLabel()}
               <span className="badge rounded-pill bg-primary-subtle text-primary fw-normal" style={{ fontSize: '0.7rem' }}>
                 {planItems.length} việc
               </span>
             </h3>
-            <div className="d-flex align-items-center gap-3 mt-2">
-              <div className="quick-nav d-flex gap-1 bg-light p-1 rounded-3">
+            <div className="d-flex flex-column flex-sm-row align-items-start align-items-sm-center gap-2 mt-1">
+              <div className="quick-nav d-flex gap-1 bg-light p-1 rounded-3 overflow-x-auto" style={{ maxWidth: '100%', WebkitOverflowScrolling: 'touch' }}>
                 <button 
-                  className={`btn btn-xs px-3 rounded-2 ${isToday(selectedDate) ? 'btn-white shadow-sm active' : 'btn-ghost'}`}
+                  className={`btn btn-xs px-2 px-sm-3 rounded-2 text-nowrap ${isToday(selectedDate) ? 'btn-white shadow-sm active' : 'btn-ghost'}`}
                   onClick={() => setSelectedDate(new Date())}
                 >Hôm nay</button>
                 <button 
-                  className={`btn btn-xs px-3 rounded-2 ${isTomorrow(selectedDate) ? 'btn-white shadow-sm active' : 'btn-ghost'}`}
+                  className={`btn btn-xs px-2 px-sm-3 rounded-2 text-nowrap ${isTomorrow(selectedDate) ? 'btn-white shadow-sm active' : 'btn-ghost'}`}
                   onClick={() => setSelectedDate(addDays(new Date(), 1))}
                 >Ngày mai</button>
-                <div className="position-relative">
+                <div className="position-relative flex-shrink-0">
                   <DatePicker
                     selected={selectedDate}
                     onChange={(date: Date) => setSelectedDate(date || new Date())}
                     dateFormat="dd/MM/yyyy"
                     highlightDates={activeDates}
                     customInput={
-                      <button className="btn btn-xs px-3 rounded-2 btn-ghost">
+                      <button className="btn btn-xs px-2 px-sm-3 rounded-2 btn-ghost text-nowrap">
                         <i className="fas fa-calendar-alt me-1"></i>Chọn ngày
                       </button>
                     }
                   />
                 </div>
               </div>
-              <div className="text-muted small fw-medium">
+              <div className="text-muted small fw-medium d-none d-md-block text-nowrap">
                 {format(selectedDate, 'dd/MM/yyyy')}
               </div>
-              {isAdmin && (
-                <div className="ms-3 ps-3 border-start d-flex align-items-center gap-2">
-                  <span className="small text-muted fw-bold text-uppercase" style={{ fontSize: '0.65rem' }}>Xem của:</span>
-                  <div style={{ width: '220px' }}>
-                    <SearchableSelect 
-                      options={[
-                        { id: 0, name: '--- TẤT CẢ NHÂN VIÊN ---' },
-                        ...allStaff.map(s => ({ id: s.id, name: s.name }))
-                      ]} 
-                      value={viewStaffId === undefined ? 0 : viewStaffId} 
-                      onChange={(val) => setViewStaffId(val)} 
-                      placeholder="Chọn nhân viên..." 
-                      className="form-select-sm border-0 bg-white shadow-sm fw-bold text-primary"
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
-        <div className="header-actions">
-          <button className="btn btn-primary rounded-pill px-4 py-2 fw-bold shadow-sm d-flex align-items-center gap-2" onClick={() => { setModalMode('new'); setIsModalOpen(true); }}>
+        <div className="header-actions d-flex flex-column flex-sm-row gap-2 align-items-stretch align-items-sm-center w-100 w-md-auto mt-2 mt-md-0 pt-2 pt-md-0">
+          {isAdmin && (
+            <div className="admin-filter d-flex align-items-center gap-2">
+              <span className="small text-muted fw-bold text-uppercase text-nowrap" style={{ fontSize: '0.65rem' }}>Xem của:</span>
+              <div className="flex-grow-1" style={{ minWidth: '160px' }}>
+                <SearchableSelect 
+                  options={[
+                    { id: 0, name: 'Tất cả nhân viên' },
+                    ...allStaff.map(s => ({ id: s.id, name: s.name }))
+                  ]} 
+                  value={viewStaffId === undefined ? 0 : viewStaffId} 
+                  onChange={(val) => setViewStaffId(val)} 
+                  placeholder="Chọn nhân viên..." 
+                  className="form-select-sm border-0 bg-light shadow-none fw-bold text-primary w-100"
+                />
+              </div>
+            </div>
+          )}
+          <button className="btn btn-primary rounded-pill px-4 py-2 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2" onClick={() => { setModalMode('new'); setIsModalOpen(true); }}>
             <i className="fas fa-plus"></i>
             <span>Thêm công việc</span>
           </button>
@@ -518,9 +522,9 @@ export default function WorkPlanPage() {
                   </div>
                 </div>
 
-                <div className="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
-                  <div className="priority-modern d-flex align-items-center gap-2">
-                    <span className="small text-muted fw-bold">Ưu tiên:</span>
+                <div className="d-flex flex-column flex-md-row justify-content-between align-items-stretch align-items-md-center mt-4 pt-3 border-top gap-3">
+                  <div className="priority-modern d-flex align-items-center justify-content-between justify-content-md-start gap-2">
+                    <span className="small text-muted fw-bold text-nowrap">Ưu tiên:</span>
                     <div className="btn-group btn-group-sm">
                       {[
                         {v: DamageReportPriority.Low, l: 'Thấp', c: 'success'},
@@ -531,13 +535,13 @@ export default function WorkPlanPage() {
                         <button 
                           key={p.v}
                           type="button" 
-                          className={`btn btn-outline-${p.c} px-3 ${newTask.priority === p.v ? 'active shadow-sm' : ''}`}
+                          className={`btn btn-outline-${p.c} px-2 px-sm-3 ${newTask.priority === p.v ? 'active shadow-sm' : ''}`}
                           onClick={() => setNewTask({...newTask, priority: p.v})}
                         >{p.l}</button>
                       ))}
                     </div>
                   </div>
-                  <button type="submit" className="btn btn-primary btn-lg px-4 rounded-3 shadow fw-bold d-flex align-items-center gap-2">
+                  <button type="submit" className="btn btn-primary btn-lg px-4 rounded-3 shadow fw-bold d-flex align-items-center justify-content-center gap-2">
                     <span>Lưu kế hoạch</span>
                     <i className="fas fa-arrow-right small"></i>
                   </button>
@@ -622,7 +626,9 @@ export default function WorkPlanPage() {
 
         /* Modal */
         .custom-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1050; backdrop-filter: blur(4px); }
-        .custom-modal { width: 90%; max-width: 600px; animation: modalSlideUp 0.3s ease-out; }
+        .custom-modal { width: 95%; max-width: 600px; max-height: 90vh; display: flex; flex-direction: column; animation: modalSlideUp 0.3s ease-out; }
+        .modal-header-premium, .modal-tabs-container { flex-shrink: 0; }
+        .modal-body { overflow-y: auto; min-height: 0; }
         .form-control-modern { border-radius: 10px; border: 1px solid #dee2e6; padding: 10px 14px; font-size: 0.9rem; }
         .form-control-modern:focus { box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.1); border-color: #0d6efd; }
         .btn-close-custom { border: none; background: transparent; font-size: 1.2rem; color: #adb5bd; transition: color 0.2s; }
