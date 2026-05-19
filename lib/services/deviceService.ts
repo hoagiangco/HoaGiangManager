@@ -115,7 +115,15 @@ export class DeviceService {
 
     if (locationId > 0) {
       params.push(locationId);
-      whereClause += ` AND d."LocationID" = $${params.length}`;
+      whereClause += ` AND d."LocationID" IN (
+        WITH RECURSIVE sub_locations AS (
+          SELECT "ID" FROM "Location" WHERE "ID" = $${params.length}
+          UNION ALL
+          SELECT l."ID" FROM "Location" l
+          INNER JOIN sub_locations sl ON l."ParentID" = sl."ID"
+        )
+        SELECT "ID" FROM sub_locations
+      )`;
     }
 
     if (status > 0) {
@@ -170,6 +178,7 @@ export class DeviceService {
           dep."Name" as "departmentName",
           d."LocationID" as "locationId",
           loc."Name" as "locationName",
+          parent_loc."Name" as "parentLocationName",
           d."DeviceCategoryID" as "deviceCategoryId",
           dc."Name" as "deviceCategoryName",
           CAST(d."Status"::text AS INTEGER) as status,
@@ -180,6 +189,7 @@ export class DeviceService {
         INNER JOIN "DeviceCategory" dc ON d."DeviceCategoryID" = dc."ID"
         INNER JOIN "Department" dep ON d."DepartmentID" = dep."ID"
         LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
+        LEFT JOIN "Location" parent_loc ON loc."ParentID" = parent_loc."ID"
         LEFT JOIN LATERAL (
           SELECT 
             CAST(dr."Status"::text AS INTEGER) as "lastReportStatus",
@@ -388,6 +398,8 @@ export class DeviceService {
   async create(device: Omit<Device, 'id'>): Promise<number> {
     await this.ensureDeviceSequence();
 
+    const locVal = (device.locationId && Number(device.locationId) > 0) ? Number(device.locationId) : null;
+
     const result = await pool.query(
       `INSERT INTO "Device" (
         "Name", "Serial", "Description", "Img", "WarrantyDate", 
@@ -404,7 +416,7 @@ export class DeviceService {
         device.useDate || null,
         device.endDate || null,
         device.departmentId,
-        device.locationId || null,
+        locVal,
         device.deviceCategoryId,
         (device.status ?? DeviceStatus.DangSuDung).toString()
       ]
@@ -415,6 +427,8 @@ export class DeviceService {
 
   async update(device: Device): Promise<number> {
     await this.ensureDeviceSequence();
+
+    const locVal = (device.locationId && Number(device.locationId) > 0) ? Number(device.locationId) : null;
 
     await pool.query(
       `UPDATE "Device" SET
@@ -439,7 +453,7 @@ export class DeviceService {
         device.useDate || null,
         device.endDate || null,
         device.departmentId,
-        device.locationId || null,
+        locVal,
         device.deviceCategoryId,
         (device.status ?? DeviceStatus.DangSuDung).toString(),
         device.id

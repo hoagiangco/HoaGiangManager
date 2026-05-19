@@ -39,7 +39,17 @@ export async function GET(request: NextRequest) {
 
     if (locationId && locationId !== '0') {
       reportsParams.push(locationId);
-      reportsFilter += ` AND "DeviceID" IN (SELECT "ID" FROM "Device" WHERE "LocationID" = $${reportsParams.length})`;
+      reportsFilter += ` AND "DeviceID" IN (
+        SELECT "ID" FROM "Device" WHERE "LocationID" IN (
+          WITH RECURSIVE sub_locations AS (
+            SELECT "ID" FROM "Location" WHERE "ID" = $${reportsParams.length}
+            UNION ALL
+            SELECT l."ID" FROM "Location" l
+            INNER JOIN sub_locations sl ON l."ParentID" = sl."ID"
+          )
+          SELECT "ID" FROM sub_locations
+        )
+      )`;
     }
 
     if (status && status !== '0') {
@@ -100,7 +110,15 @@ export async function GET(request: NextRequest) {
 
     if (locationId && locationId !== '0') {
       devicesParams.push(locationId);
-      devicesFilter += ` AND "LocationID" = $${devicesParams.length}`;
+      devicesFilter += ` AND "LocationID" IN (
+        WITH RECURSIVE sub_locations AS (
+          SELECT "ID" FROM "Location" WHERE "ID" = $${devicesParams.length}
+          UNION ALL
+          SELECT l."ID" FROM "Location" l
+          INNER JOIN sub_locations sl ON l."ParentID" = sl."ID"
+        )
+        SELECT "ID" FROM sub_locations
+      )`;
     }
 
     if (categoryId && categoryId !== '0') {
@@ -159,7 +177,15 @@ export async function GET(request: NextRequest) {
     
     if (locationId && locationId !== '0') {
       maintParams.push(locationId);
-      maintFilter += ` AND d."LocationID" = $${maintParams.length}`;
+      maintFilter += ` AND d."LocationID" IN (
+        WITH RECURSIVE sub_locations AS (
+          SELECT "ID" FROM "Location" WHERE "ID" = $${maintParams.length}
+          UNION ALL
+          SELECT l."ID" FROM "Location" l
+          INNER JOIN sub_locations sl ON l."ParentID" = sl."ID"
+        )
+        SELECT "ID" FROM sub_locations
+      )`;
     }
 
     const activeMaintenanceQuery = `

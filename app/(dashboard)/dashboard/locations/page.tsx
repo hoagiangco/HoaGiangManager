@@ -2,16 +2,20 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
 import { Location } from '@/types';
 import AdminRoute from '@/components/AdminRoute';
 
+interface DisplayLocation extends Location {
+  depth?: number;
+}
+
 function LocationsPageContent() {
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [allLocations, setAllLocations] = useState<Location[]>([]);
+  const [locations, setLocations] = useState<DisplayLocation[]>([]);
+  const [allLocations, setAllLocations] = useState<DisplayLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -23,7 +27,7 @@ function LocationsPageContent() {
   const [sortField, setSortField] = useState<string>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
-  const [formData, setFormData] = useState<Partial<Location>>({ id: 0, name: '' });
+  const [formData, setFormData] = useState<Partial<Location>>({ id: 0, name: '', parentId: 0 });
   const [isEdit, setIsEdit] = useState(false);
 
   useEffect(() => { loadData(); }, []);
@@ -46,14 +50,33 @@ function LocationsPageContent() {
     let filtered = [...allLocations];
     if (searchKeyword.trim()) {
       const keyword = searchKeyword.toLowerCase();
-      filtered = filtered.filter(loc => loc.name?.toLowerCase().includes(keyword));
+      
+      const matched = allLocations.filter(loc => 
+        loc.name?.toLowerCase().includes(keyword)
+      );
+      
+      const idsToShow = new Set<number>();
+      
+      const addNodeAndAncestors = (loc: Location) => {
+        idsToShow.add(loc.id);
+        if (loc.parentId) {
+          const parent = allLocations.find(l => l.id === loc.parentId);
+          if (parent) {
+            addNodeAndAncestors(parent);
+          }
+        }
+      };
+      
+      matched.forEach(loc => addNodeAndAncestors(loc));
+      
+      filtered = allLocations.filter(loc => idsToShow.has(loc.id));
     }
     setLocations(filtered);
     setCurrentPage(1);
   }, [allLocations, searchKeyword]);
 
   const handleNew = () => {
-    setFormData({ id: 0, name: '' });
+    setFormData({ id: 0, name: '', parentId: 0 });
     setIsEdit(false);
     setShowModal(true);
   };
@@ -65,7 +88,7 @@ function LocationsPageContent() {
     }
     const selected = allLocations.find(loc => loc.id === selectedIds[0]);
     if (selected) {
-      setFormData({ id: selected.id, name: selected.name || '' });
+      setFormData({ id: selected.id, name: selected.name || '', parentId: selected.parentId || 0 });
       setIsEdit(true);
       setShowModal(true);
     }
@@ -101,10 +124,10 @@ function LocationsPageContent() {
     }
     try {
       if (isEdit) {
-        await api.put(`/locations/${formData.id}`, { name: formData.name.trim() });
+        await api.put(`/locations/${formData.id}`, { name: formData.name.trim(), parentId: formData.parentId || null });
         toast.success('Cập nhật thành công');
       } else {
-        await api.post('/locations', { name: formData.name.trim() });
+        await api.post('/locations', { name: formData.name.trim(), parentId: formData.parentId || null });
         toast.success('Thêm mới thành công');
       }
       setShowModal(false);
@@ -115,13 +138,46 @@ function LocationsPageContent() {
     }
   };
 
-  const sortedLocations = [...locations].sort((a, b) => {
-    const aVal = a.name || '';
-    const bVal = b.name || '';
-    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-    return 0;
-  });
+  const hierarchicalLocations = useMemo(() => {
+    const map = new Map<number, DisplayLocation[]>();
+    const roots: DisplayLocation[] = [];
+
+    locations.forEach(loc => {
+      if (loc.parentId && locations.some(l => l.id === loc.parentId)) {
+        const list = map.get(loc.parentId) || [];
+        list.push(loc);
+        map.set(loc.parentId, list);
+      } else {
+        roots.push(loc);
+      }
+    });
+
+    roots.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    const result: DisplayLocation[] = [];
+    const traverse = (node: DisplayLocation, depth: number) => {
+      result.push({ ...node, depth });
+      const children = map.get(node.id) || [];
+      children.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      children.forEach(child => traverse(child, depth + 1));
+    };
+
+    roots.forEach(root => traverse(root, 0));
+    return result;
+  }, [locations]);
+
+  const sortedLocations = useMemo(() => {
+    if (sortField !== 'name' || sortDirection !== 'asc') {
+      return [...locations].sort((a, b) => {
+        const aVal = a.name || '';
+        const bVal = b.name || '';
+        if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      }).map(loc => ({ ...loc, depth: 0 }));
+    }
+    return hierarchicalLocations;
+  }, [locations, sortField, sortDirection, hierarchicalLocations]);
 
   const totalPages = Math.ceil(sortedLocations.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -270,6 +326,7 @@ function LocationsPageContent() {
                       {getSortIcon('name')}
                     </div>
                   </th>
+                  <th>Trực thuộc</th>
                 </tr>
               </thead>
               <tbody>
@@ -295,8 +352,26 @@ function LocationsPageContent() {
                         />
                       </td>
                       <td>
-                        <i className="fas fa-map-marker-alt text-muted me-2" style={{ fontSize: '0.8rem' }}></i>
-                        {location.name}
+                        <div style={{ paddingLeft: `${(location.depth || 0) * 24}px`, display: 'flex', alignItems: 'center' }}>
+                          {location.depth ? (
+                            <span className="text-muted me-3" style={{ userSelect: 'none', fontWeight: 'bold' }}>-</span>
+                          ) : (
+                            <i className="fas fa-map-marker-alt text-primary me-2" style={{ fontSize: '0.85rem' }}></i>
+                          )}
+                          <span style={{ fontWeight: location.depth ? 'normal' : '600' }}>
+                            {location.name}
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        {location.parentName ? (
+                          <span className="badge bg-light text-dark border">
+                            <i className="fas fa-level-up-alt me-1" style={{ transform: 'rotate(90deg)' }}></i>
+                            {location.parentName}
+                          </span>
+                        ) : (
+                          <span className="text-muted small">-</span>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -354,6 +429,25 @@ function LocationsPageContent() {
                     onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
                   />
                   <div className="form-text">Nhập tên khu vực vật lý nơi thiết bị được đặt.</div>
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Trực thuộc vị trí (Tùy chọn)</label>
+                  <select 
+                    className="form-select"
+                    value={formData.parentId || 0}
+                    onChange={e => setFormData({ ...formData, parentId: parseInt(e.target.value) })}
+                  >
+                    <option value={0}>-- Không có --</option>
+                    {allLocations
+                      .filter(loc => loc.id !== formData.id) // Cannot be child of itself
+                      .map(loc => (
+                        <option key={loc.id} value={loc.id}>
+                          {loc.parentName ? `${loc.parentName} > ${loc.name}` : loc.name}
+                        </option>
+                      ))
+                    }
+                  </select>
+                  <div className="form-text">Chọn vị trí cha nếu vị trí này nằm bên trong một vị trí lớn hơn (vd: Tủ âm thanh trực thuộc Sảnh A).</div>
                 </div>
               </div>
               <div className="modal-footer d-flex justify-content-end gap-2">

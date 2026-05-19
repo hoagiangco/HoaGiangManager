@@ -21,6 +21,8 @@ export interface Department {
 export interface Location {
   id: number;
   name: string;
+  parentId?: number;
+  parentName?: string;
 }
 
 // DeviceCategory types
@@ -57,6 +59,7 @@ export interface Device {
 export interface DeviceVM extends Device {
   departmentName?: string;
   locationName?: string;
+  parentLocationName?: string;
   deviceCategoryName?: string;
   statusName?: string;
   lastReportStatus?: DamageReportStatus;

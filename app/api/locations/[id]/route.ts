@@ -30,13 +30,13 @@ export async function PUT(
     }
     const id = parseInt(params.id);
     const body = await request.json();
-    const { name } = body;
+    const { name, parentId } = body;
 
     if (!name || !name.trim()) {
       return NextResponse.json({ status: false, error: 'Tên vị trí không được để trống' }, { status: 400 });
     }
 
-    const updated = await locationService.update(id, name);
+    const updated = await locationService.update(id, name, parentId);
     return NextResponse.json({ status: updated !== null, data: updated });
   } catch (error: any) {
     if (error.code === '23505') {

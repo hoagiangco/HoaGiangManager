@@ -916,7 +916,7 @@ export default function StatisticsPage() {
                     onChange={e => setDeviceFilters(prev => ({ ...prev, locId: Number(e.target.value) }))}
                   >
                     <option value="0">Tất cả</option>
-                    {locations.map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    {locations.map((l: any) => <option key={l.id} value={l.id}>{l.parentName ? `${l.parentName} > ${l.name}` : l.name}</option>)}
                   </select>
                 </div>
                 <div className="col-6 col-md-auto" style={{ minWidth: '150px' }}>

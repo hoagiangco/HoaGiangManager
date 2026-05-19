@@ -37,24 +37,33 @@ export async function GET(request: NextRequest) {
         cat."Name" as "categoryName",
         d."Status" as status
       FROM "Device" d
-      LEFT JOIN "Department" dept ON d."DepartmentId" = dept."ID"
-      LEFT JOIN "Location" loc ON d."LocationId" = loc."ID"
-      LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryId" = cat."ID"
+      LEFT JOIN "Department" dept ON d."DepartmentID" = dept."ID"
+      LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
+      LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
       WHERE 1=1
     `;
     const params: any[] = [];
     let paramIndex = 1;
 
     if (cateId && cateId !== '0') {
-      query += ` AND d."DeviceCategoryId" = $${paramIndex++}`;
+      query += ` AND d."DeviceCategoryID" = $${paramIndex++}`;
       params.push(parseInt(cateId));
     }
     if (departmentId && departmentId !== '0') {
-      query += ` AND d."DepartmentId" = $${paramIndex++}`;
+      query += ` AND d."DepartmentID" = $${paramIndex++}`;
       params.push(parseInt(departmentId));
     }
     if (locationId && locationId !== '0') {
-      query += ` AND d."LocationId" = $${paramIndex++}`;
+      query += ` AND d."LocationID" IN (
+        WITH RECURSIVE sub_locations AS (
+          SELECT "ID" FROM "Location" WHERE "ID" = $${paramIndex}
+          UNION ALL
+          SELECT l."ID" FROM "Location" l
+          INNER JOIN sub_locations sl ON l."ParentID" = sl."ID"
+        )
+        SELECT "ID" FROM sub_locations
+      )`;
+      paramIndex++;
       params.push(parseInt(locationId));
     }
     if (status && status !== '0') {

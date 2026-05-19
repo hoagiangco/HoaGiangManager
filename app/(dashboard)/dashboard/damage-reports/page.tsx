@@ -3171,7 +3171,11 @@ export default function DamageReportsPage() {
                               {formData.deviceId && (
                                 <div className="text-primary fw-bold" style={{ fontSize: '0.6rem' }}>
                                   <i className="fas fa-map-marker-alt me-1"></i>
-                                  {devices.find(dev => dev.id === formData.deviceId)?.locationName || ''}
+                                  {(() => {
+                                    const dev = devices.find(d => d.id === formData.deviceId);
+                                    if (!dev) return '';
+                                    return dev.parentLocationName ? `${dev.parentLocationName} > ${dev.locationName}` : dev.locationName || '';
+                                  })()}
                                 </div>
                               )}
                             </div>
@@ -3218,7 +3222,7 @@ export default function DamageReportsPage() {
                                                 <div className={isActive ? 'text-white-50' : 'text-muted'} style={{ fontSize: '0.6rem' }}>{d.serial || 'N/A'}</div>
                                               </div>
                                               {d.locationName && (
-                                                <div className={`badge ${isActive ? 'bg-white text-primary' : 'bg-primary bg-opacity-10 text-primary'} ms-1 px-1`} style={{ fontSize: '0.55rem' }}>{d.locationName}</div>
+                                                <div className={`badge ${isActive ? 'bg-white text-primary' : 'bg-primary bg-opacity-10 text-primary'} ms-1 px-1`} style={{ fontSize: '0.55rem' }}>{d.parentLocationName ? `${d.parentLocationName} > ${d.locationName}` : d.locationName}</div>
                                               )}
                                             </div>
                                           </button>

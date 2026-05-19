@@ -169,8 +169,16 @@ export class DamageReportService {
       }
 
       if (filters.locationId) {
-        // Filter reports where the device's location matches
-        query += ` AND d."LocationID" = $${paramIndex}`;
+        // Filter reports where the device's location matches (recursive parent-child check)
+        query += ` AND d."LocationID" IN (
+          WITH RECURSIVE sub_locations AS (
+            SELECT "ID" FROM "Location" WHERE "ID" = $${paramIndex}
+            UNION ALL
+            SELECT l."ID" FROM "Location" l
+            INNER JOIN sub_locations sl ON l."ParentID" = sl."ID"
+          )
+          SELECT "ID" FROM sub_locations
+        )`;
         params.push(filters.locationId);
         paramIndex++;
       }
@@ -287,7 +295,15 @@ export class DamageReportService {
 
     if (locationId) {
       params.push(locationId);
-      whereClause += ` AND (d."LocationID" = $${params.length} OR dr."DamageLocation" ILIKE (SELECT "Name" FROM "Location" WHERE "ID" = $${params.length}))`;
+      whereClause += ` AND (d."LocationID" IN (
+        WITH RECURSIVE sub_locations AS (
+          SELECT "ID" FROM "Location" WHERE "ID" = $${params.length}
+          UNION ALL
+          SELECT l."ID" FROM "Location" l
+          INNER JOIN sub_locations sl ON l."ParentID" = sl."ID"
+        )
+        SELECT "ID" FROM sub_locations
+      ) OR dr."DamageLocation" ILIKE (SELECT "Name" FROM "Location" WHERE "ID" = $${params.length}))`;
     }
 
     if (search && search.trim()) {

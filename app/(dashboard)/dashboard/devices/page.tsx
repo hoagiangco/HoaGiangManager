@@ -218,6 +218,12 @@ function DevicesPageContent() {
   const categories = (categoriesData?.data || []) as DeviceCategory[];
   const departments = (departmentsData?.data || []) as Department[];
   const locations = (locationsData?.data || []) as Location[];
+  const formattedLocations = useMemo(() => {
+    return locations.map(loc => ({
+      ...loc,
+      name: loc.parentName ? `${loc.parentName} > ${loc.name}` : loc.name
+    }));
+  }, [locations]);
 
   const currentParams = useMemo(() => {
     return new URLSearchParams({
@@ -977,7 +983,7 @@ function DevicesPageContent() {
                       style={{ borderRadius: '6px', width: '100%', minWidth: '120px' }}
                     >
                       <option value="0">Tất cả</option>
-                      {locations.map((loc) => (
+                      {formattedLocations.map((loc) => (
                         <option key={loc.id} value={loc.id}>{loc.name}</option>
                       ))}
                     </select>
@@ -1216,9 +1222,19 @@ function DevicesPageContent() {
                       <td>{device.deviceCategoryName}</td>
                       <td>{device.departmentName}</td>
                       <td>
-                        {device.locationName 
-                          ? <><i className="fas fa-map-marker-alt text-muted me-1" style={{ fontSize: '0.75rem' }}></i>{device.locationName}</>
-                          : <span className="text-muted">-</span>}
+                        {device.locationName ? (
+                          <>
+                            <i className="fas fa-map-marker-alt text-muted me-1" style={{ fontSize: '0.75rem' }}></i>
+                            {device.parentLocationName ? (
+                              <span className="text-muted small">
+                                {device.parentLocationName} &gt;{' '}
+                              </span>
+                            ) : null}
+                            <span>{device.locationName}</span>
+                          </>
+                        ) : (
+                          <span className="text-muted">-</span>
+                        )}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>{getStatusBadge(device.status)}</td>
                       <td>
@@ -1424,7 +1440,7 @@ function DevicesPageContent() {
                       <div className="input-group">
                         <SearchableSelect
                           className="form-control"
-                          options={locations}
+                          options={formattedLocations}
                           value={formData.locationId || 0}
                           onChange={(val: number) =>
                             setFormData({ ...formData, locationId: val })

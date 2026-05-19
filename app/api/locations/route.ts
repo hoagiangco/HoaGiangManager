@@ -23,13 +23,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name } = body;
+    const { name, parentId } = body;
 
     if (!name || !name.trim()) {
       return NextResponse.json({ status: false, error: 'Tên vị trí không được để trống' }, { status: 400 });
     }
 
-    const location = await locationService.create(name);
+    const location = await locationService.create(name, parentId);
     return NextResponse.json({ status: true, data: location });
   } catch (error: any) {
     if (error.code === '23505') {

@@ -57,7 +57,15 @@ export async function GET(request: NextRequest) {
       }
 
       if (locationId && locationId !== '0') {
-        query += ` AND d."LocationID" = $${paramCount}`;
+        query += ` AND d."LocationID" IN (
+          WITH RECURSIVE sub_locations AS (
+            SELECT "ID" FROM "Location" WHERE "ID" = $${paramCount}
+            UNION ALL
+            SELECT l."ID" FROM "Location" l
+            INNER JOIN sub_locations sl ON l."ParentID" = sl."ID"
+          )
+          SELECT "ID" FROM sub_locations
+        )`;
         params.push(locationId);
         paramCount++;
       }
@@ -201,7 +209,15 @@ export async function GET(request: NextRequest) {
       }
 
       if (locationId && locationId !== '0') {
-        query += ` AND d."LocationID" = $${paramCount}`;
+        query += ` AND d."LocationID" IN (
+          WITH RECURSIVE sub_locations AS (
+            SELECT "ID" FROM "Location" WHERE "ID" = $${paramCount}
+            UNION ALL
+            SELECT l."ID" FROM "Location" l
+            INNER JOIN sub_locations sl ON l."ParentID" = sl."ID"
+          )
+          SELECT "ID" FROM sub_locations
+        )`;
         params.push(locationId);
         paramCount++;
       }
