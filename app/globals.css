@@ -1185,7 +1185,7 @@ a {
   .table-responsive {
     overflow-x: scroll !important;
     overflow-y: visible !important;
-    touch-action: pan-x;
+    /* Removed touch-action: pan-x to allow vertical scrolling on touch devices */
     /* Force scrollbar to always be visible on mobile */
     scrollbar-width: thin;
     scrollbar-color: rgba(0, 0, 0, 0.5) rgba(0, 0, 0, 0.15);
