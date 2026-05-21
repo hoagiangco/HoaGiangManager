@@ -320,8 +320,6 @@ export default function DamageReportsPage() {
   const [myWorkFilter, setMyWorkFilter] = useState(false);
   const [myReportFilter, setMyReportFilter] = useState(false);
   const [currentUserStaffId, setCurrentUserStaffId] = useState<number | null>(null);
-  const skipPageResetOnMyWorkToggle = useRef(false);
-  const skipPageResetOnMyReportToggle = useRef(false);
   const [showModal, setShowModal] = useState(false);
   const [showDoneConfirm, setShowDoneConfirm] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -954,21 +952,27 @@ export default function DamageReportsPage() {
     }
   }, [currentUser, staff]);
 
-  // Filter and search logic
+  // Load data when API filters change
   useEffect(() => {
     loadData();
-    // Only reset page if not skipping (for filter toggles)
-    if (!skipPageResetOnMyWorkToggle.current && !skipPageResetOnMyReportToggle.current) {
-      setCurrentPage(1);
-    } else {
-      skipPageResetOnMyWorkToggle.current = false;
-      skipPageResetOnMyReportToggle.current = false;
-    }
   }, [
     selectedStatus,
     selectedPriority,
     selectedDevice,
     selectedDepartment
+  ]);
+
+  // Reset page when filters or search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    selectedStatus,
+    selectedPriority,
+    selectedDevice,
+    selectedDepartment,
+    searchKeyword,
+    myWorkFilter,
+    myReportFilter
   ]);
 
   // Handle search with debounce
@@ -1387,10 +1391,17 @@ export default function DamageReportsPage() {
   };
 
   // Pagination
-  const totalPages = Math.ceil(reports.length / itemsPerPage);
-  const startIndex = viewMode === 'card' ? 0 : (currentPage - 1) * itemsPerPage;
-  const endIndex = viewMode === 'card' ? currentPage * itemsPerPage : startIndex + itemsPerPage;
+  const totalPages = Math.max(1, Math.ceil(reports.length / itemsPerPage));
+  const currentPageSafe = Math.min(currentPage, totalPages);
+  const startIndex = viewMode === 'card' ? 0 : (currentPageSafe - 1) * itemsPerPage;
+  const endIndex = viewMode === 'card' ? currentPageSafe * itemsPerPage : startIndex + itemsPerPage;
   const currentReports = reports.slice(startIndex, endIndex);
+
+  useEffect(() => {
+    if (currentPage !== currentPageSafe) {
+      setCurrentPage(currentPageSafe);
+    }
+  }, [currentPage, currentPageSafe]);
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -1967,7 +1978,6 @@ export default function DamageReportsPage() {
                   <button
                     className={`btn btn-sm d-flex align-items-center justify-content-center ${myWorkFilter ? 'btn-info' : 'btn-outline-info'}`}
                     onClick={() => {
-                      skipPageResetOnMyWorkToggle.current = true;
                       setMyWorkFilter(!myWorkFilter);
                       if (!myWorkFilter) setMyReportFilter(false);
                     }}
@@ -1979,7 +1989,6 @@ export default function DamageReportsPage() {
                   <button
                     className={`btn btn-sm d-flex align-items-center justify-content-center ${myReportFilter ? 'btn-success' : 'btn-outline-success'}`}
                     onClick={() => {
-                      skipPageResetOnMyReportToggle.current = true;
                       setMyReportFilter(!myReportFilter);
                       if (!myReportFilter) setMyWorkFilter(false);
                     }}
@@ -3007,11 +3016,11 @@ export default function DamageReportsPage() {
           >
             <nav>
               <ul className="pagination justify-content-center mb-0">
-                <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
+                <li className={`page-item ${currentPageSafe === 1 ? 'disabled' : ''}`}>
                   <button
                     className="page-link shadow-none border-0"
-                    onClick={() => handlePageChange(currentPage - 1)}
-                    disabled={currentPage === 1}
+                    onClick={() => handlePageChange(currentPageSafe - 1)}
+                    disabled={currentPageSafe === 1}
                     title="Trang trước"
                     aria-label="Trang trước"
                     style={{ borderRadius: '8px', margin: '0 2px' }}
@@ -3023,25 +3032,25 @@ export default function DamageReportsPage() {
                   if (
                     page === 1 ||
                     page === totalPages ||
-                    (page >= currentPage - 2 && page <= currentPage + 2)
+                    (page >= currentPageSafe - 2 && page <= currentPageSafe + 2)
                   ) {
                     return (
-                      <li key={page} className={`page-item ${currentPage === page ? 'active' : ''}`}>
+                      <li key={page} className={`page-item ${currentPageSafe === page ? 'active' : ''}`}>
                         <button
                           className="page-link shadow-sm border-0"
                           onClick={() => handlePageChange(page)}
                           style={{ 
                             borderRadius: '8px', 
                             margin: '0 2px',
-                            fontWeight: currentPage === page ? '700' : '500',
-                            backgroundColor: currentPage === page ? undefined : '#f8f9fa'
+                            fontWeight: currentPageSafe === page ? '700' : '500',
+                            backgroundColor: currentPageSafe === page ? undefined : '#f8f9fa'
                           }}
                         >
                           {page}
                         </button>
                       </li>
                     );
-                  } else if (page === currentPage - 3 || page === currentPage + 3) {
+                  } else if (page === currentPageSafe - 3 || page === currentPageSafe + 3) {
                     return (
                       <li key={page} className="page-item disabled">
                         <span className="page-link bg-transparent border-0">...</span>
@@ -3050,11 +3059,11 @@ export default function DamageReportsPage() {
                   }
                   return null;
                 })}
-                <li className={`page-item ${currentPage === totalPages ? 'disabled' : ''}`}>
+                <li className={`page-item ${currentPageSafe === totalPages ? 'disabled' : ''}`}>
                   <button
                     className="page-link shadow-none border-0"
-                    onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages}
+                    onClick={() => handlePageChange(currentPageSafe + 1)}
+                    disabled={currentPageSafe === totalPages}
                     title="Trang sau"
                     aria-label="Trang sau"
                     style={{ borderRadius: '8px', margin: '0 2px' }}
@@ -3086,7 +3095,7 @@ export default function DamageReportsPage() {
               </div>
               
               <div className="modal-body p-2 pt-0">
-                <form className="needs-validation">
+                <form className="needs-validation" onSubmit={(e) => e.preventDefault()}>
                   {/* Maintenance Notice */}
                   {formData.maintenanceBatchId && (
                     <div className="alert alert-info py-1 px-2 mb-2 d-flex align-items-center gap-2" style={{ fontSize: '0.72rem', borderRadius: '10px', border: '1px solid #b6d4fe' }}>

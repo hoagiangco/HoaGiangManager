@@ -177,9 +177,12 @@ const HandlerNotesEditor: React.FC<HandlerNotesEditorProps> = ({
                   {canEdit && entry.type !== 'auto' && (
                     <div className="d-flex gap-1 me-2">
                       <button 
+                        type="button"
                         className="btn btn-link p-0 text-primary" 
                         style={{ fontSize: '0.7rem' }}
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
                           setEditingEntryId(entry.id);
                           setEditingContent(entry.content);
                         }}
@@ -187,9 +190,14 @@ const HandlerNotesEditor: React.FC<HandlerNotesEditorProps> = ({
                         <i className="fas fa-edit"></i>
                       </button>
                       <button 
+                        type="button"
                         className="btn btn-link p-0 text-danger" 
                         style={{ fontSize: '0.7rem' }}
-                        onClick={() => handleDeleteEntry(entry.id)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDeleteEntry(entry.id);
+                        }}
                       >
                         <i className="fas fa-trash-alt"></i>
                       </button>
@@ -209,10 +217,30 @@ const HandlerNotesEditor: React.FC<HandlerNotesEditorProps> = ({
                     style={{ fontSize: '0.8rem' }}
                     rows={3}
                   />
-                  <div className="d-flex justify-content-end gap-2">
-                    <button className="btn btn-sm btn-primary py-0" onClick={() => handleUpdateEntry(entry.id)}>Lưu</button>
-                    <button className="btn btn-sm btn-light border py-0" onClick={() => setEditingEntryId(null)}>Hủy</button>
-                  </div>
+                    <div className="d-flex justify-content-end gap-2">
+                      <button 
+                        type="button"
+                        className="btn btn-sm btn-primary py-0" 
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleUpdateEntry(entry.id);
+                        }}
+                      >
+                        Lưu
+                      </button>
+                      <button 
+                        type="button"
+                        className="btn btn-sm btn-light border py-0" 
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setEditingEntryId(null);
+                        }}
+                      >
+                        Hủy
+                      </button>
+                    </div>
                 </div>
               ) : (
                 <div className={entry.type === 'auto' ? 'text-success fst-italic' : 'text-dark'} style={{ fontSize: '0.8rem', whiteSpace: 'pre-wrap' }}>
@@ -376,7 +404,15 @@ const HandlerNotesEditor: React.FC<HandlerNotesEditorProps> = ({
           <div className="bg-white rounded shadow-lg d-flex flex-column" style={{ width: '90%', maxWidth: '500px', maxHeight: '80vh' }} onClick={e => e.stopPropagation()}>
             <div className="p-3 border-bottom d-flex justify-content-between align-items-center">
               <h6 className="mb-0 fw-bold"><i className="fas fa-history text-primary me-2"></i>Lịch sử ghi chú xử lý</h6>
-              <button type="button" className="btn-close" onClick={() => setShowHistory(false)}></button>
+              <button 
+                type="button" 
+                className="btn-close" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowHistory(false);
+                }}
+              ></button>
             </div>
             <div className="p-3 overflow-auto flex-grow-1" style={{ backgroundColor: '#f8fafc' }}>
               <div className="timeline-container">
@@ -391,9 +427,12 @@ const HandlerNotesEditor: React.FC<HandlerNotesEditorProps> = ({
                         {canEdit && entry.type !== 'auto' && (
                           <div className="d-flex gap-1 me-2">
                             <button 
+                              type="button"
                               className="btn btn-link p-0 text-primary" 
                               style={{ fontSize: '0.7rem' }}
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
                                 setEditingEntryId(entry.id);
                                 setEditingContent(entry.content);
                               }}
@@ -401,9 +440,14 @@ const HandlerNotesEditor: React.FC<HandlerNotesEditorProps> = ({
                               <i className="fas fa-edit"></i>
                             </button>
                             <button 
+                              type="button"
                               className="btn btn-link p-0 text-danger" 
                               style={{ fontSize: '0.7rem' }}
-                              onClick={() => handleDeleteEntry(entry.id)}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleDeleteEntry(entry.id);
+                              }}
                             >
                               <i className="fas fa-trash-alt"></i>
                             </button>
@@ -424,8 +468,28 @@ const HandlerNotesEditor: React.FC<HandlerNotesEditorProps> = ({
                           rows={3}
                         />
                         <div className="d-flex justify-content-end gap-2">
-                          <button className="btn btn-sm btn-primary py-0" onClick={() => handleUpdateEntry(entry.id)}>Lưu</button>
-                          <button className="btn btn-sm btn-light border py-0" onClick={() => setEditingEntryId(null)}>Hủy</button>
+                          <button 
+                            type="button"
+                            className="btn btn-sm btn-primary py-0" 
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleUpdateEntry(entry.id);
+                            }}
+                          >
+                            Lưu
+                          </button>
+                          <button 
+                            type="button"
+                            className="btn btn-sm btn-light border py-0" 
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setEditingEntryId(null);
+                            }}
+                          >
+                            Hủy
+                          </button>
                         </div>
                       </div>
                     ) : (
@@ -446,7 +510,11 @@ const HandlerNotesEditor: React.FC<HandlerNotesEditorProps> = ({
         <button 
           type="button" 
           className="btn btn-outline-success btn-sm w-100 rounded-pill mt-1" 
-          onClick={() => setIsAdding(true)}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsAdding(true);
+          }}
           style={{ fontSize: '0.75rem', fontWeight: '600' }}
         >
           <i className="fas fa-plus me-1"></i> Thêm ghi chú mới

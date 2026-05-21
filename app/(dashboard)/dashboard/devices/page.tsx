@@ -225,6 +225,20 @@ function DevicesPageContent() {
     }));
   }, [locations]);
 
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const currentPageSafe = Math.min(currentPage, totalPages);
+
+  useEffect(() => {
+    if (currentPage !== currentPageSafe) {
+      setCurrentPage(currentPageSafe);
+    }
+  }, [currentPage, currentPageSafe]);
+
+  // Reset page when filters or search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategory, selectedDepartment, selectedLocation, selectedStatus, searchKeyword]);
+
   const currentParams = useMemo(() => {
     return new URLSearchParams({
       cateId: selectedCategory.toString(),
@@ -232,12 +246,12 @@ function DevicesPageContent() {
       locationId: selectedLocation.toString(),
       status: selectedStatus.toString(),
       search: searchKeyword,
-      page: currentPage.toString(),
+      page: currentPageSafe.toString(),
       limit: itemsPerPage.toString(),
       sortField: sortField,
       sortOrder: sortOrder
     }).toString();
-  }, [selectedCategory, selectedDepartment, selectedLocation, selectedStatus, searchKeyword, currentPage, itemsPerPage, sortField, sortOrder]);
+  }, [selectedCategory, selectedDepartment, selectedLocation, selectedStatus, searchKeyword, currentPageSafe, itemsPerPage, sortField, sortOrder]);
 
   const { data: response, isLoading: reportsLoading, mutate } = useSWR(
     `/devices?${currentParams}`, 
@@ -694,7 +708,6 @@ function DevicesPageContent() {
   };
 
   // Server-side pagination and sorting: devices are already sorted and sliced by the API
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
   const currentDevices = devices;
 
   const handleSort = (field: string) => {
@@ -1034,6 +1047,7 @@ function DevicesPageContent() {
                         setSelectedLocation(0);
                         setSelectedStatus(0);
                         setSearchKeyword('');
+                        setCurrentPage(1);
                       }}
                       title="Xóa bộ lọc"
                     >
@@ -1063,7 +1077,7 @@ function DevicesPageContent() {
             </div>
             <div style={{ flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               <span style={{ fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
-                Hiển thị {totalItems > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}-{Math.min(currentPage * itemsPerPage, totalItems)} của {totalItems} thiết bị
+                Hiển thị {totalItems > 0 ? (currentPageSafe - 1) * itemsPerPage + 1 : 0}-{Math.min(currentPageSafe * itemsPerPage, totalItems)} của {totalItems} thiết bị
                 {(selectedCategory > 0 || selectedDepartment > 0 || selectedStatus > 0 || searchKeyword.trim()) && (
                   <span className="text-muted"> (đã lọc)</span>
                 )}
@@ -1288,11 +1302,11 @@ function DevicesPageContent() {
           >
             <nav aria-label="Page navigation">
               <ul className="pagination justify-content-center mb-0">
-                <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
+                <li className={`page-item ${currentPageSafe === 1 ? 'disabled' : ''}`}>
                   <button
                     className="page-link shadow-none border-0"
-                    onClick={() => handlePageChange(currentPage - 1)}
-                    disabled={currentPage === 1}
+                    onClick={() => handlePageChange(currentPageSafe - 1)}
+                    disabled={currentPageSafe === 1}
                     title="Trang trước"
                     aria-label="Trang trước"
                     style={{ borderRadius: '8px', margin: '0 2px' }}
@@ -1311,13 +1325,13 @@ function DevicesPageContent() {
                     }
                   } else {
                     pages.push(1);
-                    let startPage = Math.max(2, currentPage - 1);
-                    let endPage = Math.min(totalPages - 1, currentPage + 1);
-                    if (currentPage <= 3) {
+                    let startPage = Math.max(2, currentPageSafe - 1);
+                    let endPage = Math.min(totalPages - 1, currentPageSafe + 1);
+                    if (currentPageSafe <= 3) {
                       startPage = 2;
                       endPage = 4;
                     }
-                    if (currentPage >= totalPages - 2) {
+                    if (currentPageSafe >= totalPages - 2) {
                       startPage = totalPages - 4;
                       endPage = totalPages - 1;
                     }
@@ -1344,15 +1358,15 @@ function DevicesPageContent() {
                             <span className="page-link bg-transparent border-0">...</span>
                           </li>
                         )}
-                        <li className={`page-item ${currentPage === page ? 'active' : ''}`}>
+                        <li className={`page-item ${currentPageSafe === page ? 'active' : ''}`}>
                           <button
                             className="page-link shadow-sm border-0"
                             onClick={() => handlePageChange(page)}
                             style={{ 
                               borderRadius: '8px', 
                               margin: '0 2px',
-                              fontWeight: currentPage === page ? '700' : '500',
-                              backgroundColor: currentPage === page ? undefined : '#f8f9fa'
+                              fontWeight: currentPageSafe === page ? '700' : '500',
+                              backgroundColor: currentPageSafe === page ? undefined : '#f8f9fa'
                             }}
                           >
                             {page}
@@ -1363,11 +1377,11 @@ function DevicesPageContent() {
                   });
                 })()}
                 
-                <li className={`page-item ${currentPage === totalPages ? 'disabled' : ''}`}>
+                <li className={`page-item ${currentPageSafe === totalPages ? 'disabled' : ''}`}>
                   <button
                     className="page-link shadow-none border-0"
-                    onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages}
+                    onClick={() => handlePageChange(currentPageSafe + 1)}
+                    disabled={currentPageSafe === totalPages}
                     title="Trang sau"
                     aria-label="Trang sau"
                     style={{ borderRadius: '8px', margin: '0 2px' }}

@@ -195,6 +195,8 @@ export default function DashboardLayout({
     );
   }
 
+  const isSidebarCollapsed = sidebarCollapsed && !mobileMenuOpen;
+
   return (
     <div className="dashboard-wrapper">
       {/* Mobile Overlay */}
@@ -203,29 +205,32 @@ export default function DashboardLayout({
       )}
       
       {/* Sidebar */}
-      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+      <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''} ${mobileMenuOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-header d-flex justify-content-center align-items-center position-relative">
-          {!sidebarCollapsed && (
+          {!isSidebarCollapsed && (
             <h4 className="sidebar-title m-0 text-center">
               <span className="d-none d-md-inline">HoaGiang Manager</span>
               <span className="d-md-none">HG Manager</span>
             </h4>
           )}
-          <button className="sidebar-toggle position-absolute end-0 me-2" onClick={toggleSidebar}>
-            <i className={`fas ${sidebarCollapsed ? 'fa-angle-right' : 'fa-angle-left'}`}></i>
+          <button 
+            className={`sidebar-toggle ${isSidebarCollapsed ? '' : 'position-absolute end-0 me-2'}`} 
+            onClick={toggleSidebar}
+          >
+            <i className={`fas ${isSidebarCollapsed ? 'fa-angle-right' : 'fa-angle-left'}`}></i>
           </button>
         </div>
         <nav className="sidebar-nav">
           {menuGroups.map((group, groupIdx) => (
             <div key={groupIdx} className="sidebar-menu-group">
-              {!sidebarCollapsed && <div className="sidebar-menu-title">{group.title}</div>}
+              {!isSidebarCollapsed && <div className="sidebar-menu-title">{group.title}</div>}
               <ul className="sidebar-menu">
                 {group.items.map((item) => (
                   <li key={item.href} className="sidebar-menu-item">
                     <Link
                       href={item.href}
                       className={`sidebar-menu-link ${pathname === item.href ? 'active' : ''}`}
-                      title={sidebarCollapsed ? item.label : ''}
+                      title={isSidebarCollapsed ? item.label : ''}
                       onClick={() => {
                         if (window.innerWidth <= 768) {
                           setMobileMenuOpen(false);
@@ -233,7 +238,7 @@ export default function DashboardLayout({
                       }}
                     >
                       <i className={item.icon}></i>
-                      {!sidebarCollapsed && <span>{item.label}</span>}
+                      {!isSidebarCollapsed && <span>{item.label}</span>}
                     </Link>
                   </li>
                 ))}
@@ -241,7 +246,7 @@ export default function DashboardLayout({
             </div>
           ))}
         </nav>
-        {(!sidebarCollapsed || mobileMenuOpen) && (
+        {!isSidebarCollapsed && (
           <div className="sidebar-footer">
             <div className="copyright-notice">
               Copy right by LeeKhiem
