@@ -309,15 +309,24 @@ export default function WorkPlanPage() {
                       <div className="task-number">{idx + 1}</div>
                       <div className="task-content">
                         {/* Device / Location label */}
-                        {!item.isNewTask && (item.deviceName || item.location) && (
-                          <div className="task-location mb-1">
-                            <i className="fas fa-map-marker-alt me-1 text-danger" style={{ fontSize: '0.65rem' }}></i>
-                            <span className="text-muted" style={{ fontSize: '0.72rem' }}>
-                              {item.deviceName
-                                ? `${item.deviceName}${item.location ? ` — ${item.location}` : ''}`
-                                : item.location}
-                            </span>
-                            <span className="ms-2 mini-badge bg-warning">Tồn</span>
+                        {!item.isNewTask && (item.maintenanceBatchId || item.deviceName || item.location) && (
+                          <div className="task-location mb-1 d-flex align-items-center flex-wrap gap-1">
+                            {item.maintenanceBatchId ? (
+                              <>
+                                <span className="mini-badge bg-primary">Bảo trì</span>
+                                <span className="text-muted" style={{ fontSize: '0.72rem' }}>{item.maintenanceTitle || item.maintenanceBatchId}</span>
+                              </>
+                            ) : (
+                              <>
+                                <i className="fas fa-map-marker-alt text-danger" style={{ fontSize: '0.65rem' }}></i>
+                                <span className="text-muted" style={{ fontSize: '0.72rem' }}>
+                                  {item.deviceName
+                                    ? `${item.deviceName}${item.location ? ` — ${item.location}` : ''}`
+                                    : item.location}
+                                </span>
+                              </>
+                            )}
+                            <span className="mini-badge bg-warning">Tồn</span>
                           </div>
                         )}
                         {item.isNewTask && (
@@ -394,7 +403,17 @@ export default function WorkPlanPage() {
                   return (
                     <div key={report.id} className={`suggest-item p-2 mb-2 ${isInPlan ? 'in-plan' : ''}`}>
                       <div className="suggest-info overflow-hidden">
-                        <div className="fw-bold small text-truncate">#{report.id} - {report.deviceName || report.location || 'Công việc chung'}</div>
+                        <div className="fw-bold small text-truncate d-flex align-items-center gap-1">
+                          <span>#{report.id} -</span>
+                          {report.maintenanceBatchId ? (
+                            <>
+                              <span className="badge bg-primary-subtle text-primary border border-primary-subtle px-1 py-0">Bảo trì</span>
+                              <span className="text-truncate" title={report.maintenanceBatchId}>{report.maintenanceTitle || report.maintenanceBatchId}</span>
+                            </>
+                          ) : (
+                            <span className="text-truncate">{report.deviceName || report.location || 'Công việc chung'}</span>
+                          )}
+                        </div>
                         <div className="text-muted x-small text-truncate-2 mt-1">{report.content}</div>
                       </div>
                       <button 

@@ -6,9 +6,11 @@ import { useState, useEffect, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
+import { useAuth } from '@/lib/contexts/AuthContext';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { updateUser } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -61,7 +63,7 @@ export default function LoginPage() {
         // Only clear error on successful login
         setError(null);
         localStorage.setItem('token', response.data.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.data.user));
+        updateUser(response.data.data.user);
         toast.success('Đăng nhập thành công!');
         router.push('/dashboard');
       } else {

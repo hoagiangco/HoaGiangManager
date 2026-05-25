@@ -93,7 +93,8 @@ const columnBlacklist = [
   'createdby', 'updatedby', 'createdat', 'updatedat', 'rejectionreason',
   'devicestatus', 'dayssincereport', 'daysinprogress', 'isoverdue', 
   'reporterdepartmentname', 'handlerdepartmentname', 'updatedbyname',
-  'notes', 'dailycategory', 'worknotes', 'checkinstaffname'
+  'notes', 'dailycategory', 'worknotes', 'checkinstaffname',
+  'damagelocation', 'section', 'allsections'
 ];
 
 const defaultReportColumnOrder = [

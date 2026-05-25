@@ -28,6 +28,8 @@ export class WorkPlanService {
       location: row.location,
       deptName: row.deptName,
       damageContent: row.damageContent,
+      maintenanceBatchId: row.maintenanceBatchId,
+      maintenanceTitle: row.maintenanceTitle,
     };
   }
 
@@ -49,6 +51,11 @@ export class WorkPlanService {
         dr."Status" as "reportStatus",
         dr."DamageLocation" as "location",
         dr."DamageContent" as "damageContent",
+        dr."MaintenanceBatchId" as "maintenanceBatchId",
+        COALESCE(
+          (SELECT "Title" FROM "DeviceReminderPlan" WHERE "Metadata"->>'maintenanceBatchId' = dr."MaintenanceBatchId" LIMIT 1),
+          (SELECT "Title" FROM "Event" WHERE "Metadata"->>'maintenanceBatchId' = dr."MaintenanceBatchId" LIMIT 1)
+        ) as "maintenanceTitle",
         dr."HandlerID" as "reportHandlerId",
         h."Name" as "reportHandlerName",
         dep."Name" as "deptName",
@@ -110,6 +117,11 @@ export class WorkPlanService {
         dr."ReportDate" as "reportDate",
         dr."Status" as status,
         dr."HandlerID" as "handlerId",
+        dr."MaintenanceBatchId" as "maintenanceBatchId",
+        COALESCE(
+          (SELECT "Title" FROM "DeviceReminderPlan" WHERE "Metadata"->>'maintenanceBatchId' = dr."MaintenanceBatchId" LIMIT 1),
+          (SELECT "Title" FROM "Event" WHERE "Metadata"->>'maintenanceBatchId' = dr."MaintenanceBatchId" LIMIT 1)
+        ) as "maintenanceTitle",
         d."Name" as "deviceName"
       FROM "DamageReport" dr
       LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
