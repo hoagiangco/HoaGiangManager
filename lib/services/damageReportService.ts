@@ -163,7 +163,7 @@ export class DamageReportService {
       }
 
       if (filters.departmentId) {
-        query += ` AND dr."ReportingDepartmentID" = $${paramIndex}`;
+        query += ` AND handler."DepartmentID" = $${paramIndex}`;
         params.push(filters.departmentId);
         paramIndex++;
       }
@@ -290,7 +290,7 @@ export class DamageReportService {
 
     if (departmentId) {
       params.push(departmentId);
-      whereClause += ` AND dr."ReportingDepartmentID" = $${params.length}`;
+      whereClause += ` AND handler."DepartmentID" = $${params.length}`;
     }
 
     if (locationId) {
@@ -1631,7 +1631,7 @@ export class DamageReportService {
     let paramIdx = 1;
 
     if (filters?.departmentId && filters.departmentId > 0) {
-      filterClause += ` AND dr."ReportingDepartmentID" = $${paramIdx++}`;
+      filterClause += ` AND handler."DepartmentID" = $${paramIdx++}`;
       queryParams.push(filters.departmentId);
     }
     if (filters?.handlerId && filters.handlerId > 0) {
@@ -1664,12 +1664,14 @@ export class DamageReportService {
          d."Name" as "deviceName",
          reporter."Name" as "reporterName",
          handler."Name" as "handlerName",
+         handler_dept."Name" as "handlerDepartmentName",
          loc."Name" as "deviceLocationName",
          cat."Name" as "deviceCategoryName"
        FROM "DamageReport" dr
        LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
        LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
        LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
+       LEFT JOIN "Department" handler_dept ON handler."DepartmentID" = handler_dept."ID"
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
        WHERE dr."ReportDate" >= $${paramIdx} AND dr."ReportDate" <= $${paramIdx + 1}
@@ -1701,6 +1703,9 @@ export class DamageReportService {
     if (filters?.handlerId && filters.handlerId > 0) {
        activeFilterClause = activeFilterClause.replace(`dr."HandlerID"`, `dwl."StaffID"`);
     }
+    if (filters?.departmentId && filters.departmentId > 0) {
+       activeFilterClause = activeFilterClause.replace(`handler."DepartmentID"`, `s."DepartmentID"`);
+    }
 
     const activeReportsRes = await pool.query(
       `SELECT 
@@ -1716,6 +1721,7 @@ export class DamageReportService {
          d."Name" as "deviceName",
          reporter."Name" as "reporterName",
          handler."Name" as "handlerName",
+         handler_dept."Name" as "handlerDepartmentName",
          loc."Name" as "deviceLocationName",
          cat."Name" as "deviceCategoryName",
          dwl."Notes" as "workNotes",
@@ -1726,6 +1732,7 @@ export class DamageReportService {
        LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
        LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
        LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
+       LEFT JOIN "Department" handler_dept ON handler."DepartmentID" = handler_dept."ID"
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
        WHERE CAST(dr."Status"::text AS INTEGER) = 3
@@ -1753,12 +1760,14 @@ export class DamageReportService {
          d."Name" as "deviceName",
          reporter."Name" as "reporterName",
          handler."Name" as "handlerName",
+         handler_dept."Name" as "handlerDepartmentName",
          loc."Name" as "deviceLocationName",
          cat."Name" as "deviceCategoryName"
        FROM "DamageReport" dr
        LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
        LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
        LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
+       LEFT JOIN "Department" handler_dept ON handler."DepartmentID" = handler_dept."ID"
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
        WHERE CAST(dr."Status"::text AS INTEGER) = 4
@@ -1784,12 +1793,14 @@ export class DamageReportService {
          d."Name" as "deviceName",
          reporter."Name" as "reporterName",
          handler."Name" as "handlerName",
+         handler_dept."Name" as "handlerDepartmentName",
          loc."Name" as "deviceLocationName",
          cat."Name" as "deviceCategoryName"
        FROM "DamageReport" dr
        LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
        LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
        LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
+       LEFT JOIN "Department" handler_dept ON handler."DepartmentID" = handler_dept."ID"
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
        WHERE dr."ReportDate" <= $${paramIdx}
@@ -1815,12 +1826,14 @@ export class DamageReportService {
          d."Name" as "deviceName",
          reporter."Name" as "reporterName",
          handler."Name" as "handlerName",
+         handler_dept."Name" as "handlerDepartmentName",
          loc."Name" as "deviceLocationName",
          cat."Name" as "deviceCategoryName"
        FROM "DamageReport" dr
        LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
        LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
        LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
+       LEFT JOIN "Department" handler_dept ON handler."DepartmentID" = handler_dept."ID"
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
        WHERE dr."ReportDate" <= $${paramIdx}
@@ -1849,6 +1862,7 @@ export class DamageReportService {
       deviceName: r.deviceName,
       reporterName: r.reporterName,
       handlerName: r.handlerName,
+      handlerDepartmentName: r.handlerDepartmentName,
       deviceLocationName: r.deviceLocationName,
       deviceCategoryName: r.deviceCategoryName,
       workNotes: r.workNotes,

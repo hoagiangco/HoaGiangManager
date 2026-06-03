@@ -1636,24 +1636,6 @@ export default function DamageReportsPage() {
         newStatus === DamageReportStatus.Cancelled || 
         newStatus === DamageReportStatus.Rejected) {
       
-      const isDeviceOrMaintenance = !!(report.deviceId || report.maintenanceBatchId);
-      
-      if (newStatus === DamageReportStatus.Completed && !isDeviceOrMaintenance) {
-        // If completing a general report (no device, no batch), update status directly
-        try {
-          const response = await api.put(`/damage-reports/${reportId}/status`, { status: newStatus });
-          if (response.data.status) {
-            toast.success('Cập nhật trạng thái thành công');
-            loadData();
-          } else {
-            toast.error(response.data.error || 'Lỗi khi cập nhật trạng thái');
-          }
-        } catch (error: any) {
-          toast.error(error.response?.data?.error || 'Lỗi khi cập nhật trạng thái');
-        }
-        return;
-      }
-
       await openStatusUpdateModal(report, newStatus);
       return;
     }
@@ -3739,7 +3721,7 @@ export default function DamageReportsPage() {
                   </small>
                 </div>
 
-                {completionModal.targetStatus === DamageReportStatus.Completed && (
+                {completionModal.targetStatus === DamageReportStatus.Completed && completionModal.report.deviceId && (
                 <div className="mb-3">
                   <div className="p-3 border rounded shadow-sm" style={{ backgroundColor: '#f6fff9', borderColor: '#d1e7dd' }}>
                     <label className="form-label d-flex align-items-center justify-content-between mb-2">
@@ -3794,12 +3776,11 @@ export default function DamageReportsPage() {
                 </button>
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className={`btn ${completionModal.targetStatus === DamageReportStatus.Cancelled ? 'btn-dark' : completionModal.targetStatus === DamageReportStatus.Rejected ? 'btn-danger' : 'btn-primary'}`}
                   onClick={handleConfirmCompletion}
                   disabled={
                     completionModal.submitting ||
-                    loadingCompletionTypes ||
-                    completionEventTypes.length === 0
+                    (completionModal.targetStatus === DamageReportStatus.Completed && (loadingCompletionTypes || completionEventTypes.length === 0))
                   }
                 >
                   {completionModal.submitting ? (
@@ -3807,6 +3788,10 @@ export default function DamageReportsPage() {
                       <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                       Đang xử lý...
                     </span>
+                  ) : completionModal.targetStatus === DamageReportStatus.Cancelled ? (
+                    <><i className="fas fa-ban me-1"></i>Xác nhận hủy báo cáo</>
+                  ) : completionModal.targetStatus === DamageReportStatus.Rejected ? (
+                    <><i className="fas fa-times-circle me-1"></i>Xác nhận từ chối</>
                   ) : (
                     'Xác nhận hoàn thành'
                   )}

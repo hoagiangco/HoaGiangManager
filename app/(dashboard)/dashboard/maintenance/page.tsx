@@ -137,6 +137,8 @@ function MaintenancePageContent() {
   // Tab handling
   const [activeTab, setActiveTab] = useState<'create' | 'batches' | 'plans' | 'cancelled'>('plans');
   const [subFilter, setSubFilter] = useState<'all' | 'overdue' | 'upcoming'>('all');
+  const [filterDepartmentId, setFilterDepartmentId] = useState<number | 'all'>('all');
+  const [filterStaffId, setFilterStaffId] = useState<number | 'all'>('all');
 
   // Enforce tab access for non-admins (Supervisor can see batches if we allow, but let's stick to plans for now or allow both)
   useEffect(() => {
@@ -509,6 +511,8 @@ function MaintenancePageContent() {
   // Static data for form
   const { data: catData } = useSWR(activeTab === 'create' ? '/device-categories' : null, fetcher);
   const { data: eventTypeData } = useSWR('/event-types', fetcher);
+  const { data: deptData } = useSWR('/departments', fetcher);
+  const departments = React.useMemo(() => deptData?.status ? deptData.data : [], [deptData]);
 
   useEffect(() => {
     if (catData?.status) setCategories(catData.data || []);
@@ -798,6 +802,23 @@ function MaintenancePageContent() {
       }
     }
 
+    if (filterDepartmentId !== 'all' || filterStaffId !== 'all') {
+      filteredPlans = filteredPlans.filter(p => {
+        const assignedStaffId = Number(p.metadata?.assignedStaffId);
+        if (filterStaffId !== 'all' && assignedStaffId !== filterStaffId) {
+          return false;
+        }
+        if (filterDepartmentId !== 'all') {
+          if (!assignedStaffId) return false;
+          const staff = staffListForCreate.find((s: any) => s.id === assignedStaffId);
+          if (!staff || staff.departmentId !== filterDepartmentId) {
+            return false;
+          }
+        }
+        return true;
+      });
+    }
+
     // Phân quyền hiển thị kế hoạch bảo trì nếu không phải là Supervisor
     if (!isSupervisor(currentUser?.roles)) {
       if (currentUserStaffId) {
@@ -996,7 +1017,7 @@ function MaintenancePageContent() {
     }
 
     return finalGroups;
-  }, [allPlans, activeTab, planEvents, maintenanceReports]);
+  }, [allPlans, activeTab, planEvents, maintenanceReports, subFilter, filterDepartmentId, filterStaffId, staffListForCreate, currentUser, currentUserStaffId]);
 
   const loadBatchDetails = async (batchId: string) => {
     setLoadingBatchDetails(true);
@@ -2377,6 +2398,98 @@ function MaintenancePageContent() {
     }
   };
 
+  const handleExportExcel = async () => {
+    try {
+      const { exportToExcel } = await import('@/lib/utils/excelExporter.client');
+      
+      const exportData: any[] = [];
+      let stt = 1;
+      
+      groupedPlans.forEach(group => {
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        
+        let statusStr = '';
+        let remainingStr = '';
+        
+        if (group.nextMaintenanceDate) {
+          const nextDate = new Date(group.nextMaintenanceDate);
+          nextDate.setHours(0,0,0,0);
+          const diffTime = nextDate.getTime() - today.getTime();
+          const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          
+          if (days < 0) {
+            statusStr = 'Quá hạn';
+            remainingStr = `Quá ${Math.abs(days)} ngày`;
+          } else if (days === 0) {
+            statusStr = 'Đến hạn';
+            remainingStr = 'Hôm nay';
+          } else {
+            statusStr = 'Sắp đến hạn';
+            remainingStr = `Còn lại ${days} ngày`;
+          }
+        }
+        
+        // Aggregate Staff and Department names
+        const staffSet = new Set<string>();
+        const deptSet = new Set<string>();
+        
+        group.plans.forEach(plan => {
+          const staffId = Number(plan.metadata?.assignedStaffId);
+          if (staffId) {
+             const staff = staffListForCreate.find((s:any) => s.id === staffId);
+             if (staff) {
+               staffSet.add(staff.name);
+               const dept = departments.find((d:any) => d.id === staff.departmentId);
+               if (dept) deptSet.add(dept.name);
+             }
+          }
+        });
+        
+        const staffNames = Array.from(staffSet).join(', ') || 'Chưa phân công';
+        const deptNames = Array.from(deptSet).join(', ') || 'N/A';
+
+        exportData.push({
+          stt: stt++,
+          title: group.title,
+          deviceCount: `${group.totalDevices} thiết bị`,
+          department: deptNames,
+          staff: staffNames,
+          lastDate: group.lastMaintenanceDate ? formatDateDisplay(group.lastMaintenanceDate) : '-',
+          nextDate: group.nextMaintenanceDate ? formatDateDisplay(group.nextMaintenanceDate) : '-',
+          status: group.isCancelledBatch ? 'Đã hủy' : (statusStr || 'Hoạt động'),
+          remaining: remainingStr
+        });
+      });
+      
+      if (exportData.length === 0) {
+        toast.warning('Không có dữ liệu để xuất');
+        return;
+      }
+      
+      await exportToExcel({
+        title: activeTab === 'plans' ? 'DANH SÁCH LỊCH BẢO TRÌ' : 'DANH SÁCH BẢO TRÌ ĐÃ HỦY',
+        filename: 'Lich_Bao_Tri_Tong_Hop',
+        columns: [
+          { id: 'stt', label: 'STT', width: 10 },
+          { id: 'title', label: 'Tên lịch bảo trì / Nhóm', width: 40 },
+          { id: 'deviceCount', label: 'Số lượng thiết bị', width: 20 },
+          { id: 'department', label: 'Phòng ban', width: 25 },
+          { id: 'staff', label: 'Người thực hiện', width: 25 },
+          { id: 'lastDate', label: 'Lần bảo trì trước', width: 20 },
+          { id: 'nextDate', label: 'Ngày bảo trì tiếp theo', width: 20 },
+          { id: 'status', label: 'Trạng thái', width: 20 },
+          { id: 'remaining', label: 'Ghi chú hạn', width: 20 },
+        ],
+        data: exportData
+      });
+      toast.success('Xuất file Excel thành công!');
+    } catch (error) {
+      console.error(error);
+      toast.error('Có lỗi xảy ra khi xuất file Excel');
+    }
+  };
+
   return (
     <>
       <div className="container-fluid">
@@ -2959,23 +3072,56 @@ function MaintenancePageContent() {
         ) : activeTab === 'plans' || activeTab === 'cancelled' ? (
           <div>
             <div className="card">
-              <div className="card-header py-2 px-3">
+              <div className="card-header py-2 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <h6 className="mb-0 d-flex align-items-center gap-2" style={{ fontSize: '0.85rem' }}>
                   <i className={`fas ${activeTab === 'plans' ? 'fa-list-alt' : 'fa-ban'} me-2`}></i>
                   {activeTab === 'plans' ? ((isUserAdmin || isSupervisor(currentUser?.roles)) ? 'Batch Đang Hoạt Động' : 'Lịch Bảo Trì Của Tôi') : 'Batch Đã Hủy'}
-                  {activeTab === 'plans' && subFilter === 'overdue' && (
-                    <span className="badge bg-danger ms-2 d-flex align-items-center gap-1">
-                      Đang lọc: Quá hạn
-                      <i className="fas fa-times-circle ms-1" style={{ cursor: 'pointer' }} onClick={() => setSubFilter('all')}></i>
-                    </span>
-                  )}
-                  {activeTab === 'plans' && subFilter === 'upcoming' && (
-                    <span className="badge bg-warning text-dark ms-2 d-flex align-items-center gap-1">
-                      Đang lọc: Sắp đến hạn
-                      <i className="fas fa-times-circle ms-1" style={{ cursor: 'pointer' }} onClick={() => setSubFilter('all')}></i>
-                    </span>
-                  )}
                 </h6>
+                <div className="d-flex flex-wrap gap-2">
+                  <select 
+                    className="form-select form-select-sm" 
+                    style={{ width: 'auto', minWidth: '150px' }}
+                    value={filterDepartmentId}
+                    onChange={(e) => {
+                      setFilterDepartmentId(e.target.value === 'all' ? 'all' : Number(e.target.value));
+                      setFilterStaffId('all'); // Reset staff when department changes
+                    }}
+                  >
+                    <option value="all">Tất cả Phòng ban</option>
+                    {departments.map((d: any) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                  <select 
+                    className="form-select form-select-sm" 
+                    style={{ width: 'auto', minWidth: '170px' }}
+                    value={filterStaffId}
+                    onChange={(e) => setFilterStaffId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                  >
+                    <option value="all">Tất cả Người thực hiện</option>
+                    {staffListForCreate
+                      .filter((s: any) => filterDepartmentId === 'all' || s.departmentId === filterDepartmentId)
+                      .map((s: any) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                  {activeTab === 'plans' && (
+                    <select 
+                      className="form-select form-select-sm" 
+                      style={{ width: 'auto', minWidth: '150px' }}
+                      value={subFilter}
+                      onChange={(e) => setSubFilter(e.target.value as any)}
+                    >
+                      <option value="all">Tất cả trạng thái</option>
+                      <option value="upcoming">Sắp đến hạn</option>
+                      <option value="overdue">Quá hạn</option>
+                    </select>
+                  )}
+                  <button className="btn btn-sm btn-success d-flex align-items-center gap-1" onClick={handleExportExcel} title="Xuất danh sách ra Excel">
+                    <i className="fas fa-file-excel"></i>
+                    <span className="d-none d-sm-inline">Xuất Excel</span>
+                  </button>
+                </div>
               </div>
               <div className="card-body">
                 {allPlans.length === 0 ? (

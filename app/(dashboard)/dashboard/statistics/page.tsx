@@ -238,20 +238,36 @@ export default function StatisticsPage() {
     let contentHtml = '';
     if (activeTab === 'reports' && reportFilters.dailyMode) {
       const summary = reportListResponse?.summary;
+      
+      let tableHtml = '';
+      if (reportFilters.dailyCategory === 'backlog') {
+        tableHtml = `
+          <div class="section-title">VIỆC TỒN ĐỌNG</div>
+          ${renderTable(data.filter((r: any) => {
+            const sections = r.allSections || [r.section || r.dailyCategory];
+            return sections.includes('2. VIỆC ĐANG XỬ LÝ') || sections.includes('3. VIỆC CHỜ XỬ LÝ') || sections.includes('VIỆC TỒN ĐỌNG');
+          }))}
+        `;
+      } else {
+        tableHtml = `
+          <div class="section-title">1. VIỆC TRONG NGÀY</div>
+          ${renderTable(data.filter((r: any) => (r.allSections || [r.section || r.dailyCategory]).includes('1. VIỆC TRONG NGÀY')))}
+          
+          <div class="section-title">2. VIỆC ĐANG XỬ LÝ</div>
+          ${renderTable(data.filter((r: any) => (r.allSections || [r.section || r.dailyCategory]).includes('2. VIỆC ĐANG XỬ LÝ')))}
+
+          <div class="section-title">3. VIỆC CHỜ XỬ LÝ</div>
+          ${renderTable(data.filter((r: any) => (r.allSections || [r.section || r.dailyCategory]).includes('3. VIỆC CHỜ XỬ LÝ')))}
+        `;
+      }
+
       contentHtml = `
         <div class="summary-box">
           <div class="summary-item" style="border-bottom: 3px solid #06b6d4">Việc làm hôm nay: <span style="color: #06b6d4">${(summary?.totalNew || 0) + (summary?.totalActive || 0) + (summary?.totalCompleted || 0)}</span></div>
           <div class="summary-item" style="border-bottom: 3px solid #3b82f6">Việc hoàn thành: <span style="color: #3b82f6">${summary?.totalCompleted || 0}</span></div>
-          <div className="summary-item" style="border-bottom: 3px solid #ef4444">Việc tồn đọng: <span style="color: #ef4444">${(summary?.totalPending || 0) + (summary?.totalPendingActive || 0)}</span></div>
+          <div class="summary-item" style="border-bottom: 3px solid #ef4444">Việc tồn đọng: <span style="color: #ef4444">${(summary?.totalPending || 0) + (summary?.totalPendingActive || 0)}${pendingBreakdownStr}</span></div>
         </div>
-        <div class="section-title">1. VIỆC TRONG NGÀY</div>
-        ${renderTable(data.filter((r: any) => (r.allSections || [r.section || r.dailyCategory]).includes('1. VIỆC TRONG NGÀY')))}
-        
-        <div class="section-title">2. VIỆC ĐANG XỬ LÝ</div>
-        ${renderTable(data.filter((r: any) => (r.allSections || [r.section || r.dailyCategory]).includes('2. VIỆC ĐANG XỬ LÝ')))}
-
-        <div class="section-title">3. VIỆC CHỜ XỬ LÝ</div>
-        ${renderTable(data.filter((r: any) => (r.allSections || [r.section || r.dailyCategory]).includes('3. VIỆC CHỜ XỬ LÝ')))}
+        ${tableHtml}
       `;
     } else {
       contentHtml = renderTable(data);
@@ -360,7 +376,6 @@ export default function StatisticsPage() {
     setReportPage(1);
   }, [reportFilters]);
 
-  // Summary Data fetch logic
   const getSummaryUrl = (tab: string, filters: any) => {
     const params = new URLSearchParams();
     if (filters.deptId > 0) params.append('departmentId', filters.deptId.toString());
@@ -380,7 +395,6 @@ export default function StatisticsPage() {
   const { data: deviceSummary } = useSWR(getSummaryUrl('devices', deviceFilters), fetcher);
   const { data: reportSummary } = useSWR(!reportFilters.dailyMode ? getSummaryUrl('reports', reportFilters) : null, fetcher);
 
-  // Preview Data fetch logic
   const getPreviewUrl = (tab: string, filters: any) => {
     if (!showPreview[tab]) return null;
     const params = new URLSearchParams();
@@ -422,6 +436,18 @@ export default function StatisticsPage() {
 
   const { data: deviceList, isLoading: devListLoading } = useSWR(getPreviewUrl('devices', deviceFilters), fetcher);
   const { data: reportListResponse, isLoading: repListLoading } = useSWR(getPreviewUrl('reports', reportFilters), fetcher);
+
+  // Always-on fetch for daily-report-list (provides summary + department breakdown regardless of preview state)
+  const getDailyListUrl = () => {
+    if (!reportFilters.dailyMode) return null;
+    const params = new URLSearchParams();
+    params.append('date', reportFilters.fromDate || getLocalDateStr());
+    if (reportFilters.deptId > 0) params.append('departmentId', reportFilters.deptId.toString());
+    if (reportFilters.staffId > 0) params.append('staffId', reportFilters.staffId.toString());
+    params.append('category', 'all');
+    return `/damage-reports/daily-report-list?${params.toString()}`;
+  };
+  const { data: dailyListResponse } = useSWR(getDailyListUrl(), fetcher);
   
   // Normalize report list for pagination
   const reportList = useMemo(() => {
@@ -452,6 +478,25 @@ export default function StatisticsPage() {
      const start = (reportPage - 1) * pageSize;
      return reportList.data.slice(start, start + pageSize);
   }, [reportList.data, reportPage, pageSize]);
+
+  const pendingBreakdownStr = useMemo(() => {
+    if (!reportFilters.dailyMode || !dailyListResponse?.data) return '';
+    
+    // Count backlog (Đang xử lý + Chờ xử lý) by handler department
+    const backlog = dailyListResponse.data.filter((r: any) => 
+      r.dailyCategory === '2. VIỆC ĐANG XỬ LÝ' || r.dailyCategory === '3. VIỆC CHỜ XỬ LÝ'
+    );
+    if (backlog.length === 0) return '';
+    
+    const counts: Record<string, number> = {};
+    backlog.forEach((t: any) => {
+      const dept = t.handlerDepartmentName || 'Chưa phân bổ';
+      counts[dept] = (counts[dept] || 0) + 1;
+    });
+    
+    const parts = Object.entries(counts).map(([dept, count]) => `${dept}: ${count}`);
+    return parts.length > 0 ? ` (${parts.join(', ')})` : '';
+  }, [dailyListResponse, reportFilters.dailyMode]);
 
   const togglePreview = (tab: string) => {
     setShowPreview(prev => ({ ...prev, [tab]: !prev[tab] }));
@@ -993,19 +1038,19 @@ export default function StatisticsPage() {
                   </select>
                 </div>
 
-                {reportFilters.dailyMode ? (
-                  <div className="col-6 col-md-auto" style={{ minWidth: '150px' }}>
-                    <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Nhân viên</label>
-                    <select 
-                      className="form-select form-select-xs border shadow-none"
-                      value={reportFilters.staffId}
-                      onChange={e => setReportFilters(prev => ({ ...prev, staffId: Number(e.target.value) }))}
-                    >
-                      <option value="0">Tất cả nhân viên</option>
-                      {staffList.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </div>
-                ) : (
+                <div className="col-6 col-md-auto" style={{ minWidth: '150px' }}>
+                  <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Người xử lý</label>
+                  <select 
+                    className="form-select form-select-xs border shadow-none"
+                    value={reportFilters.staffId}
+                    onChange={e => setReportFilters(prev => ({ ...prev, staffId: Number(e.target.value) }))}
+                  >
+                    <option value="0">Tất cả người xử lý</option>
+                    {staffList.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+
+                {!reportFilters.dailyMode && (
                   <div className="col-6 col-md-auto" style={{ minWidth: '120px' }}>
                     <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Mức độ</label>
                     <select 
@@ -1023,7 +1068,7 @@ export default function StatisticsPage() {
                 )}
 
                 <div className="col-6 col-md-auto" style={{ minWidth: '150px' }}>
-                  <label className="form-label x-small fw-bold text-muted mb-1 uppercase">{reportFilters.dailyMode ? 'Danh mục' : 'Trạng thái'}</label>
+                  <label className="form-label x-small fw-bold text-muted mb-1 uppercase">Trạng thái</label>
                   {reportFilters.dailyMode ? (
                     <select 
                       className="form-select form-select-xs border shadow-none border-success"
@@ -1032,6 +1077,7 @@ export default function StatisticsPage() {
                     >
                       <option value="all">Tất cả</option>
                       <option value="today">Việc trong ngày</option>
+                      <option value="backlog">Việc tồn</option>
                       <option value="pendingActive">Việc đang xử lý</option>
                       <option value="pending">Việc chờ xử lý</option>
                     </select>
@@ -1135,9 +1181,13 @@ export default function StatisticsPage() {
               <div className="d-flex flex-wrap gap-3 mb-2 p-2 bg-white rounded border d-print-none">
                 {reportFilters.dailyMode ? (
                   [
-                    { label: 'Việc làm hôm nay', value: (reportListResponse?.summary?.totalNew || 0) + (reportListResponse?.summary?.totalActive || 0) + (reportListResponse?.summary?.totalCompleted || 0), color: 'info' },
-                    { label: 'Việc hoàn thành', value: reportListResponse?.summary?.totalCompleted, color: 'primary' },
-                    { label: 'Việc tồn đọng', value: (reportListResponse?.summary?.totalPending || 0) + (reportListResponse?.summary?.totalPendingActive || 0), color: 'danger' },
+                    { label: 'Việc làm hôm nay', value: (dailyListResponse?.summary?.totalNew || 0) + (dailyListResponse?.summary?.totalActive || 0) + (dailyListResponse?.summary?.totalCompleted || 0), color: 'info' },
+                    { label: 'Việc hoàn thành', value: dailyListResponse?.summary?.totalCompleted ?? 0, color: 'primary' },
+                    { 
+                      label: 'Việc tồn đọng', 
+                      value: ((dailyListResponse?.summary?.totalPending || 0) + (dailyListResponse?.summary?.totalPendingActive || 0)) + pendingBreakdownStr, 
+                      color: 'danger' 
+                    },
                   ].map((stat, idx) => (
                     <div key={idx} className="d-flex align-items-center gap-1 border-end pe-3">
                       <span className="x-small text-muted uppercase fw-bold">{stat.label}:</span>

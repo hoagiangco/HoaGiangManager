@@ -114,7 +114,16 @@ export class NotificationService {
           }
         };
         // Background send to not block the main flow
-        sendPushNotification(sub as any, payload).catch(err => {
+        sendPushNotification(sub as any, payload).then(async (result) => {
+          if (!result.success && result.expired) {
+            try {
+              await pool.query('DELETE FROM "PushSubscription" WHERE "Endpoint" = $1', [row.Endpoint]);
+              console.log(`[Push] Removed expired subscription: ${row.Endpoint}`);
+            } catch (deleteError) {
+              console.error('[Push] Failed to remove expired subscription:', deleteError);
+            }
+          }
+        }).catch(err => {
           console.error('[Push] Single send failed:', err);
         });
       }

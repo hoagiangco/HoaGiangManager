@@ -31,7 +31,7 @@ export async function sendPushNotification(subscription: webpush.PushSubscriptio
     return { success: true };
   } catch (error: any) {
     console.error('Error sending push notification:', error);
-    if (error.statusCode === 404 || error.statusCode === 410) {
+    if (error.statusCode === 404 || error.statusCode === 410 || (error.code === 'ENOTFOUND' && error.hostname === 'permanently-removed.invalid')) {
       // Subscription has expired or is no longer valid
       return { success: false, expired: true };
     }

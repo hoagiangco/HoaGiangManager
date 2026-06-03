@@ -342,9 +342,18 @@ export default function WorkPlanPage() {
 
                         {/* Full content */}
                         <div className="task-body-content">
-                          {item.isNewTask
-                            ? (item.draftData?.damageContent || item.title)
-                            : (item.damageContent || item.title)}
+                          {item.isNewTask ? (
+                            <>
+                              <div className="fw-bold text-dark">{item.title}</div>
+                              {item.draftData?.damageContent && item.draftData.damageContent !== item.title && (
+                                <div className="mt-1 text-secondary" style={{ fontSize: '0.85rem' }}>
+                                  {item.draftData.damageContent}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div className="fw-bold text-dark">{item.damageContent || item.title}</div>
+                          )}
                         </div>
 
                         <div className="mt-1 d-flex align-items-center gap-2 flex-wrap">
