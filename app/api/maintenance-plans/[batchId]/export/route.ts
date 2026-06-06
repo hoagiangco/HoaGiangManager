@@ -59,6 +59,25 @@ export async function GET(
       [`%${batchId}%`]
     );
 
+    // Fetch batch configuration details
+    const planConfigResult = await pool.query(
+      `
+      SELECT 
+        "Description" as description,
+        "Metadata" as metadata
+      FROM "DeviceReminderPlan"
+      WHERE "Metadata" IS NOT NULL AND "Metadata"->>'maintenanceBatchId' = $1
+      LIMIT 1
+      `,
+      [batchId]
+    );
+
+    const planConfig = planConfigResult.rows[0];
+    const scheduleTypeVal = planConfig?.metadata?.scheduleConfig?.scheduleType === 'specific_dates'
+      ? 'Lịch cố định'
+      : 'Theo khoảng thời gian';
+    const maintenanceContent = planConfig?.description || '';
+
     const exportData = result.rows
       .map((row: any) => {
         let metadata: Record<string, any> | null = null;
@@ -86,11 +105,13 @@ export async function GET(
           'Tên thiết bị': row.deviceName || 'N/A',
           'Số Serial': row.deviceSerial || '',
           'Loại bảo trì': row.eventTypeName || 'N/A',
+          'Kiểu lập lịch': scheduleTypeVal,
+          'Nội dung bảo trì': maintenanceContent || row.description || '',
           'Nhân viên thực hiện': row.staffName || 'N/A',
           'Trạng thái': row.status === 'completed' ? 'Hoàn thành' : 
                         row.status === 'in_progress' ? 'Đang xử lý' : 
                         row.status === 'planned' ? 'Kế hoạch' : row.status,
-          'Kết quả/Ghi chú': row.notes || row.description || '',
+          'Kết quả/Ghi chú': row.notes || '',
           'Mã tham chiếu': row.relatedReportId ? `CV-${row.relatedReportId}` : '-',
           'Nhà cung cấp': metadata.maintenanceProvider || '-',
           'Hình thức': metadata.maintenanceType === 'outsource' ? 'Thuê ngoài' : 'Nội bộ'

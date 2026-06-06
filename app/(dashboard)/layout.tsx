@@ -249,7 +249,7 @@ export default function DashboardLayout({
         {!isSidebarCollapsed && (
           <div className="sidebar-footer">
             <div className="copyright-notice">
-              Copy right by LeeKhiem
+              v1.2 | © 2026 Lê Khiêm. All rights reserved.
             </div>
           </div>
         )}

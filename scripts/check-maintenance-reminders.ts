@@ -14,32 +14,7 @@ import pool from '../lib/db';
 import { EventStatus } from '../types';
 import { getVNNow } from '../lib/utils/dateFormat';
 
-type IntervalUnit = 'day' | 'week' | 'month' | 'year';
-
-const calculateNextDueDate = (
-  currentDueDate: Date,
-  intervalValue: number,
-  intervalUnit: IntervalUnit
-): Date => {
-  const nextDate = new Date(currentDueDate);
-  
-  switch (intervalUnit) {
-    case 'day':
-      nextDate.setDate(nextDate.getDate() + intervalValue);
-      break;
-    case 'week':
-      nextDate.setDate(nextDate.getDate() + intervalValue * 7);
-      break;
-    case 'month':
-      nextDate.setMonth(nextDate.getMonth() + intervalValue);
-      break;
-    case 'year':
-      nextDate.setFullYear(nextDate.getFullYear() + intervalValue);
-      break;
-  }
-  
-  return nextDate;
-};
+import { calculateNextDueDate, ScheduleConfig } from '../lib/utils/maintenanceScheduler';
 
 async function checkMaintenanceReminders() {
   const client = await pool.connect();
@@ -226,11 +201,13 @@ async function checkMaintenanceReminders() {
           console.log(`Đã tạo Event ${eventId} (Status: ${newEventStatus}) cho Device ${row.deviceId}`);
         }
 
-        // Calculate next due date
+        const scheduleConfig: ScheduleConfig | null = metadata?.scheduleConfig || null;
         const newNextDueDate = calculateNextDueDate(
           nextDueDate,
           row.intervalValue,
-          row.intervalUnit
+          row.intervalUnit,
+          scheduleConfig,
+          false
         );
 
         // Check if new nextDueDate exceeds endAt

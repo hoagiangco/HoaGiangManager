@@ -4,37 +4,12 @@ import { DeviceReminderPlanService } from '@/lib/services/deviceReminderPlanServ
 import { DeviceService } from '@/lib/services/deviceService';
 import { DeviceReminderPlan, EventCategory } from '@/types';
 
-type IntervalUnit = 'day' | 'week' | 'month' | 'year';
+import { calculateNextDueDate, ScheduleConfig } from '@/lib/utils/maintenanceScheduler';
 
 const parseDate = (value: any): Date | null => {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
-};
-
-const calculateNextDueDate = (
-  startFrom: Date,
-  intervalValue: number,
-  intervalUnit: IntervalUnit
-): Date => {
-  const nextDate = new Date(startFrom);
-  
-  switch (intervalUnit) {
-    case 'day':
-      nextDate.setDate(nextDate.getDate() + intervalValue);
-      break;
-    case 'week':
-      nextDate.setDate(nextDate.getDate() + intervalValue * 7);
-      break;
-    case 'month':
-      nextDate.setMonth(nextDate.getMonth() + intervalValue);
-      break;
-    case 'year':
-      nextDate.setFullYear(nextDate.getFullYear() + intervalValue);
-      break;
-  }
-  
-  return nextDate;
 };
 
 export async function POST(request: NextRequest) {
@@ -124,9 +99,11 @@ export async function POST(request: NextRequest) {
       maintenanceBatchId: batchId,
     };
 
-    // Calculate nextDueDate: First maintenance should happen at startFrom, not startFrom + interval
-    // So nextDueDate = startFrom (first occurrence), subsequent ones will be calculated by adding interval
-    const nextDueDate = new Date(startFromDate);
+    // Calculate nextDueDate: If using specific dates, calculate based on it. Otherwise startFrom.
+    const scheduleConfig = planMetadata?.scheduleConfig as ScheduleConfig | null;
+    const nextDueDate = scheduleConfig?.scheduleType === 'specific_dates' 
+        ? calculateNextDueDate(startFromDate, intervalValue, intervalUnit as any, scheduleConfig, true)
+        : new Date(startFromDate);
 
     // Create reminder plans for each device
     const reminderPlanService = new DeviceReminderPlanService();

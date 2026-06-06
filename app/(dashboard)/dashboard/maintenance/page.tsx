@@ -14,6 +14,7 @@ import { DeviceCategory, EventType, DeviceVM, DamageReportVM } from '@/types';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
 import Loading from '@/components/Loading';
 import { getDamageReportPermissions, isAdmin, isSupervisor } from '@/lib/auth/permissions';
+import { calculateNextDueDate, ScheduleConfig } from '@/lib/utils/maintenanceScheduler';
 
 import { useAuth } from '@/lib/contexts/AuthContext';
 
@@ -77,6 +78,10 @@ interface MaintenancePlanForm {
   maintenanceProvider: string;
   cost: number;
   assignedStaffId?: number | null;
+  scheduleType: 'interval' | 'specific_dates';
+  occurrences: number;
+  specificDays: number[];
+  specificDaysOfWeek: number[];
 }
 
 interface DeviceReminderPlanVM {
@@ -139,6 +144,14 @@ function MaintenancePageContent() {
   const [subFilter, setSubFilter] = useState<'all' | 'overdue' | 'upcoming'>('all');
   const [filterDepartmentId, setFilterDepartmentId] = useState<number | 'all'>('all');
   const [filterStaffId, setFilterStaffId] = useState<number | 'all'>('all');
+  const [filterTitleInput, setFilterTitleInput] = useState('');
+  const [filterTitle, setFilterTitle] = useState('');
+  const filterTitleTimer = useRef<NodeJS.Timeout | null>(null);
+  const handleFilterTitleChange = (value: string) => {
+    setFilterTitleInput(value);
+    if (filterTitleTimer.current) clearTimeout(filterTitleTimer.current);
+    filterTitleTimer.current = setTimeout(() => setFilterTitle(value), 300);
+  };
 
   // Enforce tab access for non-admins (Supervisor can see batches if we allow, but let's stick to plans for now or allow both)
   useEffect(() => {
@@ -180,6 +193,10 @@ function MaintenancePageContent() {
   const [cancelReason, setCancelReason] = useState('');
   const [editIntervalValue, setEditIntervalValue] = useState<number>(6);
   const [editIntervalUnit, setEditIntervalUnit] = useState<'day' | 'week' | 'month' | 'year'>('month');
+  const [editScheduleType, setEditScheduleType] = useState<'interval' | 'specific_dates'>('interval');
+  const [editOccurrences, setEditOccurrences] = useState<number>(1);
+  const [editSpecificDays, setEditSpecificDays] = useState<number[]>([]);
+  const [editSpecificDaysOfWeek, setEditSpecificDaysOfWeek] = useState<number[]>([]);
   const [selectedGroupForInterval, setSelectedGroupForInterval] = useState<{
     batchId: string;
     title: string;
@@ -433,10 +450,23 @@ function MaintenancePageContent() {
     maintenanceProvider: '',
     cost: 0,
     assignedStaffId: null,
+    scheduleType: 'interval',
+    occurrences: 1,
+    specificDays: [],
+    specificDaysOfWeek: [],
   });
   const [submitting, setSubmitting] = useState(false);
   const [showQuickView, setShowQuickView] = useState(false);
   const [selectedQuickReportId, setSelectedQuickReportId] = useState<number | null>(null);
+
+  // Inline feedback for schedule picker
+  const [scheduleFeedback, setScheduleFeedback] = useState<{ message: string; type: 'info' | 'success' | 'warning' } | null>(null);
+  const scheduleFeedbackTimer = useRef<NodeJS.Timeout | null>(null);
+  const showScheduleFeedback = (message: string, type: 'info' | 'success' | 'warning') => {
+    if (scheduleFeedbackTimer.current) clearTimeout(scheduleFeedbackTimer.current);
+    setScheduleFeedback({ message, type });
+    scheduleFeedbackTimer.current = setTimeout(() => setScheduleFeedback(null), 3000);
+  };
 
   // Read tab from URL query parameter on mount
   useEffect(() => {
@@ -779,55 +809,10 @@ function MaintenancePageContent() {
   };
 
 
-  // Group plans by maintenanceBatchId
-  const groupedPlans = React.useMemo(() => {
-    // Filter plans based on activeTab
-    let filteredPlans = activeTab === 'plans'
-      ? allPlans.filter(p => p.isActive)
-      : activeTab === 'cancelled'
-        ? allPlans.filter(p => !p.isActive)
-        : allPlans;
-
-    // Apply overdue/upcoming sub-filters
-    const todayDate = new Date();
-    todayDate.setHours(0, 0, 0, 0);
-
-    if (activeTab === 'plans' && subFilter !== 'all') {
-      if (subFilter === 'overdue') {
-        filteredPlans = filteredPlans.filter(p => p.nextDueDate && new Date(p.nextDueDate) < todayDate);
-      } else if (subFilter === 'upcoming') {
-        const thirtyDaysFromNow = new Date(todayDate);
-        thirtyDaysFromNow.setDate(todayDate.getDate() + 30);
-        filteredPlans = filteredPlans.filter(p => p.nextDueDate && new Date(p.nextDueDate) >= todayDate && new Date(p.nextDueDate) <= thirtyDaysFromNow);
-      }
-    }
-
-    if (filterDepartmentId !== 'all' || filterStaffId !== 'all') {
-      filteredPlans = filteredPlans.filter(p => {
-        const assignedStaffId = Number(p.metadata?.assignedStaffId);
-        if (filterStaffId !== 'all' && assignedStaffId !== filterStaffId) {
-          return false;
-        }
-        if (filterDepartmentId !== 'all') {
-          if (!assignedStaffId) return false;
-          const staff = staffListForCreate.find((s: any) => s.id === assignedStaffId);
-          if (!staff || staff.departmentId !== filterDepartmentId) {
-            return false;
-          }
-        }
-        return true;
-      });
-    }
-
-    // Phân quyền hiển thị kế hoạch bảo trì nếu không phải là Supervisor
-    if (!isSupervisor(currentUser?.roles)) {
-      if (currentUserStaffId) {
-        filteredPlans = filteredPlans.filter(p => Number(p.metadata?.assignedStaffId) === currentUserStaffId);
-      } else {
-        // Nếu user này không có liên kết với bất kỳ account Staff nào, thì không thấy lịch nào.
-        filteredPlans = [];
-      }
-    }
+  // Memo 1: HEAVY — nhóm plans + tính toán date/report. Chỉ chạy lại khi data thực sự thay đổi.
+  const groupedPlansBase = React.useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     const groups: Record<string, {
       batchId: string;
@@ -839,19 +824,16 @@ function MaintenancePageContent() {
       maintenanceType: string | null;
       maintenanceProvider: string | null;
       metadata: Record<string, any> | null;
-      canModifyDevices: boolean; // Can add/remove devices if all plans haven't reached due date
-      lastMaintenanceDate: Date | null; // Ngày bảo trì lần trước (từ lastCompletedEvent)
-      nextMaintenanceDate: Date | null; // Ngày bảo trì sắp đến (từ nextDueDate)
-      isCancelledBatch?: boolean; // Indicates if all plans in batch are inactive
-      inProgressCount?: number; // Number of currently active events for the batch
-      plannedCount?: number; // Number of currently planned events for the batch
-      matchedReport?: DamageReportVM | null; // Report that corresponds to 'due' maintenance
+      canModifyDevices: boolean;
+      lastMaintenanceDate: Date | null;
+      nextMaintenanceDate: Date | null;
+      isCancelledBatch?: boolean;
+      inProgressCount?: number;
+      plannedCount?: number;
+      matchedReport?: DamageReportVM | null;
     }> = {};
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    filteredPlans.forEach((plan) => {
+    allPlans.forEach((plan) => {
       const batchId = plan.metadata?.maintenanceBatchId || 'no-batch';
       const title = plan.title || 'Kế hoạch không có tiêu đề';
 
@@ -866,10 +848,10 @@ function MaintenancePageContent() {
           maintenanceType: plan.metadata?.maintenanceType || null,
           maintenanceProvider: plan.metadata?.maintenanceProvider || null,
           metadata: plan.metadata || null,
-          canModifyDevices: true, // Will be updated below
+          canModifyDevices: true,
           lastMaintenanceDate: null,
           nextMaintenanceDate: null,
-          isCancelledBatch: false, // Default to false
+          isCancelledBatch: false,
         };
       }
 
@@ -882,76 +864,52 @@ function MaintenancePageContent() {
       }
     });
 
-    // Determine if a batch is cancelled (all plans are inactive)
     Object.values(groups).forEach(group => {
-      // @ts-ignore - Dynamic property for UI
       (group as any).isCancelledBatch = group.totalDevices > 0 && group.activeCount === 0;
     });
 
-    // Tính toán lastMaintenanceDate và nextMaintenanceDate cho mỗi group
     Object.values(groups).forEach((group) => {
-      // Tìm ngày bảo trì trước (last completed event) - lấy ngày mới nhất
       const completedDates: Date[] = [];
-
       group.plans.forEach((plan) => {
-        // Lấy từ lastCompletedEvent nếu có
         if (plan.lastCompletedEvent?.endDate) {
           const date = plan.lastCompletedEvent.endDate;
           if (date instanceof Date && !isNaN(date.getTime())) {
             completedDates.push(date);
           } else if (typeof date === 'string') {
             const parsedDate = new Date(date);
-            if (!isNaN(parsedDate.getTime())) {
-              completedDates.push(parsedDate);
-            }
+            if (!isNaN(parsedDate.getTime())) completedDates.push(parsedDate);
           }
         }
-
-        // Nếu không có lastCompletedEvent, kiểm tra event hiện tại
         const currentEvent = planEvents[plan.id];
         if (currentEvent && currentEvent.status === 'completed' && currentEvent.endDate) {
-          const date = currentEvent.endDate;
-          if (typeof date === 'string') {
-            const parsedDate = new Date(date);
-            if (!isNaN(parsedDate.getTime())) {
-              completedDates.push(parsedDate);
-            }
-          }
+          const parsedDate = new Date(currentEvent.endDate);
+          if (!isNaN(parsedDate.getTime())) completedDates.push(parsedDate);
         }
       });
-
       if (completedDates.length > 0) {
         group.lastMaintenanceDate = completedDates.sort((a, b) => b.getTime() - a.getTime())[0];
       }
 
-      // Tìm ngày bảo trì sắp đến (nextDueDate) - lấy ngày sớm nhất từ các plan đang hoạt động
       const nextDates = group.plans
         .filter(p => p.isActive && p.nextDueDate)
         .map(p => p.nextDueDate)
         .filter((d): d is Date => {
           if (!d) return false;
           if (d instanceof Date && !isNaN(d.getTime())) return true;
-          // Nếu là string, thử convert
-          if (typeof d === 'string') {
-            const date = new Date(d);
-            return !isNaN(date.getTime());
-          }
+          if (typeof d === 'string') return !isNaN(new Date(d).getTime());
           return false;
         })
         .map(d => d instanceof Date ? d : new Date(d));
-
       if (nextDates.length > 0) {
         group.nextMaintenanceDate = nextDates.sort((a, b) => a.getTime() - b.getTime())[0];
       }
     });
 
-    // Check if can modify devices (all active plans haven't reached due date)
     Object.values(groups).forEach((group) => {
       const activePlans = group.plans.filter(p => p.isActive);
       if (activePlans.length === 0) {
         group.canModifyDevices = false;
       } else {
-        // Can modify if all active plans haven't reached due date
         group.canModifyDevices = activePlans.every((plan) => {
           if (!plan.nextDueDate) return false;
           const dueDate = new Date(plan.nextDueDate);
@@ -960,10 +918,8 @@ function MaintenancePageContent() {
         });
       }
 
-      // Compute batch current status based on active events
       let inProgressCount = 0;
       let plannedCount = 0;
-      
       activePlans.forEach((plan) => {
         const currentEvent = planEvents[plan.id];
         if (currentEvent) {
@@ -971,53 +927,106 @@ function MaintenancePageContent() {
           else if (currentEvent.status === 'planned') plannedCount++;
         }
       });
-      
       (group as any).inProgressCount = inProgressCount;
       (group as any).plannedCount = plannedCount;
 
-      // Tìm báo cáo phù hợp (reportDate >= nextMaintenanceDate) cho batch này
       if (group.nextMaintenanceDate && group.batchId !== 'no-batch') {
         const nextDate = new Date(group.nextMaintenanceDate);
         nextDate.setHours(0, 0, 0, 0);
-
-        // Tìm các báo cáo liên quan đến batch này
-        const relatedReports = maintenanceReports.filter(r => 
-          r.maintenanceBatchId && group.batchId && 
+        const relatedReports = maintenanceReports.filter(r =>
+          r.maintenanceBatchId && group.batchId &&
           String(r.maintenanceBatchId).toLowerCase() === String(group.batchId).toLowerCase()
         );
-
         if (relatedReports.length > 0) {
-          // Lọc các báo cáo có reportDate >= nextMaintenanceDate
           const matchingReports = relatedReports.filter(r => {
             if (!r.reportDate) return false;
             const rDate = new Date(r.reportDate);
             rDate.setHours(0, 0, 0, 0);
             return rDate.getTime() >= nextDate.getTime();
-          }).sort((a, b) => {
-            // Lấy báo cáo mới nhất khớp
-            return new Date(b.reportDate).getTime() - new Date(a.reportDate).getTime();
-          });
-
-          if (matchingReports.length > 0) {
-            group.matchedReport = matchingReports[0];
-          }
+          }).sort((a, b) => new Date(b.reportDate).getTime() - new Date(a.reportDate).getTime());
+          if (matchingReports.length > 0) group.matchedReport = matchingReports[0];
         }
       }
     });
 
-    // Lọc groups dựa trên activeTab
-    let finalGroups = Object.values(groups);
+    return Object.values(groups);
+  }, [allPlans, planEvents, maintenanceReports]);
 
+  // Memo 2: LIGHT — chỉ filter + sort trên kết quả đã nhóm. Phụ thuộc filter state.
+  const groupedPlans = React.useMemo(() => {
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+
+    // Build staffId→departmentId lookup map once
+    const staffDeptMap = new Map<number, number>();
+    staffListForCreate.forEach((s: any) => { if (s.id && s.departmentId) staffDeptMap.set(s.id, s.departmentId); });
+
+    const isSupervisorUser = isSupervisor(currentUser?.roles);
+
+    let result = groupedPlansBase.map(group => {
+      // Clone group with filtered plans
+      let plans = group.plans;
+
+      // Tab filter
+      if (activeTab === 'plans') plans = plans.filter(p => p.isActive);
+      else if (activeTab === 'cancelled') plans = plans.filter(p => !p.isActive);
+
+      // Sub-filter (overdue/upcoming) — only for plans tab
+      if (activeTab === 'plans' && subFilter !== 'all') {
+        if (subFilter === 'overdue') {
+          plans = plans.filter(p => p.nextDueDate && new Date(p.nextDueDate) < todayDate);
+        } else if (subFilter === 'upcoming') {
+          const thirtyDays = new Date(todayDate);
+          thirtyDays.setDate(todayDate.getDate() + 30);
+          plans = plans.filter(p => p.nextDueDate && new Date(p.nextDueDate) >= todayDate && new Date(p.nextDueDate) <= thirtyDays);
+        }
+      }
+
+      // Title filter
+      if (filterTitle.trim() !== '') {
+        const kw = filterTitle.toLowerCase().trim();
+        plans = plans.filter(p => p.title?.toLowerCase().includes(kw));
+      }
+
+      // Staff/Department filter
+      if (filterStaffId !== 'all') {
+        plans = plans.filter(p => Number(p.metadata?.assignedStaffId) === filterStaffId);
+      } else if (filterDepartmentId !== 'all') {
+        plans = plans.filter(p => {
+          const sid = Number(p.metadata?.assignedStaffId);
+          if (!sid) return false;
+          return staffDeptMap.get(sid) === filterDepartmentId;
+        });
+      }
+
+      // Permission filter
+      if (!isSupervisorUser) {
+        if (currentUserStaffId) {
+          plans = plans.filter(p => Number(p.metadata?.assignedStaffId) === currentUserStaffId);
+        } else {
+          plans = [];
+        }
+      }
+
+      return { ...group, plans };
+    });
+
+    // Filter out empty groups
     if (activeTab === 'plans') {
-      // Chỉ hiển thị groups có ít nhất 1 plan active
-      finalGroups = finalGroups.filter(group => group.activeCount > 0);
+      result = result.filter(g => g.plans.filter(p => p.isActive).length > 0);
     } else if (activeTab === 'cancelled') {
-      // Chỉ hiển thị groups có ít nhất 1 plan inactive
-      finalGroups = finalGroups.filter(group => group.inactiveCount > 0);
+      result = result.filter(g => g.plans.filter(p => !p.isActive).length > 0);
+    } else {
+      result = result.filter(g => g.plans.length > 0);
     }
 
-    return finalGroups;
-  }, [allPlans, activeTab, planEvents, maintenanceReports, subFilter, filterDepartmentId, filterStaffId, staffListForCreate, currentUser, currentUserStaffId]);
+    // If title filter is active, also match group-level (any plan in group matches)
+    if (filterTitle.trim() !== '') {
+      result = result.filter(g => g.plans.length > 0);
+    }
+
+    return result;
+  }, [groupedPlansBase, activeTab, subFilter, filterTitle, filterDepartmentId, filterStaffId, staffListForCreate, currentUser, currentUserStaffId]);
 
   const loadBatchDetails = async (batchId: string) => {
     setLoadingBatchDetails(true);
@@ -1181,6 +1190,25 @@ function MaintenancePageContent() {
     }
   };
 
+  const handleRestore = async (plan: DeviceReminderPlanVM) => {
+    if (!confirm(`Khôi phục kế hoạch "${plan.title || `Thiết bị #${plan.deviceId}`}" về danh sách bảo trì chính thức?`)) {
+      return;
+    }
+
+    try {
+      const response = await api.post(`/device-reminder-plans/${plan.id}/restore`, {});
+      if (response.data.status) {
+        toast.success('Đã khôi phục kế hoạch thành công');
+        loadAllPlans();
+      } else {
+        toast.error(response.data.error || 'Lỗi khi khôi phục kế hoạch');
+      }
+    } catch (error: any) {
+      console.error('Error restoring plan:', error);
+      toast.error(error.response?.data?.error || 'Lỗi khi khôi phục kế hoạch');
+    }
+  };
+
   const handleDeletePlan = async (planId: number) => {
     if (!confirm('Bạn có chắc chắn muốn xóa kế hoạch này?')) {
       return;
@@ -1204,6 +1232,33 @@ function MaintenancePageContent() {
     if (!selectedGroupForInterval || editIntervalValue <= 0) {
       toast.error('Vui lòng nhập chu kỳ hợp lệ');
       return;
+    }
+
+    if (editScheduleType === 'specific_dates') {
+      if (!editOccurrences || editOccurrences <= 0) {
+        toast.error('Vui lòng nhập số lần hợp lệ');
+        return;
+      }
+      if (editIntervalUnit === 'week') {
+        if (editSpecificDaysOfWeek.length === 0) {
+          toast.error('Vui lòng chọn ít nhất một ngày trong tuần');
+          return;
+        }
+        if (editSpecificDaysOfWeek.length !== editOccurrences) {
+          toast.error(`Vui lòng chọn đúng ${editOccurrences} ngày trong tuần`);
+          return;
+        }
+      }
+      if (editIntervalUnit === 'month' || editIntervalUnit === 'year') {
+        if (editSpecificDays.length === 0) {
+          toast.error('Vui lòng chọn ít nhất một ngày trong tháng');
+          return;
+        }
+        if (editSpecificDays.length !== editOccurrences) {
+          toast.error(`Vui lòng chọn đúng ${editOccurrences} ngày trong tháng`);
+          return;
+        }
+      }
     }
 
     if (!editBatchTitle.trim()) {
@@ -1231,23 +1286,36 @@ function MaintenancePageContent() {
           // Tính toán nextDueDate mới
           let newNextDueDate = plan.nextDueDate ? new Date(plan.nextDueDate) : null;
           
+          const oldScheduleConfig = plan.metadata?.scheduleConfig;
+          const scheduleConfigChanged = editScheduleType !== 'interval' 
+            ? (oldScheduleConfig?.scheduleType !== editScheduleType ||
+               oldScheduleConfig?.occurrences !== editOccurrences ||
+               JSON.stringify(oldScheduleConfig?.specificDays) !== JSON.stringify(editSpecificDays) ||
+               JSON.stringify(oldScheduleConfig?.specificDaysOfWeek) !== JSON.stringify(editSpecificDaysOfWeek))
+            : oldScheduleConfig?.scheduleType === 'specific_dates';
+            
+          const effectiveStartFrom = editScheduleType === 'specific_dates' ? formatDateInput(new Date()) : editBatchStartFrom;
           const intervalChanged = plan.intervalValue !== editIntervalValue || plan.intervalUnit !== editIntervalUnit;
-          const startFromChanged = formatDateInput(plan.startFrom || '') !== editBatchStartFrom;
+          const startFromChanged = formatDateInput(plan.startFrom || '') !== effectiveStartFrom;
           
-          if ((intervalChanged || startFromChanged) && editBatchStartFrom) {
-            // Nếu đổi chu kỳ hoặc ngày bắt đầu, tính lại nextDueDate từ startFrom mới 
+          let scheduleConfig: ScheduleConfig | null = null;
+          if (editScheduleType === 'specific_dates') {
+            scheduleConfig = {
+              scheduleType: 'specific_dates',
+              occurrences: editOccurrences,
+              specificDays: editSpecificDays,
+              specificDaysOfWeek: editSpecificDaysOfWeek,
+            } as any;
+          }
+          
+          if ((intervalChanged || startFromChanged || scheduleConfigChanged) && effectiveStartFrom) {
+            // Nếu đổi chu kỳ, ngày bắt đầu hoặc loại lịch, tính lại nextDueDate từ startFrom mới 
             // hoặc hoàn thành gần nhất (ưu tiên startFrom mới cho kế hoạch chưa chạy)
             const baseDate = plan.lastCompletedEvent?.endDate 
               ? new Date(plan.lastCompletedEvent.endDate) 
-              : new Date(editBatchStartFrom);
+              : new Date(effectiveStartFrom);
             
-            newNextDueDate = new Date(baseDate);
-            switch (editIntervalUnit) {
-              case 'day': newNextDueDate.setDate(newNextDueDate.getDate() + editIntervalValue); break;
-              case 'week': newNextDueDate.setDate(newNextDueDate.getDate() + editIntervalValue * 7); break;
-              case 'month': newNextDueDate.setMonth(newNextDueDate.getMonth() + editIntervalValue); break;
-              case 'year': newNextDueDate.setFullYear(newNextDueDate.getFullYear() + editIntervalValue); break;
-            }
+            newNextDueDate = calculateNextDueDate(baseDate, editIntervalValue, editIntervalUnit, scheduleConfig, true);
           }
 
           const metadata = {
@@ -1256,6 +1324,7 @@ function MaintenancePageContent() {
             maintenanceProvider: editBatchMaintenanceType === 'outsource' ? editBatchProvider : undefined,
             cost: editBatchMaintenanceType === 'outsource' ? editBatchCost : undefined,
             assignedStaffId: editBatchAssignedStaffId || null,
+            scheduleConfig,
           };
 
           const response = await api.put(`/device-reminder-plans/${plan.id}`, {
@@ -1266,9 +1335,9 @@ function MaintenancePageContent() {
             description: editBatchDescription,
             intervalValue: editIntervalValue,
             intervalUnit: editIntervalUnit,
-            startFrom: editBatchStartFrom,
+            startFrom: effectiveStartFrom,
             endAt: editBatchEndAt || null,
-            nextDueDate: newNextDueDate ? newNextDueDate.toISOString().split('T')[0] : null,
+            nextDueDate: newNextDueDate ? formatDateInput(newNextDueDate) : null,
             isActive: plan.isActive,
             metadata: metadata,
           });
@@ -1806,6 +1875,13 @@ function MaintenancePageContent() {
     setEditBatchDescription(firstPlan.description || '');
     setEditIntervalValue(firstPlan.intervalValue || 6);
     setEditIntervalUnit((firstPlan.intervalUnit as any) || 'month');
+    
+    const scheduleConfig = firstPlan.metadata?.scheduleConfig;
+    setEditScheduleType(scheduleConfig?.scheduleType || 'interval');
+    setEditOccurrences(scheduleConfig?.occurrences || 1);
+    setEditSpecificDays(scheduleConfig?.specificDays || []);
+    setEditSpecificDaysOfWeek(scheduleConfig?.specificDaysOfWeek || []);
+    
     setEditBatchStartFrom(firstPlan.startFrom ? formatDateInput(firstPlan.startFrom) : '');
     setEditBatchEndAt(firstPlan.endAt ? formatDateInput(firstPlan.endAt) : '');
     setEditBatchMaintenanceType(firstPlan.metadata?.maintenanceType || 'internal');
@@ -1867,6 +1943,48 @@ function MaintenancePageContent() {
     } catch (error: any) {
       console.error('Error batch deleting:', error);
       toast.error('Lỗi khi xóa hàng loạt');
+    }
+  };
+
+  const handleBatchRestore = async (group: { batchId: string; title: string; plans: DeviceReminderPlanVM[] }) => {
+    const inactivePlans = group.plans.filter(p => !p.isActive);
+    if (inactivePlans.length === 0) {
+      toast.info('Tất cả kế hoạch trong batch này đã hoạt động');
+      return;
+    }
+
+    if (!confirm(`Khôi phục ${inactivePlans.length} kế hoạch trong batch "${group.title}" về danh sách bảo trì đang hoạt động?`)) {
+      return;
+    }
+
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const plan of inactivePlans) {
+        try {
+          const response = await api.post(`/device-reminder-plans/${plan.id}/restore`, {});
+          if (response.data.status) {
+            successCount++;
+          } else {
+            errorCount++;
+          }
+        } catch (error: any) {
+          errorCount++;
+          console.error(`Error restoring plan ${plan.id}:`, error);
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`Đã khôi phục thành công ${successCount} kế hoạch về danh sách bảo trì`);
+        loadAllPlans();
+      }
+      if (errorCount > 0) {
+        toast.warning(`${errorCount} kế hoạch gặp lỗi khi khôi phục`);
+      }
+    } catch (error: any) {
+      console.error('Error batch restoring:', error);
+      toast.error('Lỗi khi khôi phục hàng loạt');
     }
   };
 
@@ -2283,15 +2401,48 @@ function MaintenancePageContent() {
       return;
     }
 
-    if (!formData.intervalValue || formData.intervalValue <= 0) {
-      toast.error('Vui lòng nhập khoảng thời gian hợp lệ');
-      return;
+    if (formData.scheduleType === 'interval') {
+      if (!formData.intervalValue || formData.intervalValue <= 0) {
+        toast.error('Vui lòng nhập khoảng thời gian hợp lệ');
+        return;
+      }
+    } else {
+      if (!formData.intervalValue || formData.intervalValue <= 0) {
+        toast.error('Vui lòng nhập chu kỳ lặp hợp lệ');
+        return;
+      }
+      if (!formData.occurrences || formData.occurrences <= 0) {
+        toast.error('Vui lòng nhập số lần hợp lệ');
+        return;
+      }
+      if (formData.intervalUnit === 'week') {
+        if (formData.specificDaysOfWeek.length === 0) {
+          toast.error('Vui lòng chọn ít nhất một ngày trong tuần');
+          return;
+        }
+        if (formData.specificDaysOfWeek.length !== formData.occurrences) {
+          toast.error(`Vui lòng chọn đúng ${formData.occurrences} ngày trong tuần`);
+          return;
+        }
+      }
+      if (formData.intervalUnit === 'month' || formData.intervalUnit === 'year') {
+        if (formData.specificDays.length === 0) {
+          toast.error('Vui lòng chọn ít nhất một ngày trong tháng');
+          return;
+        }
+        if (formData.specificDays.length !== formData.occurrences) {
+          toast.error(`Vui lòng chọn đúng ${formData.occurrences} ngày trong tháng`);
+          return;
+        }
+      }
     }
 
-    if (!formData.startFrom) {
+    if (formData.scheduleType === 'interval' && !formData.startFrom) {
       toast.error('Vui lòng chọn ngày bắt đầu');
       return;
     }
+
+    const effectiveStartFrom = formData.scheduleType === 'specific_dates' ? formatDateInput(new Date()) : formData.startFrom;
 
     // Check selection type
     if (formData.selectionType === 'category' && formData.categoryId <= 0) {
@@ -2320,10 +2471,15 @@ function MaintenancePageContent() {
         description: formData.description.trim() || undefined,
         intervalValue: formData.intervalValue,
         intervalUnit: formData.intervalUnit,
-        startFrom: formData.startFrom,
+        startFrom: effectiveStartFrom,
         metadata: {
           maintenanceType: formData.maintenanceType,
           assignedStaffId: formData.assignedStaffId || null,
+          scheduleConfig: {
+            scheduleType: formData.scheduleType,
+            ...(formData.scheduleType === 'specific_dates' && formData.intervalUnit === 'week' ? { specificDaysOfWeek: formData.specificDaysOfWeek } : {}),
+            ...(formData.scheduleType === 'specific_dates' && (formData.intervalUnit === 'month' || formData.intervalUnit === 'year') ? { specificDays: formData.specificDays } : {}),
+          }
         },
       };
 
@@ -2374,6 +2530,10 @@ function MaintenancePageContent() {
           maintenanceProvider: '',
           cost: 0,
           assignedStaffId: null,
+          scheduleType: 'interval',
+          occurrences: 1,
+          specificDays: [],
+          specificDaysOfWeek: [],
         });
         // Reload batches
         if (activeTab === 'batches') {
@@ -2449,9 +2609,17 @@ function MaintenancePageContent() {
         const staffNames = Array.from(staffSet).join(', ') || 'Chưa phân công';
         const deptNames = Array.from(deptSet).join(', ') || 'N/A';
 
+        const firstPlan = group.plans[0];
+        const scheduleTypeVal = group.metadata?.scheduleConfig?.scheduleType === 'specific_dates' 
+          ? 'Lịch cố định' 
+          : 'Theo khoảng thời gian';
+        const descriptionVal = firstPlan?.description || '-';
+
         exportData.push({
           stt: stt++,
           title: group.title,
+          scheduleType: scheduleTypeVal,
+          description: descriptionVal,
           deviceCount: `${group.totalDevices} thiết bị`,
           department: deptNames,
           staff: staffNames,
@@ -2473,6 +2641,8 @@ function MaintenancePageContent() {
         columns: [
           { id: 'stt', label: 'STT', width: 10 },
           { id: 'title', label: 'Tên lịch bảo trì / Nhóm', width: 40 },
+          { id: 'scheduleType', label: 'Kiểu lập lịch', width: 25 },
+          { id: 'description', label: 'Nội dung bảo trì', width: 40 },
           { id: 'deviceCount', label: 'Số lượng thiết bị', width: 20 },
           { id: 'department', label: 'Phòng ban', width: 25 },
           { id: 'staff', label: 'Người thực hiện', width: 25 },
@@ -2829,10 +2999,43 @@ function MaintenancePageContent() {
                   </div>
                 </div>
 
-                {/* Interval */}
+                {/* Schedule Type */}
+                <div className="row mb-3">
+                  <div className="col-md-12">
+                    <label className="form-label">Kiểu lập lịch <span className="text-danger">*</span></label>
+                    <div className="btn-group w-100" role="group">
+                      <input
+                        type="radio"
+                        className="btn-check"
+                        name="scheduleType"
+                        id="scheduleInterval"
+                        checked={formData.scheduleType === 'interval'}
+                        onChange={() => setFormData({ ...formData, scheduleType: 'interval' })}
+                      />
+                      <label className="btn btn-outline-info fw-semibold" htmlFor="scheduleInterval">
+                        Theo khoảng thời gian
+                      </label>
+                      <input
+                        type="radio"
+                        className="btn-check"
+                        name="scheduleType"
+                        id="scheduleSpecificDates"
+                        checked={formData.scheduleType === 'specific_dates'}
+                        onChange={() => setFormData({ ...formData, scheduleType: 'specific_dates' })}
+                      />
+                      <label className="btn btn-outline-warning fw-semibold text-dark" htmlFor="scheduleSpecificDates">
+                        Lịch cố định
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Interval / Frequency */}
                 <div className="row mb-3">
                   <div className="col-md-4">
-                    <label className="form-label">Khoảng thời gian <span className="text-danger">*</span></label>
+                    <label className="form-label">
+                      {formData.scheduleType === 'interval' ? 'Khoảng thời gian' : 'Chu kỳ lặp (mỗi)'} <span className="text-danger">*</span>
+                    </label>
                     <input
                       type="number"
                       className="form-control"
@@ -2842,40 +3045,184 @@ function MaintenancePageContent() {
                       required
                     />
                   </div>
-                  <div className="col-md-8">
+                  <div className={formData.scheduleType === 'interval' ? 'col-md-8' : 'col-md-4'}>
                     <label className="form-label">Đơn vị <span className="text-danger">*</span></label>
                     <select
                       className="form-select"
                       value={formData.intervalUnit}
-                      onChange={(e) => setFormData({ ...formData, intervalUnit: e.target.value as any })}
+                      onChange={(e) => {
+                         const unit = e.target.value as any;
+                         setFormData({ 
+                           ...formData, 
+                           intervalUnit: unit,
+                         });
+                      }}
                       required
                     >
-                      <option value="day">Ngày</option>
+                      {formData.scheduleType === 'interval' && <option value="day">Ngày</option>}
                       <option value="week">Tuần</option>
                       <option value="month">Tháng</option>
                       <option value="year">Năm</option>
                     </select>
                   </div>
+                  {formData.scheduleType === 'specific_dates' && (
+                    <div className="col-md-4">
+                      <label className="form-label">Số lần <span className="text-danger">*</span></label>
+                      <input
+                        type="number"
+                        className="form-control"
+                        value={formData.occurrences}
+                        onChange={(e) => setFormData({ ...formData, occurrences: parseInt(e.target.value) || 1 })}
+                        min="1"
+                        required
+                      />
+                    </div>
+                  )}
                 </div>
+
+                {/* Specific Days Picker */}
+                {formData.scheduleType === 'specific_dates' && formData.intervalUnit === 'week' && (
+                  <div className="row mb-3">
+                    <div className="col-md-12">
+                      <label className="form-label">Chọn thứ trong tuần <span className="text-danger">*</span> <small className="text-muted">({formData.specificDaysOfWeek.length}/{formData.occurrences})</small></label>
+                      <div className="d-flex flex-wrap gap-2">
+                        {[
+                          { val: 1, label: 'Thứ 2' },
+                          { val: 2, label: 'Thứ 3' },
+                          { val: 3, label: 'Thứ 4' },
+                          { val: 4, label: 'Thứ 5' },
+                          { val: 5, label: 'Thứ 6' },
+                          { val: 6, label: 'Thứ 7' },
+                          { val: 0, label: 'Chủ nhật' },
+                        ].map((day) => {
+                          const isChecked = formData.specificDaysOfWeek.includes(day.val);
+                          const atLimit = formData.specificDaysOfWeek.length >= formData.occurrences;
+                          return (
+                            <div key={day.val} className="form-check form-check-inline m-0">
+                              <input
+                                className="btn-check"
+                                type="checkbox"
+                                id={`dayOfWeek_${day.val}`}
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    if (atLimit) {
+                                      e.preventDefault();
+                                      showScheduleFeedback(`Đã đủ ${formData.occurrences} ngày, không thể chọn thêm!`, 'warning');
+                                      return;
+                                    }
+                                    const newDays = [...formData.specificDaysOfWeek, day.val];
+                                    setFormData({ ...formData, specificDaysOfWeek: newDays });
+                                    if (newDays.length < formData.occurrences) {
+                                      showScheduleFeedback(`Đã chọn ${newDays.length}/${formData.occurrences}`, 'info');
+                                    } else {
+                                      showScheduleFeedback(`Đã chọn đủ ${formData.occurrences} ngày ✓`, 'success');
+                                    }
+                                  } else {
+                                    const newDays = formData.specificDaysOfWeek.filter(d => d !== day.val);
+                                    setFormData({ ...formData, specificDaysOfWeek: newDays });
+                                    if (newDays.length < formData.occurrences) {
+                                      showScheduleFeedback(`Đã chọn ${newDays.length}/${formData.occurrences}`, 'info');
+                                    }
+                                  }
+                                }}
+                              />
+                              <label className={`btn btn-sm ${isChecked ? 'btn-primary' : (atLimit && !isChecked ? 'btn-outline-secondary opacity-50' : 'btn-outline-secondary')}`} htmlFor={`dayOfWeek_${day.val}`}>
+                                {day.label}
+                              </label>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {scheduleFeedback && (
+                        <div className={`mt-2 small fw-semibold ${scheduleFeedback.type === 'success' ? 'text-success' : scheduleFeedback.type === 'warning' ? 'text-danger' : 'text-primary'}`}>
+                          <i className={`fas ${scheduleFeedback.type === 'success' ? 'fa-check-circle' : scheduleFeedback.type === 'warning' ? 'fa-exclamation-circle' : 'fa-info-circle'} me-1`}></i>
+                          {scheduleFeedback.message}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {formData.scheduleType === 'specific_dates' && (formData.intervalUnit === 'month' || formData.intervalUnit === 'year') && (
+                  <div className="row mb-3">
+                    <div className="col-md-12">
+                      <label className="form-label">Chọn ngày trong tháng <span className="text-danger">*</span> <small className="text-muted">({formData.specificDays.length}/{formData.occurrences})</small></label>
+                      <div className="d-flex flex-wrap gap-1">
+                        {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => {
+                          const isChecked = formData.specificDays.includes(day);
+                          const atLimit = formData.specificDays.length >= formData.occurrences;
+                          return (
+                            <div key={day} style={{ width: '38px', height: '38px' }}>
+                              <input
+                                className="btn-check"
+                                type="checkbox"
+                                id={`dayOfMonth_${day}`}
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    if (atLimit) {
+                                      e.preventDefault();
+                                      showScheduleFeedback(`Đã đủ ${formData.occurrences} ngày, không thể chọn thêm!`, 'warning');
+                                      return;
+                                    }
+                                    const newDays = [...formData.specificDays, day];
+                                    setFormData({ ...formData, specificDays: newDays });
+                                    if (newDays.length < formData.occurrences) {
+                                      showScheduleFeedback(`Đã chọn ${newDays.length}/${formData.occurrences}`, 'info');
+                                    } else {
+                                      showScheduleFeedback(`Đã chọn đủ ${formData.occurrences} ngày ✓`, 'success');
+                                    }
+                                  } else {
+                                    const newDays = formData.specificDays.filter(d => d !== day);
+                                    setFormData({ ...formData, specificDays: newDays });
+                                    if (newDays.length < formData.occurrences) {
+                                      showScheduleFeedback(`Đã chọn ${newDays.length}/${formData.occurrences}`, 'info');
+                                    }
+                                  }
+                                }}
+                              />
+                              <label 
+                                className={`btn btn-sm w-100 h-100 d-flex align-items-center justify-content-center p-0 ${isChecked ? 'btn-primary' : (atLimit && !isChecked ? 'btn-outline-secondary opacity-50' : 'btn-outline-secondary')}`}
+                                htmlFor={`dayOfMonth_${day}`}
+                                style={{ borderRadius: '50%' }}
+                              >
+                                {day}
+                              </label>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {scheduleFeedback && (
+                        <div className={`mt-2 small fw-semibold ${scheduleFeedback.type === 'success' ? 'text-success' : scheduleFeedback.type === 'warning' ? 'text-danger' : 'text-primary'}`}>
+                          <i className={`fas ${scheduleFeedback.type === 'success' ? 'fa-check-circle' : scheduleFeedback.type === 'warning' ? 'fa-exclamation-circle' : 'fa-info-circle'} me-1`}></i>
+                          {scheduleFeedback.message}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Dates & Assignment */}
                 <div className="row mb-3">
-                  <div className="col-md-4">
-                    <label className="form-label">Ngày bắt đầu <span className="text-danger">*</span></label>
-                    <DateInput
-                      value={formData.startFrom}
-                      onChange={(value) => setFormData({ ...formData, startFrom: value })}
-                      required
-                    />
-                  </div>
-                  <div className="col-md-4">
+                  {formData.scheduleType === 'interval' && (
+                    <div className="col-md-4">
+                      <label className="form-label">Ngày bắt đầu <span className="text-danger">*</span></label>
+                      <DateInput
+                        value={formData.startFrom}
+                        onChange={(value) => setFormData({ ...formData, startFrom: value })}
+                        required
+                      />
+                    </div>
+                  )}
+                  <div className={formData.scheduleType === 'interval' ? "col-md-4" : "col-md-6"}>
                     <label className="form-label">Ngày kết thúc (tùy chọn)</label>
                     <DateInput
                       value={formData.endAt}
                       onChange={(value) => setFormData({ ...formData, endAt: value })}
                     />
                   </div>
-                  <div className="col-md-4">
+                  <div className={formData.scheduleType === 'interval' ? "col-md-4" : "col-md-6"}>
                     <label className="form-label">Người thực hiện</label>
                     <select
                       className="form-select"
@@ -3076,8 +3423,53 @@ function MaintenancePageContent() {
                 <h6 className="mb-0 d-flex align-items-center gap-2" style={{ fontSize: '0.85rem' }}>
                   <i className={`fas ${activeTab === 'plans' ? 'fa-list-alt' : 'fa-ban'} me-2`}></i>
                   {activeTab === 'plans' ? ((isUserAdmin || isSupervisor(currentUser?.roles)) ? 'Batch Đang Hoạt Động' : 'Lịch Bảo Trì Của Tôi') : 'Batch Đã Hủy'}
+                  <span className="badge bg-secondary fw-normal" style={{ fontSize: '0.75rem' }}>
+                    {groupedPlans.length}
+                    {groupedPlans.length !== groupedPlansBase.filter(g => activeTab === 'plans' ? g.activeCount > 0 : g.inactiveCount > 0).length && (
+                      <span className="text-white-50">
+                        {' / '}{groupedPlansBase.filter(g => activeTab === 'plans' ? g.activeCount > 0 : g.inactiveCount > 0).length}
+                      </span>
+                    )}
+                  </span>
                 </h6>
                 <div className="d-flex flex-wrap gap-2">
+                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', minWidth: '200px' }}>
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      placeholder="Tìm theo tiêu đề..."
+                      value={filterTitleInput}
+                      onChange={(e) => handleFilterTitleChange(e.target.value)}
+                      style={{ paddingRight: filterTitleInput ? '26px' : undefined, width: '100%' }}
+                    />
+                    {filterTitleInput && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (filterTitleTimer.current) clearTimeout(filterTitleTimer.current);
+                          setFilterTitleInput('');
+                          setFilterTitle('');
+                        }}
+                        style={{
+                          position: 'absolute',
+                          right: '6px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          padding: '0 2px',
+                          color: '#999',
+                          cursor: 'pointer',
+                          fontSize: '16px',
+                          lineHeight: 1,
+                          zIndex: 2,
+                        }}
+                        title="Xóa"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
                   <select 
                     className="form-select form-select-sm" 
                     style={{ width: 'auto', minWidth: '150px' }}
@@ -3188,9 +3580,18 @@ function MaintenancePageContent() {
                                 {/* Bên trái: Tiêu đề, Batch ID, Lịch trình - chia 2 hàng */}
                                 <div className="d-flex flex-column gap-1 flex-grow-1 overflow-hidden" style={{ minWidth: '150px' }}>
                                   {/* Hàng trên: Tiêu đề và Batch ID */}
-                                  <div className="d-flex align-items-center gap-2">
+                                  <div className="d-flex align-items-center gap-2 flex-wrap">
                                     <i className="fas fa-layer-group text-primary" style={{ fontSize: '0.9rem' }}></i>
-                                    <h6 className="mb-0 fw-bold text-truncate" style={{ fontSize: '0.95rem' }}>{getShortTitle(group.title)}</h6>
+                                    <h6 className="mb-0 fw-bold text-truncate" style={{ fontSize: '0.95rem' }}>{groupIndex + 1}. {getShortTitle(group.title)}</h6>
+                                    {group.metadata?.scheduleConfig?.scheduleType === 'specific_dates' ? (
+                                      <span className="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25" style={{ fontSize: '0.7rem', fontWeight: 'normal' }}>
+                                        Lịch cố định
+                                      </span>
+                                    ) : (
+                                      <span className="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25" style={{ fontSize: '0.7rem', fontWeight: 'normal' }}>
+                                        Theo khoảng thời gian
+                                      </span>
+                                    )}
                                   </div>
 
                                   {/* Hàng dưới: Lịch trình */}
@@ -3354,50 +3755,75 @@ function MaintenancePageContent() {
                                     {/* Các nút chỉnh sửa/dời/hủy/xóa chỉ cho Admin */}
                                     {isUserAdmin && (
                                       <>
-                                        <button
-                                          className="btn btn-sm btn-outline-info d-flex align-items-center justify-content-center"
-                                          style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                          onClick={() => handleOpenEditBatch(group.batchId, group.title)}
-                                          title="Sửa thông tin kế hoạch"
-                                        >
-                                          <i className="fas fa-edit"></i>
-                                        </button>
-                                        <button
-                                          className="btn btn-sm btn-outline-warning d-flex align-items-center justify-content-center"
-                                          style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                          onClick={() => {
-                                            setSelectedGroup(group);
-                                            const earliestDate = group.plans
-                                              .filter(p => p.isActive && p.nextDueDate)
-                                              .map(p => p.nextDueDate ? new Date(p.nextDueDate) : null)
-                                              .filter(d => d !== null)
-                                              .sort((a, b) => (a?.getTime() || 0) - (b?.getTime() || 0))[0];
-                                            setBatchRescheduleDate(earliestDate ? formatDateInput(earliestDate) : formatDateInput(new Date()));
-                                            setShowBatchRescheduleModal(true);
-                                          }}
-                                          title="Dời lịch bảo trì tất cả"
-                                        >
-                                          <i className="fas fa-calendar-alt"></i>
-                                        </button>
-                                        <button
-                                          className="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center"
-                                          style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                          onClick={() => {
-                                            setSelectedGroup(group);
-                                            setShowBatchCancelModal(true);
-                                          }}
-                                          title="Hủy kế hoạch tất cả"
-                                        >
-                                          <i className="fas fa-times"></i>
-                                        </button>
-                                        <button
-                                          className="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center"
-                                          style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                          onClick={() => handleBatchDelete(group)}
-                                          title="Xóa kế hoạch tất cả"
-                                        >
-                                          <i className="fas fa-trash"></i>
-                                        </button>
+                                        {activeTab === 'cancelled' ? (
+                                          // Tab Đã Hủy: chỉ hiện Khôi phục + Xóa
+                                          <>
+                                            <button
+                                              className="btn btn-sm btn-outline-success d-flex align-items-center justify-content-center"
+                                              style={{ width: '32px', height: '32px', borderRadius: '6px' }}
+                                              onClick={(e) => { e.stopPropagation(); handleBatchRestore(group); }}
+                                              title="Khôi phục toàn batch về danh sách bảo trì"
+                                            >
+                                              <i className="fas fa-undo"></i>
+                                            </button>
+                                            <button
+                                              className="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center"
+                                              style={{ width: '32px', height: '32px', borderRadius: '6px' }}
+                                              onClick={(e) => { e.stopPropagation(); handleBatchDelete(group); }}
+                                              title="Xóa vĩnh viễn toàn batch"
+                                            >
+                                              <i className="fas fa-trash"></i>
+                                            </button>
+                                          </>
+                                        ) : (
+                                          // Tab Lịch Bảo Trì: hiện các nút thao tác đầy đủ
+                                          <>
+                                            <button
+                                              className="btn btn-sm btn-outline-info d-flex align-items-center justify-content-center"
+                                              style={{ width: '32px', height: '32px', borderRadius: '6px' }}
+                                              onClick={() => handleOpenEditBatch(group.batchId, group.title)}
+                                              title="Sửa thông tin kế hoạch"
+                                            >
+                                              <i className="fas fa-edit"></i>
+                                            </button>
+                                            <button
+                                              className="btn btn-sm btn-outline-warning d-flex align-items-center justify-content-center"
+                                              style={{ width: '32px', height: '32px', borderRadius: '6px' }}
+                                              onClick={() => {
+                                                setSelectedGroup(group);
+                                                const earliestDate = group.plans
+                                                  .filter(p => p.isActive && p.nextDueDate)
+                                                  .map(p => p.nextDueDate ? new Date(p.nextDueDate) : null)
+                                                  .filter(d => d !== null)
+                                                  .sort((a, b) => (a?.getTime() || 0) - (b?.getTime() || 0))[0];
+                                                setBatchRescheduleDate(earliestDate ? formatDateInput(earliestDate) : formatDateInput(new Date()));
+                                                setShowBatchRescheduleModal(true);
+                                              }}
+                                              title="Dời lịch bảo trì tất cả"
+                                            >
+                                              <i className="fas fa-calendar-alt"></i>
+                                            </button>
+                                            <button
+                                              className="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center"
+                                              style={{ width: '32px', height: '32px', borderRadius: '6px' }}
+                                              onClick={() => {
+                                                setSelectedGroup(group);
+                                                setShowBatchCancelModal(true);
+                                              }}
+                                              title="Hủy kế hoạch tất cả"
+                                            >
+                                              <i className="fas fa-times"></i>
+                                            </button>
+                                            <button
+                                              className="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center"
+                                              style={{ width: '32px', height: '32px', borderRadius: '6px' }}
+                                              onClick={() => handleBatchDelete(group)}
+                                              title="Xóa kế hoạch tất cả"
+                                            >
+                                              <i className="fas fa-trash"></i>
+                                            </button>
+                                          </>
+                                        )}
                                       </>
                                     )}
                                   </div>
@@ -3546,27 +3972,39 @@ function MaintenancePageContent() {
                                                 {/* Plan actions */}
                                                 {isUserAdmin && (
                                                   <>
-                                                    <button
-                                                      className="btn btn-outline-warning"
-                                                      onClick={() => {
-                                                        setSelectedPlan(plan);
-                                                        setRescheduleDate(plan.nextDueDate ? formatDateInput(plan.nextDueDate) : formatDateInput(new Date()));
-                                                        setShowRescheduleModal(true);
-                                                      }}
-                                                      title="Dời lịch"
-                                                    >
-                                                      <i className="fas fa-calendar-alt"></i>
-                                                    </button>
-                                                    <button
-                                                      className="btn btn-outline-danger"
-                                                      onClick={() => {
-                                                        setSelectedPlan(plan);
-                                                        setShowCancelModal(true);
-                                                      }}
-                                                      title="Hủy"
-                                                    >
-                                                      <i className="fas fa-times"></i>
-                                                    </button>
+                                                    {activeTab === 'cancelled' ? (
+                                                      <button
+                                                        className="btn btn-outline-success"
+                                                        onClick={() => handleRestore(plan)}
+                                                        title="Khôi phục về danh sách bảo trì"
+                                                      >
+                                                        <i className="fas fa-undo"></i>
+                                                      </button>
+                                                    ) : (
+                                                      <>
+                                                        <button
+                                                          className="btn btn-outline-warning"
+                                                          onClick={() => {
+                                                            setSelectedPlan(plan);
+                                                            setRescheduleDate(plan.nextDueDate ? formatDateInput(plan.nextDueDate) : formatDateInput(new Date()));
+                                                            setShowRescheduleModal(true);
+                                                          }}
+                                                          title="Dời lịch"
+                                                        >
+                                                          <i className="fas fa-calendar-alt"></i>
+                                                        </button>
+                                                        <button
+                                                          className="btn btn-outline-danger"
+                                                          onClick={() => {
+                                                            setSelectedPlan(plan);
+                                                            setShowCancelModal(true);
+                                                          }}
+                                                          title="Hủy"
+                                                        >
+                                                          <i className="fas fa-times"></i>
+                                                        </button>
+                                                      </>
+                                                    )}
                                                     <button
                                                       className="btn btn-outline-danger"
                                                       onClick={() => handleDeletePlan(plan.id)}
@@ -4629,8 +5067,38 @@ function MaintenancePageContent() {
                   </div>
 
                   <div className="row">
+                    <div className="col-md-12 mb-3">
+                      <label className="form-label fw-bold">Kiểu lập lịch <span className="text-danger">*</span></label>
+                      <div className="btn-group w-100" role="group">
+                        <input
+                          type="radio"
+                          className="btn-check"
+                          name="editScheduleType"
+                          id="editScheduleInterval"
+                          checked={editScheduleType === 'interval'}
+                          onChange={() => setEditScheduleType('interval')}
+                        />
+                        <label className="btn btn-outline-primary" htmlFor="editScheduleInterval">
+                          Theo khoảng thời gian
+                        </label>
+                        <input
+                          type="radio"
+                          className="btn-check"
+                          name="editScheduleType"
+                          id="editScheduleSpecificDates"
+                          checked={editScheduleType === 'specific_dates'}
+                          onChange={() => setEditScheduleType('specific_dates')}
+                        />
+                        <label className="btn btn-outline-primary" htmlFor="editScheduleSpecificDates">
+                          Lịch cố định
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="row">
                     {/* Chu kỳ */}
-                    <div className="col-md-6">
+                    <div className="col-md-12">
                       <div className="mb-3">
                         <label className="form-label fw-bold">Chu Kỳ Bảo Trì <span className="text-danger">*</span></label>
                         <div className="input-group">
@@ -4647,29 +5115,166 @@ function MaintenancePageContent() {
                             onChange={(e) => setEditIntervalUnit(e.target.value as any)}
                             style={{ flex: '0 0 100px' }}
                           >
-                            <option value="day">Ngày</option>
+                            {editScheduleType === 'interval' && <option value="day">Ngày</option>}
                             <option value="week">Tuần</option>
                             <option value="month">Tháng</option>
                             <option value="year">Năm</option>
                           </select>
+                          {editScheduleType === 'specific_dates' && (
+                            <>
+                              <span className="input-group-text">Số lần</span>
+                              <input
+                                type="number"
+                                className="form-control"
+                                min="1"
+                                value={editOccurrences}
+                                onChange={(e) => setEditOccurrences(Number(e.target.value))}
+                                style={{ flex: '0 0 80px' }}
+                              />
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
                   </div>
+                  
+                  {editScheduleType === 'specific_dates' && editIntervalUnit === 'week' && (
+                    <div className="row mb-3">
+                      <div className="col-md-12">
+                        <label className="form-label fw-bold">Chọn thứ trong tuần <span className="text-danger">*</span> <small className="text-muted fw-normal">({editSpecificDaysOfWeek.length}/{editOccurrences})</small></label>
+                        <div className="d-flex flex-wrap gap-2">
+                          {[
+                            { val: 1, label: 'Thứ 2' },
+                            { val: 2, label: 'Thứ 3' },
+                            { val: 3, label: 'Thứ 4' },
+                            { val: 4, label: 'Thứ 5' },
+                            { val: 5, label: 'Thứ 6' },
+                            { val: 6, label: 'Thứ 7' },
+                            { val: 0, label: 'Chủ nhật' },
+                          ].map((day) => {
+                            const isChecked = editSpecificDaysOfWeek.includes(day.val);
+                            const atLimit = editSpecificDaysOfWeek.length >= editOccurrences;
+                            return (
+                              <div key={day.val} className="form-check form-check-inline m-0">
+                                <input
+                                  className="btn-check"
+                                  type="checkbox"
+                                  id={`editDayOfWeek_${day.val}`}
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      if (atLimit) {
+                                        e.preventDefault();
+                                        showScheduleFeedback(`Đã đủ ${editOccurrences} ngày, không thể chọn thêm!`, 'warning');
+                                        return;
+                                      }
+                                      const newDays = [...editSpecificDaysOfWeek, day.val];
+                                      setEditSpecificDaysOfWeek(newDays);
+                                      if (newDays.length < editOccurrences) {
+                                        showScheduleFeedback(`Đã chọn ${newDays.length}/${editOccurrences}`, 'info');
+                                      } else {
+                                        showScheduleFeedback(`Đã chọn đủ ${editOccurrences} ngày ✓`, 'success');
+                                      }
+                                    } else {
+                                      const newDays = editSpecificDaysOfWeek.filter(d => d !== day.val);
+                                      setEditSpecificDaysOfWeek(newDays);
+                                      if (newDays.length < editOccurrences) {
+                                        showScheduleFeedback(`Đã chọn ${newDays.length}/${editOccurrences}`, 'info');
+                                      }
+                                    }
+                                  }}
+                                />
+                                <label className={`btn btn-sm ${isChecked ? 'btn-primary' : (atLimit && !isChecked ? 'btn-outline-secondary opacity-50' : 'btn-outline-secondary')}`} htmlFor={`editDayOfWeek_${day.val}`}>
+                                  {day.label}
+                                </label>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {scheduleFeedback && (
+                          <div className={`mt-2 small fw-semibold ${scheduleFeedback.type === 'success' ? 'text-success' : scheduleFeedback.type === 'warning' ? 'text-danger' : 'text-primary'}`}>
+                            <i className={`fas ${scheduleFeedback.type === 'success' ? 'fa-check-circle' : scheduleFeedback.type === 'warning' ? 'fa-exclamation-circle' : 'fa-info-circle'} me-1`}></i>
+                            {scheduleFeedback.message}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {editScheduleType === 'specific_dates' && (editIntervalUnit === 'month' || editIntervalUnit === 'year') && (
+                    <div className="row mb-3">
+                      <div className="col-md-12">
+                        <label className="form-label fw-bold">Chọn ngày trong tháng <span className="text-danger">*</span> <small className="text-muted fw-normal">({editSpecificDays.length}/{editOccurrences})</small></label>
+                        <div className="d-flex flex-wrap gap-1">
+                          {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => {
+                            const isChecked = editSpecificDays.includes(day);
+                            const atLimit = editSpecificDays.length >= editOccurrences;
+                            return (
+                              <div key={day} style={{ width: '38px', height: '38px' }}>
+                                <input
+                                  className="btn-check"
+                                  type="checkbox"
+                                  id={`editDayOfMonth_${day}`}
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      if (atLimit) {
+                                        e.preventDefault();
+                                        showScheduleFeedback(`Đã đủ ${editOccurrences} ngày, không thể chọn thêm!`, 'warning');
+                                        return;
+                                      }
+                                      const newDays = [...editSpecificDays, day];
+                                      setEditSpecificDays(newDays);
+                                      if (newDays.length < editOccurrences) {
+                                        showScheduleFeedback(`Đã chọn ${newDays.length}/${editOccurrences}`, 'info');
+                                      } else {
+                                        showScheduleFeedback(`Đã chọn đủ ${editOccurrences} ngày ✓`, 'success');
+                                      }
+                                    } else {
+                                      const newDays = editSpecificDays.filter(d => d !== day);
+                                      setEditSpecificDays(newDays);
+                                      if (newDays.length < editOccurrences) {
+                                        showScheduleFeedback(`Đã chọn ${newDays.length}/${editOccurrences}`, 'info');
+                                      }
+                                    }
+                                  }}
+                                />
+                                <label 
+                                  className={`btn btn-sm w-100 h-100 d-flex align-items-center justify-content-center p-0 ${isChecked ? 'btn-primary' : (atLimit && !isChecked ? 'btn-outline-secondary opacity-50' : 'btn-outline-secondary')}`}
+                                  htmlFor={`editDayOfMonth_${day}`}
+                                  style={{ borderRadius: '50%' }}
+                                >
+                                  {day}
+                                </label>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {scheduleFeedback && (
+                          <div className={`mt-2 small fw-semibold ${scheduleFeedback.type === 'success' ? 'text-success' : scheduleFeedback.type === 'warning' ? 'text-danger' : 'text-primary'}`}>
+                            <i className={`fas ${scheduleFeedback.type === 'success' ? 'fa-check-circle' : scheduleFeedback.type === 'warning' ? 'fa-exclamation-circle' : 'fa-info-circle'} me-1`}></i>
+                            {scheduleFeedback.message}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Ngày tính toán */}
                   <div className="row">
-                    <div className="col-md-6">
-                      <div className="mb-3">
-                        <label className="form-label fw-bold">Ngày Bắt Đầu <span className="text-danger">*</span></label>
-                        <DateInput
-                          value={editBatchStartFrom}
-                          onChange={(value) => setEditBatchStartFrom(value)}
-                          required
-                        />
+                    {editScheduleType === 'interval' && (
+                      <div className="col-md-6">
+                        <div className="mb-3">
+                          <label className="form-label fw-bold">Ngày Bắt Đầu <span className="text-danger">*</span></label>
+                          <DateInput
+                            value={editBatchStartFrom}
+                            onChange={(value) => setEditBatchStartFrom(value)}
+                            required
+                          />
+                        </div>
                       </div>
-                    </div>
-                    <div className="col-md-6">
+                    )}
+                    <div className={editScheduleType === 'interval' ? "col-md-6" : "col-md-12"}>
                       <div className="mb-3">
                         <label className="form-label fw-bold">Ngày Kết Thúc</label>
                         <DateInput

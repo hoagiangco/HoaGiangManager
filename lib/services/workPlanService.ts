@@ -106,6 +106,46 @@ export class WorkPlanService {
     });
   }
 
+  async getOverdueUnimplemented(staffId: number, isAdmin: boolean = false): Promise<any[]> {
+    const result = await pool.query(
+      `SELECT 
+        wpi."ID" as id,
+        wpi."PlanDate" as "planDate",
+        wpi."StaffID" as "staffId",
+        wpi."DamageReportID" as "damageReportId",
+        wpi."IsNewTask" as "isNewTask",
+        wpi."Title" as title,
+        wpi."DraftData" as "draftData",
+        wpi."IsImplemented" as "isImplemented",
+        wpi."CreatedBy" as "createdBy",
+        wpi."CreatedAt" as "createdAt",
+        s."Name" as "staffName",
+        dr."Status" as "reportStatus",
+        dr."DamageLocation" as location,
+        dr."DamageContent" as "damageContent",
+        dr."MaintenanceBatchId" as "maintenanceBatchId",
+        COALESCE(
+          (SELECT "Title" FROM "DeviceReminderPlan" WHERE "Metadata"->>'maintenanceBatchId' = dr."MaintenanceBatchId" LIMIT 1),
+          (SELECT "Title" FROM "Event" WHERE "Metadata"->>'maintenanceBatchId' = dr."MaintenanceBatchId" LIMIT 1)
+        ) as "maintenanceTitle",
+        dr."HandlerID" as "reportHandlerId",
+        h."Name" as "reportHandlerName",
+        d."Name" as "deviceName"
+      FROM "WorkPlanItem" wpi
+      LEFT JOIN "Staff" s ON wpi."StaffID" = s."ID"
+      LEFT JOIN "DamageReport" dr ON wpi."DamageReportID" = dr."ID"
+      LEFT JOIN "Staff" h ON dr."HandlerID" = h."ID"
+      LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
+      WHERE wpi."PlanDate" < CURRENT_DATE
+        AND wpi."IsImplemented" = false
+        AND wpi."IsNewTask" = true
+        ${isAdmin ? '' : 'AND (COALESCE(dr."HandlerID", wpi."StaffID") = $1 OR $1 = 0)'}
+      ORDER BY wpi."PlanDate" DESC, wpi."ID" ASC`,
+      isAdmin ? [] : [staffId]
+    );
+    return result.rows;
+  }
+
   async getPendingReports(staffId: number): Promise<any[]> {
     // Get reports where staff is reporter OR handler and not completed/cancelled/rejected
     // If staffId is 0, get ALL pending reports

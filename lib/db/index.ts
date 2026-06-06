@@ -1,9 +1,13 @@
-import { Pool } from 'pg';
+import { Pool, types } from 'pg';
 import dotenv from 'dotenv';
 
 dotenv.config();
 // Also load from .env.local if it exists
 dotenv.config({ path: '.env.local', override: true });
+
+// Override pg DATE (OID 1082) parsing: return raw string instead of Date object
+// This prevents timezone shift (e.g. "2026-06-05" becoming June 4 in UTC)
+types.setTypeParser(1082, (val: string) => val);
 
 const isLocalhost = process.env.DATABASE_URL?.includes('localhost') || process.env.DATABASE_URL?.includes('127.0.0.1');
 
@@ -18,6 +22,7 @@ pool.on('connect', (client) => {
 });
 
 export default pool;
+
 
 // Helper function to execute queries
 export const query = async (text: string, params?: any[]) => {

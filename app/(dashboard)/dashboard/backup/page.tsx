@@ -7,6 +7,7 @@ import AdminRoute from '@/components/AdminRoute';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
 import { formatDateTime } from '@/lib/utils/dateFormat';
+import { useAuth } from '@/lib/contexts/AuthContext';
 
 interface BackupItem {
   name: string;
@@ -19,6 +20,8 @@ function BackupPageContent() {
   const [backups, setBackups] = useState<BackupItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const { user } = useAuth();
+  const isSuperAdmin = user?.roles?.includes('SuperAdmin');
 
   useEffect(() => {
     loadBackups();
@@ -169,8 +172,8 @@ function BackupPageContent() {
                         <button 
                           className="btn btn-sm btn-outline-danger"
                           onClick={() => handleDeleteBackup(b)}
-                          disabled={creating}
-                          title="Xóa vĩnh viễn"
+                          disabled={creating || !isSuperAdmin}
+                          title={!isSuperAdmin ? 'Chỉ SuperAdmin mới có quyền xóa' : 'Xóa vĩnh viễn'}
                         >
                           <i className="fas fa-trash"></i>
                         </button>
@@ -212,23 +215,30 @@ function BackupPageContent() {
               </div>
               <div className="modal-body">
                 <div className="alert alert-danger">
-                  <strong><i className="fas fa-skull-crossbones me-2"></i>CẢNH BÁO NGHIÊM TRỌNG:</strong> Khôi phục sẽ ghi đè toàn bộ dữ liệu hiện tại. Chức năng này <strong>không thể thực hiện tự động</strong> trên môi trường Vercel (serverless). Bạn phải thực hiện thủ công qua terminal.
+                  <strong><i className="fas fa-skull-crossbones me-2"></i>CẢNH BÁO NGHIÊM TRỌNG:</strong> Khôi phục sẽ ghi đè toàn bộ dữ liệu hiện tại. Bạn cần thực hiện khôi phục thủ công qua pgAdmin4 hoặc terminal.
                 </div>
 
                 <h6 className="fw-bold mt-3">Các bước thực hiện:</h6>
                 <ol className="mb-3">
                   <li className="mb-2">Nhấn nút <strong>Tải về</strong> để tải file về máy tính.</li>
-                  <li className="mb-2">Mở terminal hoặc PowerShell.</li>
                   <li className="mb-2">
-                    <strong>Trường hợp file .dump (Khuyên dùng):</strong>
+                    <strong>QUAN TRỌNG: Làm sạch Database cũ trước khi khôi phục</strong> (Để tránh lỗi xung đột)
+                    <p className="mb-1 mt-1 small">Mở Query Tool trong pgAdmin4 (hoặc psql) và chạy lệnh sau:</p>
+                    <pre className="bg-dark text-warning p-2 rounded small" style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
+                      {`DROP SCHEMA public CASCADE;\nCREATE SCHEMA public;`}
+                    </pre>
+                  </li>
+                  <li className="mb-2">
+                    <strong>Khôi phục file .dump (Khuyên dùng):</strong>
                     <p className="mb-1 mt-1 small">Cách 1: Sử dụng pgAdmin4 (Dễ nhất)</p>
                     <ul className="small mb-2">
                       <li>Chuột phải vào Database → <strong>Restore</strong>.</li>
-                      <li>Chọn file vừa tải về và nhấn nút Restore.</li>
+                      <li>Chọn Format là "Custom or tar", chọn file vừa tải về.</li>
+                      <li>Nhấn nút Restore (Không cần chọn Clean before restore vì đã chạy lệnh trên).</li>
                     </ul>
-                    <p className="mb-1 small">Cách 2: Sử dụng lệnh <code>pg_restore</code></p>
+                    <p className="mb-1 small">Cách 2: Sử dụng lệnh <code>pg_restore</code> qua Terminal/PowerShell</p>
                     <pre className="bg-dark text-light p-2 rounded small" style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
-                      {`pg_restore --no-owner --no-privileges --clean --if-exists --dbname="<DATABASE_URL>" --verbose "${restoreGuideName}"`}
+                      {`pg_restore --no-owner --no-privileges --dbname="<DATABASE_URL>" --verbose "${restoreGuideName}"`}
                     </pre>
                   </li>
                   <li className="mb-2">
@@ -242,7 +252,7 @@ function BackupPageContent() {
 
                 <div className="alert alert-info mb-0 small">
                   <i className="fas fa-info-circle me-2"></i>
-                  <strong>DATABASE_URL</strong> được tìm thấy trong file <code>.env.local</code> của dự án hoặc trong Vercel Dashboard → Settings → Environment Variables.
+                  <strong>DATABASE_URL</strong> được tìm thấy trong file <code>.env.local</code> của dự án.
                 </div>
               </div>
               <div className="modal-footer">

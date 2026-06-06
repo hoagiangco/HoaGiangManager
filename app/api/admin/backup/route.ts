@@ -49,8 +49,8 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const authResult = await authenticate(request);
-    if (!authResult.user || !authResult.user.roles.includes('Admin')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!authResult.user || !authResult.user.roles.includes('SuperAdmin')) {
+      return NextResponse.json({ error: 'Unauthorized. Only SuperAdmin can delete backups.' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);

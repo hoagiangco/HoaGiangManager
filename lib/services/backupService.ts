@@ -59,7 +59,7 @@ export class BackupService {
       String(now.getHours()).padStart(2, '0') +
       String(now.getMinutes()).padStart(2, '0') +
       String(now.getSeconds()).padStart(2, '0');
-    const filename = `backup-${timestamp}.dump`;
+    const filename = `hgmanager_backup-${timestamp}.dump`;
     
     // Ensure backup directory exists (for local fallback)
     if (!fs.existsSync(this.backupDir)) {
@@ -80,7 +80,7 @@ export class BackupService {
         console.warn('pg_dump failed, falling back to JS-based backup:', execError.message);
         // Fallback to JS-based backup (always plain SQL)
         usedCustomFormat = false;
-        const sqlFilename = `backup-${timestamp}.sql`;
+        const sqlFilename = `hgmanager_backup-${timestamp}.sql`;
         localPath = path.join(this.backupDir, sqlFilename);
         await this.jsBackup(databaseUrl, localPath);
       }

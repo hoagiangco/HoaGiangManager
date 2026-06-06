@@ -41,6 +41,15 @@ export default function WorkPlanPage() {
   const [copyTargetDate, setCopyTargetDate] = useState<Date>(addDays(new Date(), 1));
   const [activeDates, setActiveDates] = useState<Date[]>([]);
 
+  // Overdue backlog drawer
+  const [overdueDrawerOpen, setOverdueDrawerOpen] = useState(false);
+  const [overdueItems, setOverdueItems] = useState<WorkPlanItemVM[]>([]);
+  const [overdueLoading, setOverdueLoading] = useState(false);
+  const [selectedOverdueIds, setSelectedOverdueIds] = useState<Set<number>>(new Set());
+  const [bulkTargetDate, setBulkTargetDate] = useState<Date>(addDays(new Date(), 1));
+  const [itemTargetDates, setItemTargetDates] = useState<Record<number, Date>>({});
+  const [movingIds, setMovingIds] = useState<Set<number>>(new Set());
+
   const [newTask, setNewTask] = useState({
     title: '',
     deviceId: undefined as number | undefined,
@@ -100,6 +109,108 @@ export default function WorkPlanPage() {
   }, [user, selectedDate, viewStaffId, isAdmin]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  const loadOverdueItems = useCallback(async () => {
+    if (!user) return;
+    setOverdueLoading(true);
+    try {
+      const staffRes = await api.get(`/staff/me?userId=${user.id}`).catch(() => ({ data: { status: false } }));
+      if (!staffRes.data.status) return;
+      const myStaff = staffRes.data.data;
+      const targetStaffId = isAdmin ? 0 : myStaff.id;
+      const res = await api.get(`/work-plans/overdue?staffId=${targetStaffId}&isAdmin=${isAdmin}`);
+      if (res.data.status) {
+        setOverdueItems(res.data.data);
+        // Init individual target dates to tomorrow
+        const tomorrow = addDays(new Date(), 1);
+        const initDates: Record<number, Date> = {};
+        res.data.data.forEach((item: WorkPlanItemVM) => { initDates[item.id] = tomorrow; });
+        setItemTargetDates(initDates);
+      }
+    } catch (e) {
+      console.error('Lỗi tải kế hoạch tồn:', e);
+    } finally {
+      setOverdueLoading(false);
+    }
+  }, [user, isAdmin]);
+
+  const handleMoveItem = async (item: WorkPlanItemVM, targetDate: Date) => {
+    setMovingIds(prev => new Set(prev).add(item.id));
+    try {
+      const dateStr = format(targetDate, 'yyyy-MM-dd');
+      // 1. Create new item on target date
+      const res = await api.post('/work-plans', {
+        planDate: dateStr,
+        staffId: item.staffId,
+        isNewTask: true,
+        title: item.title,
+        draftData: item.draftData || {
+          damageLocation: item.location || '',
+          damageContent: item.damageContent || item.title,
+        },
+        createdBy: user?.id
+      });
+      if (res.data.status) {
+        // 2. Delete old item
+        await api.delete(`/work-plans?id=${item.id}&staffId=${item.staffId}&isAdmin=${isAdmin}`);
+        toast.success(`Đã chuyển sang ${format(targetDate, 'dd/MM/yyyy')}`);
+        setOverdueItems(prev => prev.filter(i => i.id !== item.id));
+        setSelectedOverdueIds(prev => { const s = new Set(prev); s.delete(item.id); return s; });
+        // Refresh plan if moved to selected date
+        if (format(targetDate, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd')) loadData();
+      }
+    } catch (e) {
+      toast.error('Lỗi khi chuyển công việc');
+    } finally {
+      setMovingIds(prev => { const s = new Set(prev); s.delete(item.id); return s; });
+    }
+  };
+
+  const handleMoveSelected = async () => {
+    if (selectedOverdueIds.size === 0) { toast.warning('Chưa chọn công việc nào'); return; }
+    const itemsToMove = overdueItems.filter(i => selectedOverdueIds.has(i.id));
+    for (const item of itemsToMove) {
+      await handleMoveItem(item, bulkTargetDate);
+    }
+  };
+
+  const handleDeleteOverdueItem = async (item: WorkPlanItemVM) => {
+    if (!window.confirm('Bạn có chắc muốn xoá kế hoạch này?')) return;
+    setMovingIds(prev => new Set(prev).add(item.id));
+    try {
+      const res = await api.delete(`/work-plans?id=${item.id}&staffId=${item.staffId}&isAdmin=${isAdmin}`);
+      if (res.data.status) {
+        toast.success('Đã xoá kế hoạch');
+        setOverdueItems(prev => prev.filter(i => i.id !== item.id));
+        setSelectedOverdueIds(prev => { const s = new Set(prev); s.delete(item.id); return s; });
+      }
+    } catch (e) {
+      toast.error('Lỗi khi xoá kế hoạch');
+    } finally {
+      setMovingIds(prev => { const s = new Set(prev); s.delete(item.id); return s; });
+    }
+  };
+
+  const handleDeleteSelectedOverdue = async () => {
+    if (selectedOverdueIds.size === 0) { toast.warning('Chưa chọn công việc nào'); return; }
+    if (!window.confirm(`Bạn có chắc muốn xoá ${selectedOverdueIds.size} kế hoạch đã chọn?`)) return;
+    const itemsToDelete = overdueItems.filter(i => selectedOverdueIds.has(i.id));
+    for (const item of itemsToDelete) {
+      try {
+        setMovingIds(prev => new Set(prev).add(item.id));
+        const res = await api.delete(`/work-plans?id=${item.id}&staffId=${item.staffId}&isAdmin=${isAdmin}`);
+        if (res.data.status) {
+          setOverdueItems(prev => prev.filter(i => i.id !== item.id));
+          setSelectedOverdueIds(prev => { const s = new Set(prev); s.delete(item.id); return s; });
+        }
+      } catch (e) {
+        toast.error(`Lỗi khi xoá kế hoạch ID ${item.id}`);
+      } finally {
+        setMovingIds(prev => { const s = new Set(prev); s.delete(item.id); return s; });
+      }
+    }
+    toast.success('Đã xoá các kế hoạch được chọn');
+  };
 
   // Set default staff for new task when staff info is loaded
   useEffect(() => {
@@ -278,6 +389,19 @@ export default function WorkPlanPage() {
               </div>
             </div>
           )}
+          <button
+            className="btn btn-outline-warning rounded-pill px-3 py-2 fw-bold d-flex align-items-center gap-2 position-relative"
+            onClick={() => { setOverdueDrawerOpen(true); loadOverdueItems(); }}
+            title="Kế hoạch chưa triển khai"
+          >
+            <i className="fas fa-clock-rotate-left"></i>
+            <span className="d-none d-sm-inline">Kế hoạch tồn</span>
+            {overdueItems.length > 0 && (
+              <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style={{ fontSize: '0.6rem' }}>
+                {overdueItems.length}
+              </span>
+            )}
+          </button>
           <button className="btn btn-primary rounded-pill px-4 py-2 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2" onClick={() => { setModalMode('new'); setIsModalOpen(true); }}>
             <i className="fas fa-plus"></i>
             <span>Thêm công việc</span>
@@ -439,6 +563,170 @@ export default function WorkPlanPage() {
           </div>
         </div>
       </div>
+
+      {/* ===== OVERDUE BACKLOG DRAWER ===== */}
+      {overdueDrawerOpen && (
+        <>
+          {/* Backdrop */}
+          <div className="overdue-backdrop" onClick={() => setOverdueDrawerOpen(false)} />
+          {/* Drawer */}
+          <div className="overdue-drawer">
+            {/* Drawer Header */}
+            <div className="overdue-drawer-header">
+              <div>
+                <h5 className="m-0 fw-bold"><i className="fas fa-clock-rotate-left me-2 text-warning"></i>Kế hoạch chưa triển khai</h5>
+                <p className="m-0 text-muted small mt-1">Các công việc đã qua ngày mà chưa được thực hiện</p>
+              </div>
+              <button className="btn-close-custom" onClick={() => setOverdueDrawerOpen(false)}><i className="fas fa-times"></i></button>
+            </div>
+
+            {/* Bulk action bar */}
+            <div className="overdue-bulk-bar">
+              <div className="d-flex align-items-center gap-2 flex-wrap">
+                <input
+                  type="checkbox"
+                  id="select-all-overdue"
+                  className="form-check-input m-0"
+                  checked={selectedOverdueIds.size === overdueItems.length && overdueItems.length > 0}
+                  onChange={e => setSelectedOverdueIds(e.target.checked ? new Set(overdueItems.map(i => i.id)) : new Set())}
+                />
+                <label htmlFor="select-all-overdue" className="small fw-bold text-muted m-0">
+                  Chọn tất cả ({selectedOverdueIds.size}/{overdueItems.length})
+                </label>
+              </div>
+              <div className="d-flex align-items-center gap-2 flex-wrap mt-2">
+                <span className="small text-muted fw-bold text-nowrap">Chuyển sang:</span>
+                <DatePicker
+                  selected={bulkTargetDate}
+                  onChange={(d: Date) => setBulkTargetDate(d || addDays(new Date(), 1))}
+                  dateFormat="dd/MM/yyyy"
+                  highlightDates={activeDates}
+                  className="form-control form-control-sm text-center fw-bold"
+                  minDate={new Date()}
+                  portalId="root-portal"
+                />
+                <button
+                  className="btn btn-warning btn-sm fw-bold px-3 d-flex align-items-center gap-2"
+                  onClick={handleMoveSelected}
+                  disabled={selectedOverdueIds.size === 0}
+                >
+                  <i className="fas fa-arrows-rotate"></i>
+                  Chuyển ({selectedOverdueIds.size})
+                </button>
+                <button
+                  className="btn btn-outline-danger btn-sm fw-bold px-3 d-flex align-items-center gap-2"
+                  onClick={handleDeleteSelectedOverdue}
+                  disabled={selectedOverdueIds.size === 0}
+                >
+                  <i className="fas fa-trash"></i>
+                  Xoá ({selectedOverdueIds.size})
+                </button>
+              </div>
+            </div>
+
+            {/* Items list */}
+            <div className="overdue-drawer-body">
+              {overdueLoading ? (
+                <div className="text-center py-5"><div className="spinner-border text-warning" /></div>
+              ) : overdueItems.length === 0 ? (
+                <div className="text-center py-5">
+                  <div style={{ fontSize: '3rem' }}>🎉</div>
+                  <p className="text-muted mt-2">Không có kế hoạch nào tồn đọng!</p>
+                </div>
+              ) : (() => {
+                // Group by planDate
+                const groups: Record<string, WorkPlanItemVM[]> = {};
+                overdueItems.forEach(item => {
+                  const dk = item.planDate ? format(new Date(item.planDate), 'yyyy-MM-dd') : 'unknown';
+                  if (!groups[dk]) groups[dk] = [];
+                  groups[dk].push(item);
+                });
+                return Object.entries(groups).map(([dateKey, groupItems]) => (
+                  <div key={dateKey} className="overdue-group">
+                    <div className="overdue-group-label">
+                      <i className="fas fa-calendar-day me-2"></i>
+                      {format(new Date(dateKey + 'T00:00:00'), 'EEEE, dd/MM/yyyy', { locale: vi })}
+                      <span className="badge bg-danger-subtle text-danger ms-2">{groupItems.length} việc</span>
+                    </div>
+                    {groupItems.map(item => {
+                      const isMoving = movingIds.has(item.id);
+                      const itemDate = itemTargetDates[item.id] || addDays(new Date(), 1);
+                      const isSelected = selectedOverdueIds.has(item.id);
+                      return (
+                        <div key={item.id} className={`overdue-item ${isSelected ? 'selected' : ''} ${isMoving ? 'moving' : ''}`}>
+                          <input
+                            type="checkbox"
+                            className="form-check-input flex-shrink-0"
+                            checked={isSelected}
+                            onChange={e => setSelectedOverdueIds(prev => {
+                              const s = new Set(prev);
+                              e.target.checked ? s.add(item.id) : s.delete(item.id);
+                              return s;
+                            })}
+                          />
+                          <div className="overdue-item-info">
+                            <div className="d-flex align-items-center gap-1 flex-wrap mb-1">
+                              {item.maintenanceBatchId && <span className="mini-badge bg-primary">Bảo trì</span>}
+                              {item.isNewTask && <span className="mini-badge bg-info">Mới</span>}
+                              {!item.isNewTask && !item.maintenanceBatchId && <span className="mini-badge bg-warning">Tồn</span>}
+                              {item.staffName && (
+                                <span className="text-muted" style={{ fontSize: '0.7rem' }}>
+                                  <i className="fas fa-user me-1"></i>{item.staffName}
+                                </span>
+                              )}
+                            </div>
+                            <div className="fw-bold text-dark" style={{ fontSize: '0.88rem' }}>
+                              {item.maintenanceBatchId ? (item.maintenanceTitle || item.maintenanceBatchId) : (item.damageContent || item.title)}
+                            </div>
+                            {item.location && (
+                              <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+                                <i className="fas fa-map-marker-alt me-1"></i>{item.location}
+                              </div>
+                            )}
+                          </div>
+                          <div className="overdue-item-action">
+                            <DatePicker
+                              selected={itemDate}
+                              onChange={(d: Date) => setItemTargetDates(prev => ({ ...prev, [item.id]: d || addDays(new Date(), 1) }))}
+                              dateFormat="dd/MM"
+                              highlightDates={activeDates}
+                              className="form-control form-control-sm text-center fw-bold"
+                              minDate={new Date()}
+                              portalId="root-portal"
+                            />
+                            <div className="d-flex align-items-center gap-2 mt-2 w-100 justify-content-end">
+                              <button
+                                className="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center"
+                                style={{ width: '32px', height: '32px', padding: 0 }}
+                                onClick={() => handleDeleteOverdueItem(item)}
+                                disabled={isMoving}
+                                title="Xoá kế hoạch này"
+                              >
+                                {isMoving
+                                  ? <span className="spinner-border spinner-border-sm" />
+                                  : <i className="fas fa-trash"></i>}
+                              </button>
+                              <button
+                                className="btn btn-sm btn-primary d-flex align-items-center gap-1 text-nowrap"
+                                onClick={() => handleMoveItem(item, itemDate)}
+                                disabled={isMoving}
+                              >
+                                {isMoving
+                                  ? <span className="spinner-border spinner-border-sm" />
+                                  : <><i className="fas fa-arrow-right"></i><span>Chuyển</span></>}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Copy Task Modal */}
       {copyTaskModalData && (
@@ -682,6 +970,29 @@ export default function WorkPlanPage() {
         .ls-1 { letter-spacing: 0.5px; }
         .btn-white { background: white; border: 1px solid rgba(0,0,0,0.05); }
         .btn-soft-primary { background: #e7f5ff; color: #0d6efd; }
+
+        /* ===== OVERDUE BACKLOG DRAWER ===== */
+        .overdue-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1040; backdrop-filter: blur(2px); animation: backdropFade 0.2s ease; }
+        @keyframes backdropFade { from { opacity: 0; } to { opacity: 1; } }
+
+        .overdue-drawer { position: fixed; top: 0; right: 0; height: 100vh; width: 100%; max-width: 520px; background: #fff; z-index: 1045; display: flex; flex-direction: column; box-shadow: -8px 0 40px rgba(0,0,0,0.12); animation: drawerSlideIn 0.3s cubic-bezier(0.4,0,0.2,1); }
+        @keyframes drawerSlideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+        .overdue-drawer-header { padding: 20px 24px; border-bottom: 1px solid #f1f3f5; display: flex; justify-content: space-between; align-items: flex-start; flex-shrink: 0; background: #fffbeb; }
+
+        .overdue-bulk-bar { padding: 12px 20px; border-bottom: 1px solid #f1f3f5; background: #f8f9fa; flex-shrink: 0; }
+
+        .overdue-drawer-body { flex: 1; overflow-y: auto; padding: 12px 16px; }
+
+        .overdue-group { margin-bottom: 16px; }
+        .overdue-group-label { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; padding: 6px 10px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; display: flex; align-items: center; }
+
+        .overdue-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid #e9ecef; background: white; margin-bottom: 6px; transition: all 0.2s; }
+        .overdue-item:hover { border-color: #ced4da; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+        .overdue-item.selected { border-color: #ffc107; background: #fffbeb; }
+        .overdue-item.moving { opacity: 0.5; pointer-events: none; }
+        .overdue-item-info { flex: 1; min-width: 0; }
+        .overdue-item-action { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
       `}</style>
     </div>
   );

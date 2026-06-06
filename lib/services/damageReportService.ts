@@ -1778,7 +1778,7 @@ export class DamageReportService {
     );
 
     // 4. Pending Reports (Việc chờ xử lý):
-    // ALL reports with Status IN (1, 2) up to today
+    // Reports that were not yet handled (or handled after 'to') and not completed by 'to'
     const pendingReportsRes = await pool.query(
       `SELECT 
          dr."ID" as id, dr."DeviceID" as "deviceId", dr."DamageLocation" as "damageLocation",
@@ -1804,14 +1804,21 @@ export class DamageReportService {
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
        WHERE dr."ReportDate" <= $${paramIdx}
-       AND CAST(dr."Status"::text AS INTEGER) IN (1, 2)
+       AND (
+         (dr."HandlingDate" IS NULL AND CAST(dr."Status"::text AS INTEGER) IN (1, 2))
+         OR dr."HandlingDate" > $${paramIdx}
+       )
+       AND (
+         (dr."CompletedDate" IS NULL AND CAST(dr."Status"::text AS INTEGER) NOT IN (4, 5, 6))
+         OR dr."CompletedDate" > $${paramIdx}
+       )
        ${filterClause}
        ORDER BY dr."ReportDate" DESC`,
       [...queryParams, to]
     );
 
     // 5. Pending Active Reports (Việc đang xử lý):
-    // ALL reports with Status = 3 up to today
+    // Reports that were being handled at filter date but not yet completed
     const pendingActiveReportsRes = await pool.query(
       `SELECT 
          dr."ID" as id, dr."DeviceID" as "deviceId", dr."DamageLocation" as "damageLocation",
@@ -1837,7 +1844,11 @@ export class DamageReportService {
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
        WHERE dr."ReportDate" <= $${paramIdx}
-       AND CAST(dr."Status"::text AS INTEGER) = 3
+       AND dr."HandlingDate" IS NOT NULL AND dr."HandlingDate" <= $${paramIdx}
+       AND (
+         (dr."CompletedDate" IS NULL AND CAST(dr."Status"::text AS INTEGER) NOT IN (4, 5, 6))
+         OR dr."CompletedDate" > $${paramIdx}
+       )
        ${filterClause}
        ORDER BY dr."ReportDate" DESC`,
       [...queryParams, to]

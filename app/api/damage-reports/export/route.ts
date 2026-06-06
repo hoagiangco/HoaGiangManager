@@ -176,11 +176,11 @@ export async function GET(request: NextRequest) {
         if (category === 'new') allReports = allReports.filter((r: any) => r.dailyCategory === 'Chưa làm');
         else if (category === 'active') allReports = allReports.filter((r: any) => r.dailyCategory === 'Đang xử lý' && r.section === '1. VIỆC TRONG NGÀY');
         else if (category === 'completed') allReports = allReports.filter((r: any) => r.dailyCategory === 'Hoàn thành');
-        else if (category === 'backlog') allReports = allReports.filter((r: any) => r.section === '2. VIỆC ĐANG XỬ LÝ' || r.section === '3. VIỆC CHỜ XỬ LÝ');
+        else if (category === 'backlog') allReports = allReports.filter((r: any) => (r.allSections || [r.section]).some((s: string) => s === '2. VIỆC ĐANG XỬ LÝ' || s === '3. VIỆC CHỜ XỬ LÝ'));
         else if (category === 'priority') allReports = allReports.filter((r: any) => r.priority >= DamageReportPriority.High);
-        else if (category === 'today') allReports = allReports.filter((r: any) => r.section === '1. VIỆC TRONG NGÀY');
-        else if (category === 'pendingActive') allReports = allReports.filter((r: any) => r.section === '2. VIỆC ĐANG XỬ LÝ');
-        else if (category === 'pending') allReports = allReports.filter((r: any) => r.section === '3. VIỆC CHỜ XỬ LÝ');
+        else if (category === 'today') allReports = allReports.filter((r: any) => (r.allSections || [r.section]).includes('1. VIỆC TRONG NGÀY'));
+        else if (category === 'pendingActive') allReports = allReports.filter((r: any) => (r.allSections || [r.section]).includes('2. VIỆC ĐANG XỬ LÝ'));
+        else if (category === 'pending') allReports = allReports.filter((r: any) => (r.allSections || [r.section]).includes('3. VIỆC CHỜ XỬ LÝ'));
       }
     } else {
       // Standard filtering

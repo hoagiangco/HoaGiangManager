@@ -108,6 +108,25 @@ export async function GET(
       [`%${batchId}%`, `${roundDateFormatted}T00:00:00.000Z`, `${roundDateFormatted}T23:59:59.999Z`]
     );
 
+    // Fetch batch configuration details
+    const planConfigResult = await pool.query(
+      `
+      SELECT 
+        "Description" as description,
+        "Metadata" as metadata
+      FROM "DeviceReminderPlan"
+      WHERE "Metadata" IS NOT NULL AND "Metadata"->>'maintenanceBatchId' = $1
+      LIMIT 1
+      `,
+      [batchId]
+    );
+
+    const planConfig = planConfigResult.rows[0];
+    const scheduleTypeVal = planConfig?.metadata?.scheduleConfig?.scheduleType === 'specific_dates'
+      ? 'Lịch cố định'
+      : 'Theo khoảng thời gian';
+    const maintenanceContent = planConfig?.description || '';
+
     const events = result.rows
       .map((row: any) => {
         let metadata: Record<string, any> | null = null;
@@ -140,6 +159,7 @@ export async function GET(
           staffName: row.staffName || 'N/A',
           relatedReportId: row.relatedReportId,
           notes: row.notes || '',
+          description: row.description || '',
           maintenanceType: metadata.maintenanceType || null,
           maintenanceProvider: metadata.maintenanceProvider || null,
         };
@@ -167,7 +187,7 @@ export async function GET(
     const titleRow = worksheet.addRow([`BÁO CÁO ĐỢT BẢO TRÌ`]);
     titleRow.font = { bold: true, size: 16 };
     titleRow.alignment = { horizontal: 'center', vertical: 'middle' };
-    worksheet.mergeCells(1, 1, 1, 7);
+    worksheet.mergeCells(1, 1, 1, 11);
 
     // Batch info
     worksheet.addRow([`Kế hoạch: ${batchTitle}`]);
@@ -182,7 +202,19 @@ export async function GET(
     worksheet.addRow(['']); // Empty row
 
     // Headers
-    const headers = ['STT', 'Tên Thiết Bị', 'Serial', 'Loại Sự Kiện', 'Ngày Bảo Trì', 'Nhân Viên', 'Kết Quả', 'Ghi Chú', 'Báo Cáo CV'];
+    const headers = [
+      'STT', 
+      'Tên Thiết Bị', 
+      'Serial', 
+      'Kiểu Lập Lịch', 
+      'Nội Dung Bảo Trì', 
+      'Loại Sự Kiện', 
+      'Ngày Bảo Trì', 
+      'Nhân Viên', 
+      'Kết Quả', 
+      'Ghi Chú', 
+      'Báo Cáo CV'
+    ];
     const headerRow = worksheet.addRow(headers);
     headerRow.font = { bold: true };
     headerRow.fill = {
@@ -205,6 +237,8 @@ export async function GET(
         index + 1,
         event.deviceName,
         event.deviceSerial,
+        scheduleTypeVal,
+        event.description || maintenanceContent || '-',
         event.eventTypeName,
         maintenanceDate ? formatDateDisplay(maintenanceDate) : '-',
         event.staffName,
@@ -218,12 +252,14 @@ export async function GET(
     worksheet.getColumn(1).width = 8;  // STT
     worksheet.getColumn(2).width = 25; // Tên Thiết Bị
     worksheet.getColumn(3).width = 15; // Serial
-    worksheet.getColumn(4).width = 20; // Loại Sự Kiện
-    worksheet.getColumn(5).width = 15; // Ngày Bảo Trì
-    worksheet.getColumn(6).width = 20; // Nhân Viên
-    worksheet.getColumn(7).width = 15; // Kết Quả
-    worksheet.getColumn(8).width = 30; // Ghi Chú
-    worksheet.getColumn(9).width = 15; // Báo Cáo CV
+    worksheet.getColumn(4).width = 20; // Kiểu Lập Lịch
+    worksheet.getColumn(5).width = 30; // Nội Dung Bảo Trì
+    worksheet.getColumn(6).width = 20; // Loại Sự Kiện
+    worksheet.getColumn(7).width = 15; // Ngày Bảo Trì
+    worksheet.getColumn(8).width = 20; // Nhân Viên
+    worksheet.getColumn(9).width = 15; // Kết Quả
+    worksheet.getColumn(10).width = 30; // Ghi Chú
+    worksheet.getColumn(11).width = 15; // Báo Cáo CV
 
     // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();
