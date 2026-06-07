@@ -196,6 +196,9 @@ export interface DamageReportVM extends DamageReport {
   deviceLocationName?: string;           // Tên vị trí của thiết bị
   updatedByName?: string;                // Tên người cập nhật cuối
   afterImages?: string[];                // Mảng đường dẫn hình ảnh sau khi xử lý
+  sourcePlanId?: number | null;
+  sourcePlanDate?: string | null;
+  isFromWorkPlan?: boolean;
 }
 
 export interface DamageReportHistory {
@@ -310,7 +313,7 @@ export interface WorkPlanDraftData {
 
 export interface WorkPlanItem {
   id: number;
-  planDate: string; // ISO Date string
+  planDate?: string | null; // ISO Date string, null when stored in the plan archive
   staffId: number;
   damageReportId?: number | null;
   isNewTask: boolean;

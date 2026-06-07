@@ -40,6 +40,9 @@ export async function POST(request: NextRequest) {
     const { user, error } = await authenticate(request);
     if (!user) return NextResponse.json({ status: false, error: error || 'Unauthorized' }, { status: 401 });
 
+    const { isAdmin } = await import('@/lib/auth/permissions');
+    if (!isAdmin(user.roles)) return NextResponse.json({ status: false, error: 'Forbidden' }, { status: 403 });
+
     const data = await request.json();
     const sparePartService = new SparePartService();
     

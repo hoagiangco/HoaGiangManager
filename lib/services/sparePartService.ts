@@ -7,7 +7,6 @@ import {
   SparePartTransactionVM,
   SparePartTransactionType 
 } from '@/types';
-import { PoolClient } from 'pg';
 
 export class SparePartService {
   // --- Category Methods ---
@@ -183,14 +182,46 @@ export class SparePartService {
     try {
       await client.query('BEGIN');
 
-      // 1. Create the transaction record
+      const quantity = Number(transaction.quantity);
+      const isValidTransactionType =
+        transaction.type === SparePartTransactionType.In ||
+        transaction.type === SparePartTransactionType.Out;
+
+      if (!isValidTransactionType) {
+        throw new Error('Loại giao dịch kho không hợp lệ.');
+      }
+
+      if (!Number.isInteger(quantity) || quantity <= 0) {
+        throw new Error('Số lượng nhập/xuất phải lớn hơn 0.');
+      }
+
+      const stockResult = await client.query(
+        `SELECT "CurrentQuantity"
+         FROM "SparePart"
+         WHERE "ID" = $1
+         FOR UPDATE`,
+        [transaction.sparePartId]
+      );
+
+      if (stockResult.rows.length === 0) {
+        throw new Error('Không tìm thấy vật tư.');
+      }
+
+      const currentQuantity = Number(stockResult.rows[0].CurrentQuantity || 0);
+      const quantityModifier = transaction.type === SparePartTransactionType.In ? quantity : -quantity;
+      const nextQuantity = currentQuantity + quantityModifier;
+
+      if (nextQuantity < 0) {
+        throw new Error('Số lượng xuất vượt quá tồn kho hiện tại.');
+      }
+
       const result = await client.query(
         `INSERT INTO "SparePartTransaction" ("SparePartID", "Type", "Quantity", "TransactionDate", "Note", "RelatedReportID", "CreatedBy")
          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING "ID"`,
         [
           transaction.sparePartId, 
           transaction.type, 
-          transaction.quantity, 
+          quantity,
           transaction.transactionDate || new Date(), 
           transaction.note, 
           transaction.relatedReportId, 
@@ -198,9 +229,6 @@ export class SparePartService {
         ]
       );
       const transactionId = result.rows[0].ID;
-
-      // 2. Update the CurrentQuantity in SparePart table
-      const quantityModifier = transaction.type === SparePartTransactionType.In ? transaction.quantity : -transaction.quantity;
       
       await client.query(
         `UPDATE "SparePart" SET "CurrentQuantity" = "CurrentQuantity" + $1, "UpdatedAt" = CURRENT_TIMESTAMP WHERE "ID" = $2`,

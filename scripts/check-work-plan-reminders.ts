@@ -1,5 +1,6 @@
 import pool from '../lib/db';
 import { NotificationService, NotificationType, NotificationCategory } from '../lib/services/notificationService';
+import { WorkPlanService } from '../lib/services/workPlanService';
 import { format } from 'date-fns';
 import { getVNNow } from '../lib/utils/dateFormat';
 
@@ -7,8 +8,12 @@ async function checkWorkPlanReminders() {
   console.log('⏰ Checking work plan reminders...');
   const today = format(getVNNow(), 'yyyy-MM-dd');
   const notificationService = new NotificationService();
+  const workPlanService = new WorkPlanService();
 
   try {
+    const implementedCount = await workPlanService.implementDuePlans(today, 'system');
+    console.log(`Auto implemented ${implementedCount} due work plans.`);
+
     // Find all staff who have work plan items for today that are not yet implemented
     const result = await pool.query(
       `SELECT DISTINCT "StaffID" 

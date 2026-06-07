@@ -2398,10 +2398,24 @@ export default function DamageReportsPage() {
                           <td style={{ padding: '0.45rem 0.75rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                               <span style={{ fontWeight: 600, color: '#1e293b', whiteSpace: 'normal', wordBreak: 'break-word', display: 'block' }}>
-                                {report.maintenanceBatchId && (!report.deviceName || report.deviceName === '-') ? (
-                                  <span className="badge bg-info bg-opacity-10 text-info fw-bold me-1" style={{ fontSize: '0.7rem' }}>Bảo trì</span>
-                                ) : null}
                                 {report.displayLocation || 'Không xác định'}
+                                {report.maintenanceBatchId && (!report.deviceName || report.deviceName === '-') ? (
+                                  <span className="badge bg-info bg-opacity-10 text-info fw-bold ms-1" style={{ fontSize: '0.7rem' }}>Bảo trì</span>
+                                ) : null}
+                                {report.isFromWorkPlan ? (
+                                  <span
+                                    className="badge fw-semibold ms-1"
+                                    title={report.sourcePlanDate ? `Tạo từ kế hoạch ngày ${formatDateDisplay(report.sourcePlanDate)}` : 'Tạo từ kế hoạch'}
+                                    style={{
+                                      backgroundColor: '#ecfdf5',
+                                      color: '#047857',
+                                      border: '1px solid #a7f3d0',
+                                      fontSize: '0.68rem'
+                                    }}
+                                  >
+                                    Kế hoạch
+                                  </span>
+                                ) : null}
                               </span>
                               {report.isOverdue && (
                                 <i className="fas fa-exclamation-triangle" style={{ color: '#ef4444', fontSize: '0.7rem', flexShrink: 0 }} title="Quá hạn"></i>
@@ -2597,15 +2611,30 @@ export default function DamageReportsPage() {
                               >
                                 #{report.id}
                               </span>
+                              {report.isFromWorkPlan ? (
+                                <span
+                                  className="badge fw-semibold"
+                                  title={report.sourcePlanDate ? `Tạo từ kế hoạch ngày ${formatDateDisplay(report.sourcePlanDate)}` : 'Tạo từ kế hoạch'}
+                                  style={{
+                                    backgroundColor: 'rgba(16, 185, 129, 0.18)',
+                                    color: '#ffffff',
+                                    border: '1px solid rgba(255,255,255,0.35)',
+                                    fontSize: '0.58rem',
+                                    padding: '3px 6px'
+                                  }}
+                                >
+                                  KH
+                                </span>
+                              ) : null}
                               <h6 className="mb-0 text-truncate text-white" style={{
                                 fontSize: '0.85rem',
                                 fontWeight: '700',
                                 lineHeight: '1.2'
                               }}>
-                                {report.maintenanceBatchId && (!report.deviceName || report.deviceName === '-') ? (
-                                  <span className="badge bg-info bg-opacity-25 text-white fw-bold me-2" style={{ fontSize: '0.6rem', border: '1px solid rgba(255,255,255,0.3)' }}>Bảo trì</span>
-                                ) : null}
                                 {report.displayLocation || 'Không xác định'}
+                                {report.maintenanceBatchId && (!report.deviceName || report.deviceName === '-') ? (
+                                  <span className="badge bg-info bg-opacity-25 text-white fw-bold ms-2" style={{ fontSize: '0.6rem', border: '1px solid rgba(255,255,255,0.3)' }}>Bảo trì</span>
+                                ) : null}
                               </h6>
                               {report.isOverdue && (
                                 <span className="badge bg-danger text-white border-0 py-0 px-1" style={{ fontSize: '0.5rem', fontWeight: '800', borderRadius: '4px' }}>

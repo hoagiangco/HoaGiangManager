@@ -10,6 +10,9 @@ export async function PATCH(
     const { user, error } = await authenticate(request);
     if (!user) return NextResponse.json({ status: false, error: error || 'Unauthorized' }, { status: 401 });
 
+    const { isAdmin } = await import('@/lib/auth/permissions');
+    if (!isAdmin(user.roles)) return NextResponse.json({ status: false, error: 'Forbidden' }, { status: 403 });
+
     const id = parseInt(params.id);
     const { note } = await request.json();
 

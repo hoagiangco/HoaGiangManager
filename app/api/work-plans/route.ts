@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkPlanService } from '@/lib/services/workPlanService';
 import { ApiResponse } from '@/types';
+import { format } from 'date-fns';
+import { getVNNow } from '@/lib/utils/dateFormat';
 
 const workPlanService = new WorkPlanService();
 
@@ -9,9 +11,24 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const date = searchParams.get('date');
     const staffId = searchParams.get('staffId');
+    const archive = searchParams.get('archive') === 'true';
 
-    if (!date || !staffId) {
-      return NextResponse.json({ status: false, error: 'Missing date or staffId' }, { status: 400 });
+    if (!staffId) {
+      return NextResponse.json({ status: false, error: 'Missing staffId' }, { status: 400 });
+    }
+
+    if (archive) {
+      const items = await workPlanService.listArchive(parseInt(staffId));
+      return NextResponse.json({ status: true, data: items });
+    }
+
+    if (!date) {
+      return NextResponse.json({ status: false, error: 'Missing date' }, { status: 400 });
+    }
+
+    const today = format(getVNNow(), 'yyyy-MM-dd');
+    if (date <= today) {
+      await workPlanService.implementDuePlans(today, 'system', parseInt(staffId));
     }
 
     const items = await workPlanService.list(date, parseInt(staffId));

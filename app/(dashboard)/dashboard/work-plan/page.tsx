@@ -36,6 +36,8 @@ export default function WorkPlanPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'pending' | 'new'>('pending');
   const [taskTab, setTaskTab] = useState<'general' | 'device'>('general');
+  const [scheduleMode, setScheduleMode] = useState<'archive' | 'date'>('archive');
+  const [planApplyDate, setPlanApplyDate] = useState<Date>(addDays(new Date(), 1));
 
   const [copyTaskModalData, setCopyTaskModalData] = useState<WorkPlanItemVM | null>(null);
   const [copyTargetDate, setCopyTargetDate] = useState<Date>(addDays(new Date(), 1));
@@ -110,7 +112,7 @@ export default function WorkPlanPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const loadOverdueItems = useCallback(async () => {
+  const loadArchiveItems = useCallback(async () => {
     if (!user) return;
     setOverdueLoading(true);
     try {
@@ -118,17 +120,17 @@ export default function WorkPlanPage() {
       if (!staffRes.data.status) return;
       const myStaff = staffRes.data.data;
       const targetStaffId = isAdmin ? 0 : myStaff.id;
-      const res = await api.get(`/work-plans/overdue?staffId=${targetStaffId}&isAdmin=${isAdmin}`);
+      const res = await api.get(`/work-plans?archive=true&staffId=${targetStaffId}`);
       if (res.data.status) {
         setOverdueItems(res.data.data);
-        // Init individual target dates to tomorrow
         const tomorrow = addDays(new Date(), 1);
         const initDates: Record<number, Date> = {};
         res.data.data.forEach((item: WorkPlanItemVM) => { initDates[item.id] = tomorrow; });
         setItemTargetDates(initDates);
       }
     } catch (e) {
-      console.error('Lỗi tải kế hoạch tồn:', e);
+      console.error('Lỗi tải kho kế hoạch:', e);
+      toast.error('Lỗi khi tải kho kế hoạch');
     } finally {
       setOverdueLoading(false);
     }
@@ -142,12 +144,13 @@ export default function WorkPlanPage() {
       const res = await api.post('/work-plans', {
         planDate: dateStr,
         staffId: item.staffId,
-        isNewTask: true,
+        damageReportId: item.isNewTask ? undefined : item.damageReportId,
+        isNewTask: item.isNewTask,
         title: item.title,
-        draftData: item.draftData || {
+        draftData: item.isNewTask ? (item.draftData || {
           damageLocation: item.location || '',
           damageContent: item.damageContent || item.title,
-        },
+        }) : null,
         createdBy: user?.id
       });
       if (res.data.status) {
@@ -237,6 +240,7 @@ export default function WorkPlanPage() {
 
   const handleCreateNewTask = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (taskTab === 'general' && !newTask.title.trim()) { toast.warning('Nhập vị trí/mô tả chung'); return; }
     if (!newTask.damageContent.trim()) { toast.warning('Nhập nội dung'); return; }
     if (!newTask.staffId) { toast.warning('Vui lòng chọn người thực hiện'); return; }
 
@@ -246,22 +250,20 @@ export default function WorkPlanPage() {
     }
 
     try {
-      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+      const planDate = scheduleMode === 'date' ? format(planApplyDate, 'yyyy-MM-dd') : null;
       
       let finalTitle = newTask.title;
       if (taskTab === 'device') {
         const dev = devices.find(d => d.id === newTask.deviceId);
         finalTitle = dev ? dev.name : 'Báo cáo thiết bị';
-      } else if (!finalTitle) {
-        finalTitle = newTask.damageContent.substring(0, 50);
       }
 
       const res = await api.post('/work-plans', {
-        planDate: dateStr, staffId: newTask.staffId, isNewTask: true,
+        planDate, staffId: newTask.staffId, isNewTask: true,
         title: finalTitle,
         draftData: {
           deviceId: taskTab === 'device' ? newTask.deviceId : undefined, 
-          damageLocation: newTask.damageLocation,
+          damageLocation: taskTab === 'general' ? finalTitle : '',
           damageContent: newTask.damageContent, priority: newTask.priority,
           reporterId: staff.id, reportingDepartmentId: staff.departmentId
         },
@@ -273,6 +275,51 @@ export default function WorkPlanPage() {
         loadData();
       }
     } catch (error) { toast.error('Lỗi khi tạo việc'); }
+  };
+
+  const handleSavePlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (taskTab === 'general' && !newTask.title.trim()) { toast.warning('Nhập vị trí/mô tả chung'); return; }
+    if (!newTask.damageContent.trim()) { toast.warning('Nhập nội dung'); return; }
+    if (!newTask.staffId) { toast.warning('Vui lòng chọn người thực hiện'); return; }
+
+    if (taskTab === 'device' && !newTask.deviceId) {
+      toast.warning('Vui lòng chọn thiết bị');
+      return;
+    }
+
+    try {
+      const planDate = scheduleMode === 'date' ? format(planApplyDate, 'yyyy-MM-dd') : null;
+      let finalTitle = newTask.title;
+      if (taskTab === 'device') {
+        const dev = devices.find(d => d.id === newTask.deviceId);
+        finalTitle = dev ? dev.name : 'Báo cáo thiết bị';
+      }
+
+      const res = await api.post('/work-plans', {
+        planDate,
+        staffId: newTask.staffId,
+        isNewTask: true,
+        title: finalTitle,
+        draftData: {
+          deviceId: taskTab === 'device' ? newTask.deviceId : undefined,
+          damageLocation: taskTab === 'general' ? finalTitle : '',
+          damageContent: newTask.damageContent,
+          priority: newTask.priority,
+          reporterId: staff.id,
+          reportingDepartmentId: staff.departmentId
+        },
+        createdBy: user?.id
+      });
+      if (res.data.status) {
+        toast.success(scheduleMode === 'date' ? 'Đã lưu kế hoạch có ngày áp dụng' : 'Đã lưu vào kho kế hoạch');
+        setIsModalOpen(false);
+        setNewTask({ title: '', deviceId: undefined, damageLocation: '', damageContent: '', priority: DamageReportPriority.Normal, staffId: staff.id });
+        loadData();
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Lỗi khi tạo kế hoạch');
+    }
   };
 
   const handleDeviceChange = (devId: number) => {
@@ -390,19 +437,14 @@ export default function WorkPlanPage() {
             </div>
           )}
           <button
-            className="btn btn-outline-warning rounded-pill px-3 py-2 fw-bold d-flex align-items-center gap-2 position-relative"
-            onClick={() => { setOverdueDrawerOpen(true); loadOverdueItems(); }}
-            title="Kế hoạch chưa triển khai"
+            className="btn btn-outline-primary rounded-pill px-3 py-2 fw-bold d-flex align-items-center gap-2"
+            onClick={() => { setOverdueDrawerOpen(true); loadArchiveItems(); }}
+            title="Kho lưu trữ kế hoạch"
           >
-            <i className="fas fa-clock-rotate-left"></i>
-            <span className="d-none d-sm-inline">Kế hoạch tồn</span>
-            {overdueItems.length > 0 && (
-              <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style={{ fontSize: '0.6rem' }}>
-                {overdueItems.length}
-              </span>
-            )}
+            <i className="fas fa-box-archive"></i>
+            <span className="d-none d-sm-inline">Kho kế hoạch</span>
           </button>
-          <button className="btn btn-primary rounded-pill px-4 py-2 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2" onClick={() => { setModalMode('new'); setIsModalOpen(true); }}>
+          <button className="btn btn-primary rounded-pill px-4 py-2 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2" onClick={() => { setModalMode('new'); setScheduleMode('archive'); setPlanApplyDate(selectedDate); setIsModalOpen(true); }}>
             <i className="fas fa-plus"></i>
             <span>Thêm công việc</span>
           </button>
@@ -574,8 +616,8 @@ export default function WorkPlanPage() {
             {/* Drawer Header */}
             <div className="overdue-drawer-header">
               <div>
-                <h5 className="m-0 fw-bold"><i className="fas fa-clock-rotate-left me-2 text-warning"></i>Kế hoạch chưa triển khai</h5>
-                <p className="m-0 text-muted small mt-1">Các công việc đã qua ngày mà chưa được thực hiện</p>
+                <h5 className="m-0 fw-bold"><i className="fas fa-box-archive me-2 text-primary"></i>Kho kế hoạch</h5>
+                <p className="m-0 text-muted small mt-1">Các kế hoạch chưa gán ngày áp dụng</p>
               </div>
               <button className="btn-close-custom" onClick={() => setOverdueDrawerOpen(false)}><i className="fas fa-times"></i></button>
             </div>
@@ -631,13 +673,13 @@ export default function WorkPlanPage() {
               ) : overdueItems.length === 0 ? (
                 <div className="text-center py-5">
                   <div style={{ fontSize: '3rem' }}>🎉</div>
-                  <p className="text-muted mt-2">Không có kế hoạch nào tồn đọng!</p>
+                  <p className="text-muted mt-2">Kho kế hoạch đang trống.</p>
                 </div>
               ) : (() => {
                 // Group by planDate
                 const groups: Record<string, WorkPlanItemVM[]> = {};
                 overdueItems.forEach(item => {
-                  const dk = item.planDate ? format(new Date(item.planDate), 'yyyy-MM-dd') : 'unknown';
+                  const dk = item.planDate ? format(new Date(item.planDate), 'yyyy-MM-dd') : 'archive';
                   if (!groups[dk]) groups[dk] = [];
                   groups[dk].push(item);
                 });
@@ -645,7 +687,7 @@ export default function WorkPlanPage() {
                   <div key={dateKey} className="overdue-group">
                     <div className="overdue-group-label">
                       <i className="fas fa-calendar-day me-2"></i>
-                      {format(new Date(dateKey + 'T00:00:00'), 'EEEE, dd/MM/yyyy', { locale: vi })}
+                      {dateKey === 'archive' ? 'Chưa gán ngày áp dụng' : format(new Date(dateKey + 'T00:00:00'), 'EEEE, dd/MM/yyyy', { locale: vi })}
                       <span className="badge bg-danger-subtle text-danger ms-2">{groupItems.length} việc</span>
                     </div>
                     {groupItems.map(item => {
@@ -764,25 +806,26 @@ export default function WorkPlanPage() {
       {/* Premium Modal */}
       {isModalOpen && (
         <div className="custom-modal-overlay">
-          <div className="custom-modal glass-card p-0 overflow-hidden shadow-lg border-0" style={{ maxWidth: '650px' }}>
-            <div className="modal-header-premium p-4 border-bottom bg-white d-flex justify-content-between align-items-center">
+          <div className="custom-modal glass-card p-0 overflow-hidden shadow-lg border-0" style={{ maxWidth: '620px' }}>
+            <div className="modal-header-premium compact p-3 border-bottom bg-white d-flex justify-content-between align-items-center">
               <div>
                 <h4 className="m-0 fw-bold text-dark">Lên kế hoạch mới</h4>
-                <p className="text-muted small m-0 mt-1">Sắp xếp công việc cho ngày {format(selectedDate, 'dd/MM/yyyy')}</p>
               </div>
               <button className="btn-close-custom" onClick={() => setIsModalOpen(false)}><i className="fas fa-times"></i></button>
             </div>
 
-            <div className="modal-tabs-container bg-light p-2 d-flex gap-2">
+            <div className="modal-tabs-container compact bg-white p-2 d-flex gap-2 border-bottom">
               <button 
-                className={`flex-fill btn rounded-3 py-2 fw-bold d-flex align-items-center justify-content-center gap-2 transition-all ${taskTab === 'general' ? 'btn-white shadow-sm text-primary' : 'btn-link text-muted text-decoration-none'}`}
+                type="button"
+                className={`modal-tab-btn flex-fill btn fw-bold d-flex align-items-center justify-content-center gap-2 transition-all ${taskTab === 'general' ? 'active' : ''}`}
                 onClick={() => setTaskTab('general')}
               >
                 <i className="fas fa-tasks"></i>
                 Công việc chung
               </button>
               <button 
-                className={`flex-fill btn rounded-3 py-2 fw-bold d-flex align-items-center justify-content-center gap-2 transition-all ${taskTab === 'device' ? 'btn-white shadow-sm text-primary' : 'btn-link text-muted text-decoration-none'}`}
+                type="button"
+                className={`modal-tab-btn flex-fill btn fw-bold d-flex align-items-center justify-content-center gap-2 transition-all ${taskTab === 'device' ? 'active' : ''}`}
                 onClick={() => setTaskTab('device')}
               >
                 <i className="fas fa-tools"></i>
@@ -790,21 +833,37 @@ export default function WorkPlanPage() {
               </button>
             </div>
 
-            <div className="modal-body p-4 bg-white">
-              <form onSubmit={handleCreateNewTask}>
-                <div className="row g-3">
+            <div className="modal-body compact p-3 bg-white">
+              <form onSubmit={handleSavePlan}>
+                <div className="schedule-option-box compact mb-3">
+                  <div className="schedule-inline-row">
+                    <span className="schedule-label small fw-bold text-uppercase ls-1">Ngày áp dụng</span>
+                    <label className="schedule-check m-0">
+                      <input
+                        type="checkbox"
+                        checked={scheduleMode === 'date'}
+                        onChange={e => setScheduleMode(e.target.checked ? 'date' : 'archive')}
+                      />
+                      <span>Gán ngày áp dụng</span>
+                    </label>
+                    {scheduleMode === 'date' && (
+                      <DatePicker
+                        selected={planApplyDate}
+                        onChange={(date: Date) => setPlanApplyDate(date || addDays(new Date(), 1))}
+                        dateFormat="dd/MM/yyyy"
+                        minDate={new Date()}
+                        className="form-control form-control-premium schedule-date-input"
+                        portalId="root-portal"
+                      />
+                    )}
+                  </div>
+                </div>
+                <div className="row g-2">
                   {/* Title only for General Task */}
                   {taskTab === 'general' && (
                     <div className="col-12 animate-fade-in">
-                      <label className="form-label small fw-bold text-uppercase ls-1">Tiêu đề công việc <span className="text-danger">*</span></label>
-                      <input type="text" className="form-control form-control-premium" value={newTask.title} onChange={e => setNewTask({...newTask, title: e.target.value})} placeholder="Vd: Kiểm tra đèn hành lang, Vệ sinh khu vực..." required={taskTab === 'general'} />
-                    </div>
-                  )}
-
-                  {taskTab === 'general' && (
-                    <div className="col-12 animate-fade-in">
-                      <label className="form-label small fw-bold text-uppercase ls-1">Vị trí / Khu vực <span className="text-muted fw-normal">(tuỳ chọn)</span></label>
-                      <input type="text" className="form-control form-control-premium" value={newTask.damageLocation} onChange={e => setNewTask({...newTask, damageLocation: e.target.value})} placeholder="Vd: Vườn rau, Nhà bếp, Sân vườn..." />
+                      <label className="form-label small fw-bold text-uppercase ls-1">Vị trí/Mô tả chung <span className="text-danger">*</span></label>
+                      <input type="text" className="form-control form-control-premium" value={newTask.title} onChange={e => setNewTask({...newTask, title: e.target.value})} placeholder="VD: Tường hành lang, hệ thống điện..." required={taskTab === 'general'} />
                     </div>
                   )}
 
@@ -832,12 +891,12 @@ export default function WorkPlanPage() {
                   ) : null}
 
                   <div className="col-12">
-                    <label className="form-label small fw-bold text-uppercase ls-1">Nội dung chi tiết <span className="text-danger">*</span></label>
-                    <textarea className="form-control form-control-premium" rows={3} value={newTask.damageContent} onChange={e => setNewTask({...newTask, damageContent: e.target.value})} placeholder="Mô tả cụ thể những gì cần làm..." required></textarea>
+                    <label className="form-label small fw-bold text-uppercase ls-1">Nội dung <span className="text-danger">*</span></label>
+                    <textarea className="form-control form-control-premium" rows={2} value={newTask.damageContent} onChange={e => setNewTask({...newTask, damageContent: e.target.value})} placeholder="Mô tả ngắn gọn việc cần làm..." required></textarea>
                   </div>
                 </div>
 
-                <div className="d-flex flex-column flex-md-row justify-content-between align-items-stretch align-items-md-center mt-4 pt-3 border-top gap-3">
+                <div className="modal-footer-compact d-flex flex-column flex-md-row justify-content-between align-items-stretch align-items-md-center mt-3 pt-3 border-top gap-2">
                   <div className="priority-modern d-flex align-items-center justify-content-between justify-content-md-start gap-2">
                     <span className="small text-muted fw-bold text-nowrap">Ưu tiên:</span>
                     <div className="btn-group btn-group-sm">
@@ -856,7 +915,7 @@ export default function WorkPlanPage() {
                       ))}
                     </div>
                   </div>
-                  <button type="submit" className="btn btn-primary btn-lg px-4 rounded-3 shadow fw-bold d-flex align-items-center justify-content-center gap-2">
+                  <button type="submit" className="btn btn-primary px-4 py-2 rounded-3 shadow fw-bold d-flex align-items-center justify-content-center gap-2">
                     <span>Lưu kế hoạch</span>
                     <i className="fas fa-arrow-right small"></i>
                   </button>
@@ -947,6 +1006,24 @@ export default function WorkPlanPage() {
         .custom-modal { width: 95%; max-width: 600px; max-height: 90vh; display: flex; flex-direction: column; animation: modalSlideUp 0.3s ease-out; }
         .modal-header-premium, .modal-tabs-container { flex-shrink: 0; }
         .modal-body { overflow-y: auto; min-height: 0; }
+        .modal-header-premium.compact h4 { font-size: 1.25rem; line-height: 1.25; }
+        .modal-tabs-container.compact { background: #fff; }
+        .modal-tab-btn { border: 1px solid transparent; border-radius: 8px; padding: 8px 10px; color: #495057; background: transparent; font-size: 0.9rem; }
+        .modal-tab-btn:hover { background: #f8f9fa; color: #0d6efd; }
+        .modal-tab-btn.active { color: #0d6efd; background: #f4f8ff; border-color: #dce9ff; box-shadow: none; }
+        .modal-body.compact .form-label { margin-bottom: 6px; }
+        .schedule-option-box.compact { padding: 0; }
+        .schedule-inline-row { display: flex; align-items: center; gap: 12px; min-height: 38px; }
+        .schedule-label { color: #343a40; min-width: 108px; margin: 0; }
+        .schedule-check { display: inline-flex; align-items: center; gap: 8px; color: #212529; font-size: 0.92rem; font-weight: 600; cursor: pointer; user-select: none; }
+        .schedule-check input { width: 16px; height: 16px; accent-color: #0d6efd; cursor: pointer; }
+        .schedule-date-input { width: 150px; padding-top: 8px; padding-bottom: 8px; }
+        @media (max-width: 575.98px) {
+          .schedule-inline-row { flex-wrap: wrap; gap: 8px 10px; }
+          .schedule-label { width: 100%; min-width: 0; }
+          .schedule-date-input { width: 100%; }
+        }
+        .modal-footer-compact .btn-group-sm > .btn { padding: 5px 12px; }
         .form-control-modern { border-radius: 10px; border: 1px solid #dee2e6; padding: 10px 14px; font-size: 0.9rem; }
         .form-control-modern:focus { box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.1); border-color: #0d6efd; }
         .btn-close-custom { border: none; background: transparent; font-size: 1.2rem; color: #adb5bd; transition: color 0.2s; }
@@ -964,7 +1041,7 @@ export default function WorkPlanPage() {
         }
 
         .transition-all { transition: all 0.2s ease; }
-        .form-control-premium { border-radius: 10px; border: 1px solid #e9ecef; padding: 12px 16px; font-size: 0.95rem; background: #fcfcfc; }
+        .form-control-premium { border-radius: 10px; border: 1px solid #e9ecef; padding: 10px 14px; font-size: 0.95rem; background: #fcfcfc; }
         .form-control-premium:focus { background: white; border-color: #0d6efd; box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.1); }
         .input-group-text { border-radius: 10px 0 0 10px; border: 1px solid #e9ecef; }
         .ls-1 { letter-spacing: 0.5px; }

@@ -97,6 +97,8 @@ export class DamageReportService {
         handler_dept."Name" as "handlerDepartmentName",
         loc."Name" as "deviceLocationName",
         updated_user."FullName" as "updatedByName",
+        source_plan."ID" as "sourcePlanId",
+        source_plan."PlanDate" as "sourcePlanDate",
         (SELECT drp."Title" 
          FROM "DeviceReminderPlan" drp 
          WHERE drp."Metadata" IS NOT NULL
@@ -115,6 +117,13 @@ export class DamageReportService {
       LEFT JOIN "Department" handler_dept ON handler."DepartmentID" = handler_dept."ID"
       LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
       LEFT JOIN "AspNetUsers" updated_user ON dr."UpdatedBy" = updated_user."Id"
+      LEFT JOIN LATERAL (
+        SELECT wpi."ID", wpi."PlanDate"
+        FROM "WorkPlanItem" wpi
+        WHERE wpi."DamageReportID" = dr."ID"
+        ORDER BY wpi."ID" DESC
+        LIMIT 1
+      ) source_plan ON TRUE
       WHERE 1=1
     `;
 
@@ -390,18 +399,25 @@ export class DamageReportService {
           reporter_dept."Name" as "reporterDepartmentName",
           handler."Name" as "handlerName",
           handler_dept."Name" as "handlerDepartmentName",
-        loc."Name" as "deviceLocationName",
           loc."Name" as "deviceLocationName",
-          updated_user."FullName" as "updatedByName"
+          updated_user."FullName" as "updatedByName",
+          source_plan."ID" as "sourcePlanId",
+          source_plan."PlanDate" as "sourcePlanDate"
         FROM "DamageReport" dr
         LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
         LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
         LEFT JOIN "Department" reporter_dept ON dr."ReportingDepartmentID" = reporter_dept."ID"
         LEFT JOIN "Staff" handler ON dr."HandlerID" = handler."ID"
         LEFT JOIN "Department" handler_dept ON handler."DepartmentID" = handler_dept."ID"
-      LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
         LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
         LEFT JOIN "AspNetUsers" updated_user ON dr."UpdatedBy" = updated_user."Id"
+        LEFT JOIN LATERAL (
+          SELECT wpi."ID", wpi."PlanDate"
+          FROM "WorkPlanItem" wpi
+          WHERE wpi."DamageReportID" = dr."ID"
+          ORDER BY wpi."ID" DESC
+          LIMIT 1
+        ) source_plan ON TRUE
         ${whereClause}
         ORDER BY ${sortBy} ${order}, dr."ID" DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}
@@ -458,6 +474,9 @@ export class DamageReportService {
       isOverdue,
       displayLocation: row.deviceName || row.maintenanceBatchTitle || row.damageLocation || 'Không xác định',
       deviceLocationName: row.deviceLocationName || null,
+      sourcePlanId: row.sourcePlanId ? Number(row.sourcePlanId) : null,
+      sourcePlanDate: row.sourcePlanDate || null,
+      isFromWorkPlan: Boolean(row.sourcePlanId),
     } as DamageReportVM;
   }
 
@@ -497,6 +516,8 @@ export class DamageReportService {
         handler_dept."Name" as "handlerDepartmentName",
         loc."Name" as "deviceLocationName",
         updated_user."FullName" as "updatedByName",
+        source_plan."ID" as "sourcePlanId",
+        source_plan."PlanDate" as "sourcePlanDate",
         (SELECT drp."Title" 
          FROM "DeviceReminderPlan" drp 
          WHERE drp."Metadata" IS NOT NULL
@@ -515,6 +536,13 @@ export class DamageReportService {
       LEFT JOIN "Department" handler_dept ON handler."DepartmentID" = handler_dept."ID"
       LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
       LEFT JOIN "AspNetUsers" updated_user ON dr."UpdatedBy" = updated_user."Id"
+      LEFT JOIN LATERAL (
+        SELECT wpi."ID", wpi."PlanDate"
+        FROM "WorkPlanItem" wpi
+        WHERE wpi."DamageReportID" = dr."ID"
+        ORDER BY wpi."ID" DESC
+        LIMIT 1
+      ) source_plan ON TRUE
       WHERE dr."ID" = $1`,
       [id]
     );
@@ -560,6 +588,9 @@ export class DamageReportService {
       daysInProgress,
       isOverdue,
       displayLocation: row.deviceName || row.maintenanceBatchTitle || row.damageLocation || 'Không xác định',
+      sourcePlanId: row.sourcePlanId ? Number(row.sourcePlanId) : null,
+      sourcePlanDate: row.sourcePlanDate || null,
+      isFromWorkPlan: Boolean(row.sourcePlanId),
     } as DamageReportVM;
   }
 
