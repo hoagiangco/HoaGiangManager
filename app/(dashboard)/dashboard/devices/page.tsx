@@ -17,6 +17,8 @@ import AdminRoute from '@/components/AdminRoute';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
 import SearchableSelect from '@/components/SearchableSelect';
 import Loading from '@/components/Loading';
+import { Supplier } from '@/types/supplier';
+import Select from 'react-select';
 
 
 // Dynamically import ReactQuill to avoid SSR issues
@@ -180,6 +182,7 @@ function DevicesPageContent() {
     locationId: 0,
     deviceCategoryId: 0,
     status: DeviceStatus.DangSuDung,
+    supplierId: 0,
   });
   
   // Debug: Log formData.img changes
@@ -214,10 +217,12 @@ function DevicesPageContent() {
   const { data: categoriesData } = useSWR<{ status: boolean; data: DeviceCategory[] }>('/device-categories', fetcher);
   const { data: departmentsData } = useSWR<{ status: boolean; data: Department[] }>('/departments', fetcher);
   const { data: locationsData, mutate: mutateLocations } = useSWR<{ status: boolean; data: Location[] }>('/locations', fetcher);
+  const { data: suppliersData } = useSWR<{ status: boolean; data: Supplier[] }>('/suppliers?limit=1000', fetcher);
 
   const categories = (categoriesData?.data || []) as DeviceCategory[];
   const departments = (departmentsData?.data || []) as Department[];
   const locations = (locationsData?.data || []) as Location[];
+  const suppliers = (suppliersData?.data || []) as Supplier[];
   const formattedLocations = useMemo(() => {
     return locations.map(loc => ({
       ...loc,
@@ -291,6 +296,7 @@ function DevicesPageContent() {
       locationId: 0,
       deviceCategoryId: categories[0]?.id || 0,
       status: DeviceStatus.DangSuDung,
+      supplierId: 0,
     });
     setHtmlSource('');
     setQuillValue('');
@@ -326,6 +332,7 @@ function DevicesPageContent() {
         locationId: device.locationId || 0,
         deviceCategoryId: device.deviceCategoryId,
         status: device.status,
+        supplierId: device.supplierId || 0,
       });
       setHtmlSource(device.description || '');
       setQuillValue(device.description || '');
@@ -1221,7 +1228,15 @@ function DevicesPageContent() {
                           onChange={() => handleCheckboxChange(device.id)}
                         />
                       </td>
-                      <td>{device.name}</td>
+                      <td>
+                        <div className="fw-medium">{device.name}</div>
+                        {device.supplierName && (
+                          <div className="small text-muted mt-1">
+                            <i className="fas fa-store me-1"></i>
+                            {device.supplierName}
+                          </div>
+                        )}
+                      </td>
                       <td style={{ wordBreak: 'break-all', minWidth: '150px' }}>{device.serial || '-'}</td>
                       <td>
                         {device.warrantyDate
@@ -1588,6 +1603,19 @@ function DevicesPageContent() {
                           <div className="image-preview-caption">{formData.img}</div>
                         </div>
                       )}
+                    </div>
+                    <div className="form-group mb-3">
+                      <label>Nhà cung cấp <span className="text-muted small">(Tùy chọn)</span></label>
+                      <Select
+                        options={[{ value: 0, label: '— Không có —' }, ...suppliers.map(s => ({ value: s.ID, label: s.Name }))]}
+                        value={formData.supplierId ? { value: formData.supplierId, label: suppliers.find(s => s.ID === formData.supplierId)?.Name || '— Chọn —' } : { value: 0, label: '— Không có —' }}
+                        onChange={(selected) => setFormData({ ...formData, supplierId: selected ? selected.value : 0 })}
+                        placeholder="Chọn nhà cung cấp..."
+                        isClearable={false}
+                        className="basic-single"
+                        classNamePrefix="select"
+                        noOptionsMessage={() => "Không tìm thấy dữ liệu"}
+                      />
                     </div>
                     <div className="form-group mb-3">
                       <label>Trạng thái</label>

@@ -54,6 +54,7 @@ export interface Device {
   locationId?: number;
   deviceCategoryId: number;
   status: DeviceStatus;
+  supplierId?: number;
 }
 
 export interface DeviceVM extends Device {
@@ -65,6 +66,7 @@ export interface DeviceVM extends Device {
   lastReportStatus?: DamageReportStatus;
   lastReportContent?: string;
   lastReportId?: number;
+  supplierName?: string;
 }
 
 // Staff types

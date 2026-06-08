@@ -1,0 +1,1 @@
+ALTER TABLE public."Supplier" ADD COLUMN IF NOT EXISTS "Zalo" VARCHAR(50);
