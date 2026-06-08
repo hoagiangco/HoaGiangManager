@@ -311,7 +311,7 @@ export default function DamageReportsPage() {
     canDelete: false,
     canUpdateStatus: false,
   });
-  const [selectedStatus, setSelectedStatus] = useState<DamageReportStatus | 0>(0);
+  const [selectedStatus, setSelectedStatus] = useState<string | number>(0);
   const [selectedPriority, setSelectedPriority] = useState<DamageReportPriority | 0>(0);
   const [selectedDevice, setSelectedDevice] = useState(0);
   const [selectedDepartment, setSelectedDepartment] = useState(0);
@@ -684,7 +684,7 @@ export default function DamageReportsPage() {
   // Use SWR for real-time polling of reports
   const currentParams = useMemo(() => {
     const params = new URLSearchParams();
-    if (selectedStatus > 0) params.append('status', selectedStatus.toString());
+    if (selectedStatus !== 0 && selectedStatus !== '0') params.append('status', selectedStatus.toString());
     if (selectedPriority > 0) params.append('priority', selectedPriority.toString());
     if (selectedDevice > 0) params.append('deviceId', selectedDevice.toString());
     if (selectedDepartment > 0) params.append('departmentId', selectedDepartment.toString());
@@ -1321,6 +1321,11 @@ export default function DamageReportsPage() {
         if (new Date(payload.handlingDate) > new Date(payload.completedDate)) {
           payload.handlingDate = payload.completedDate;
         }
+      } else if (status === DamageReportStatus.InProgress) {
+        // Auto-set handlingDate if missing, so backlog count is correct
+        if (!payload.handlingDate) {
+          payload.handlingDate = payload.reportDate;
+        }
       }
 
       // DB Constraint: Report Date <= Handling Date
@@ -1454,7 +1459,7 @@ export default function DamageReportsPage() {
   const getStatusBadge = (status: DamageReportStatus) => {
     const statusMap = {
       [DamageReportStatus.Pending]: { label: 'Chờ xử lý', class: 'badge bg-secondary', color: '#6c757d', bgColor: '#f8f9fa' },
-      [DamageReportStatus.Assigned]: { label: 'Đã phân công', class: 'badge bg-info', color: '#0dcaf0', bgColor: '#cff4fc' },
+      [DamageReportStatus.Assigned]: { label: 'Chờ xử lý', class: 'badge bg-secondary', color: '#6c757d', bgColor: '#f8f9fa' },
       [DamageReportStatus.InProgress]: { label: 'Đang xử lý', class: 'badge bg-warning', color: '#ffc107', bgColor: '#fff3cd' },
       [DamageReportStatus.Completed]: { label: 'Hoàn thành', class: 'badge bg-success', color: '#198754', bgColor: '#d1e7dd' },
       [DamageReportStatus.Cancelled]: { label: 'Đã hủy', class: 'badge bg-dark', color: '#212529', bgColor: '#e9ecef' },
@@ -1467,7 +1472,7 @@ export default function DamageReportsPage() {
   const getStatusStyle = (status: DamageReportStatus) => {
     const statusMap = {
       [DamageReportStatus.Pending]: { color: '#64748b', backgroundColor: '#f1f5f9', borderColor: '#cbd5e1', tint: '#f8fafc' },
-      [DamageReportStatus.Assigned]: { color: '#0369a1', backgroundColor: '#e0f2fe', borderColor: '#7dd3fc', tint: '#f0f9ff' },
+      [DamageReportStatus.Assigned]: { color: '#64748b', backgroundColor: '#f1f5f9', borderColor: '#cbd5e1', tint: '#f8fafc' },
       [DamageReportStatus.InProgress]: { color: '#1d4ed8', backgroundColor: '#dbeafe', borderColor: '#93c5fd', tint: '#eff6ff' },
       [DamageReportStatus.Completed]: { color: '#15803d', backgroundColor: '#dcfce7', borderColor: '#86efac', tint: '#f0fdf4' },
       [DamageReportStatus.Cancelled]: { color: '#374151', backgroundColor: '#f3f4f6', borderColor: '#d1d5db', tint: '#f9fafb' },
@@ -1479,7 +1484,7 @@ export default function DamageReportsPage() {
   const getStatusLabel = (status: DamageReportStatus) => {
     const labelMap = {
       [DamageReportStatus.Pending]: 'Chờ xử lý',
-      [DamageReportStatus.Assigned]: 'Đã phân công',
+      [DamageReportStatus.Assigned]: 'Chờ xử lý',
       [DamageReportStatus.InProgress]: 'Đang xử lý',
       [DamageReportStatus.Completed]: 'Hoàn thành',
       [DamageReportStatus.Cancelled]: 'Đã hủy',
@@ -2086,11 +2091,11 @@ export default function DamageReportsPage() {
                       <select
                         className="form-select form-select-sm"
                         value={selectedStatus}
-                        onChange={(e) => setSelectedStatus(Number(e.target.value) as DamageReportStatus | 0)}
+                        onChange={(e) => setSelectedStatus(e.target.value === '1,2' ? '1,2' : Number(e.target.value))}
                         style={{ borderRadius: '6px' }}
                       >
                         <option value="0">Tất cả</option>
-                        <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
+                        <option value="1,2">Chờ xử lý</option>
                         <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
                         <option value={DamageReportStatus.Completed}>Hoàn thành</option>
                         <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
@@ -2474,7 +2479,7 @@ export default function DamageReportsPage() {
                             >
                               {isAdmin(currentUser?.roles) ? (
                                 <>
-                                  <option value={DamageReportStatus.Pending}>Chờ</option>
+                                  <option value={report.status === DamageReportStatus.Assigned ? DamageReportStatus.Assigned : DamageReportStatus.Pending}>Chờ</option>
                                   <option value={DamageReportStatus.InProgress}>Đang XL</option>
                                   <option value={DamageReportStatus.Completed}>Xong</option>
                                   <option value={DamageReportStatus.Cancelled}>Hủy</option>
@@ -2482,10 +2487,10 @@ export default function DamageReportsPage() {
                                 </>
                               ) : (
                                 <>
-                                  {report.status === DamageReportStatus.Pending && (
-                                    <option value={DamageReportStatus.Pending}>Chờ</option>
+                                  {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned) && (
+                                    <option value={report.status}>Chờ</option>
                                   )}
-                                  {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.InProgress) && (
+                                  {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned || report.status === DamageReportStatus.InProgress) && (
                                     <option value={DamageReportStatus.InProgress}>Đang XL</option>
                                   )}
                                   <option value={DamageReportStatus.Completed}>Xong</option>
@@ -2741,7 +2746,7 @@ export default function DamageReportsPage() {
                               >
                                 {isAdmin(currentUser?.roles) ? (
                                   <>
-                                    <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
+                                    <option value={report.status === DamageReportStatus.Assigned ? DamageReportStatus.Assigned : DamageReportStatus.Pending}>Chờ xử lý</option>
                                     <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
                                     <option value={DamageReportStatus.Completed}>Hoàn thành</option>
                                     <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
@@ -2749,7 +2754,9 @@ export default function DamageReportsPage() {
                                   </>
                                 ) : (
                                   <>
-                                    <option value={DamageReportStatus.Pending}>Chờ xử lý</option>
+                                    {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned) && (
+                                      <option value={report.status}>Chờ xử lý</option>
+                                    )}
                                     <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
                                     <option value={DamageReportStatus.Completed}>Hoàn thành</option>
                                     <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
@@ -3286,7 +3293,7 @@ export default function DamageReportsPage() {
                         </select>
                       </div>
                       <div className="col-6 mb-1">
-                        <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Người xử lý</label>
+                        <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Người xử lý <span className="text-danger">*</span></label>
                         <select 
                           className="form-select form-select-sm shadow-none" 
                           value={formData.handlerId || 0} 
@@ -3443,23 +3450,7 @@ export default function DamageReportsPage() {
                   <button type="button" className="btn btn-light rounded-pill btn-sm flex-fill" style={{ fontWeight: '600' }} onClick={() => setShowModal(false)}>
                     <i className="fas fa-times me-1"></i>Hủy
                   </button>
-                  {canFinishImmediately && !isEdit && (
-                    <button 
-                      type="button" 
-                      className="btn btn-success rounded-pill btn-sm shadow-sm flex-fill d-flex align-items-center justify-content-center gap-1" 
-                      style={{ fontWeight: '700' }} 
-                      onClick={() => {
-                        if (formData.deviceSelection === 'other') {
-                          handleSave(true);
-                        } else {
-                          setShowDoneConfirm(true);
-                        }
-                      }}
-                    >
-                      <i className="fas fa-check"></i>
-                      <span>Xong</span>
-                    </button>
-                  )}
+
                   <button type="button" className="btn btn-primary rounded-pill btn-sm shadow-sm flex-fill" style={{ fontWeight: '700' }} onClick={() => handleSave(false)}>
                     <i className="fas fa-save me-1"></i>Lưu
                   </button>

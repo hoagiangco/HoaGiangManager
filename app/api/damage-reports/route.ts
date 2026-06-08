@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     const status = searchParams.get('status');
     if (status) {
-      filters.status = parseInt(status) as DamageReportStatus;
+      filters.status = status;
     }
 
     const priority = searchParams.get('priority');
@@ -98,9 +98,15 @@ export async function POST(request: NextRequest) {
     if (!reportData.reportDate) {
       reportData.reportDate = getVNTodayStr();
     }
-    if (!reportData.status) {
+    // Force Pending status for all new reports from Reports and Plans
+    if (reportData.deviceSelection !== 'maintenance') {
+      reportData.status = DamageReportStatus.Pending;
+      reportData.handlingDate = null;
+      reportData.completedDate = null;
+    } else if (!reportData.status) {
       reportData.status = DamageReportStatus.Pending;
     }
+    
     if (!reportData.priority) {
       reportData.priority = DamageReportPriority.Normal;
     }

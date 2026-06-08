@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     const departmentId = parseInt(searchParams.get('departmentId') || '0');
     const staffId = parseInt(searchParams.get('staffId') || '0');
     const category = searchParams.get('category') || 'all'; // all, pending, completed, backlog, priority
+    const keyword = searchParams.get('keyword') || searchParams.get('search') || '';
 
     // Use date string directly for getDailyReportData to avoid UTC timezone shift
     let targetDateStr: string;
@@ -34,7 +35,8 @@ export async function GET(request: NextRequest) {
     const damageReportService = new DamageReportService();
     const data = await damageReportService.getDailyReportData(targetDateStr, {
       departmentId: departmentId > 0 ? departmentId : undefined,
-      handlerId: staffId > 0 ? staffId : undefined
+      handlerId: staffId > 0 ? staffId : undefined,
+      search: keyword || undefined
     });
 
     // Flatten and tag reports

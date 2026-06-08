@@ -137,7 +137,8 @@ export async function GET(request: NextRequest) {
       const data = await damageReportService.getDailyReportData(fromDateStr, { 
         departmentId: selectedDeptId, 
         handlerId: selectedHandlerId,
-        maintenanceBatchId: maintenanceBatchId || undefined
+        maintenanceBatchId: maintenanceBatchId || undefined,
+        search: keyword || undefined
       });
       dailySummary = data.summary;
       

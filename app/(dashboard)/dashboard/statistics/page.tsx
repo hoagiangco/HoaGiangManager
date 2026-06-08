@@ -444,6 +444,7 @@ export default function StatisticsPage() {
     params.append('date', reportFilters.fromDate || getLocalDateStr());
     if (reportFilters.deptId > 0) params.append('departmentId', reportFilters.deptId.toString());
     if (reportFilters.staffId > 0) params.append('staffId', reportFilters.staffId.toString());
+    if (reportFilters.search) params.append('keyword', reportFilters.search);
     params.append('category', 'all');
     return `/damage-reports/daily-report-list?${params.toString()}`;
   };

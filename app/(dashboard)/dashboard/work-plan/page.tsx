@@ -34,13 +34,14 @@ export default function WorkPlanPage() {
   const [viewStaffId, setViewStaffId] = useState<number | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<'pending' | 'new'>('pending');
+  const [modalMode, setModalMode] = useState<'pending' | 'new' | 'edit'>('pending');
+  const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [taskTab, setTaskTab] = useState<'general' | 'device'>('general');
   const [scheduleMode, setScheduleMode] = useState<'archive' | 'date'>('archive');
   const [planApplyDate, setPlanApplyDate] = useState<Date>(addDays(new Date(), 1));
 
-  const [copyTaskModalData, setCopyTaskModalData] = useState<WorkPlanItemVM | null>(null);
-  const [copyTargetDate, setCopyTargetDate] = useState<Date>(addDays(new Date(), 1));
+  const [moveTaskModalData, setMoveTaskModalData] = useState<WorkPlanItemVM | null>(null);
+  const [moveTargetDate, setMoveTargetDate] = useState<Date>(addDays(new Date(), 1));
   const [activeDates, setActiveDates] = useState<Date[]>([]);
 
   // Overdue backlog drawer
@@ -228,7 +229,7 @@ export default function WorkPlanPage() {
       
       const targetStaffId = !isAdmin ? staff.id : (viewStaffId === undefined ? staff.id : viewStaffId);
       // Assign to the DamageReport Handler if available, else target viewed staff, else current staff
-      const assignToStaffId = reportHandlerId || (targetStaffId !== 0 ? targetStaffId : staff.id);
+      const assignToStaffId = reportHandlerId || (targetStaffId !== 0 ? targetStaffId : (staff?.id || 0));
 
       const res = await api.post('/work-plans', {
         planDate: dateStr, staffId: assignToStaffId, damageReportId: reportId,
@@ -265,13 +266,13 @@ export default function WorkPlanPage() {
           deviceId: taskTab === 'device' ? newTask.deviceId : undefined, 
           damageLocation: taskTab === 'general' ? finalTitle : '',
           damageContent: newTask.damageContent, priority: newTask.priority,
-          reporterId: staff.id, reportingDepartmentId: staff.departmentId
+          reporterId: staff?.id || newTask.staffId, reportingDepartmentId: staff?.departmentId || undefined
         },
         createdBy: user?.id
       });
       if (res.data.status) {
         toast.success('Đã thêm việc mới'); setIsModalOpen(false);
-        setNewTask({ title: '', deviceId: undefined, damageLocation: '', damageContent: '', priority: DamageReportPriority.Normal, staffId: staff.id });
+        setNewTask({ title: '', deviceId: undefined, damageLocation: '', damageContent: '', priority: DamageReportPriority.Normal, staffId: staff?.id || undefined });
         loadData();
       }
     } catch (error) { toast.error('Lỗi khi tạo việc'); }
@@ -296,26 +297,49 @@ export default function WorkPlanPage() {
         finalTitle = dev ? dev.name : 'Báo cáo thiết bị';
       }
 
-      const res = await api.post('/work-plans', {
-        planDate,
-        staffId: newTask.staffId,
-        isNewTask: true,
-        title: finalTitle,
-        draftData: {
-          deviceId: taskTab === 'device' ? newTask.deviceId : undefined,
-          damageLocation: taskTab === 'general' ? finalTitle : '',
-          damageContent: newTask.damageContent,
-          priority: newTask.priority,
-          reporterId: staff.id,
-          reportingDepartmentId: staff.departmentId
-        },
-        createdBy: user?.id
-      });
-      if (res.data.status) {
-        toast.success(scheduleMode === 'date' ? 'Đã lưu kế hoạch có ngày áp dụng' : 'Đã lưu vào kho kế hoạch');
-        setIsModalOpen(false);
-        setNewTask({ title: '', deviceId: undefined, damageLocation: '', damageContent: '', priority: DamageReportPriority.Normal, staffId: staff.id });
-        loadData();
+      if (modalMode === 'edit' && editingTaskId) {
+        const res = await api.patch(`/work-plans/${editingTaskId}`, {
+          action: 'update-details',
+          staffId: newTask.staffId,
+          isAdmin,
+          title: finalTitle,
+          draftData: {
+            deviceId: taskTab === 'device' ? newTask.deviceId : undefined,
+            damageLocation: taskTab === 'general' ? finalTitle : '',
+            damageContent: newTask.damageContent,
+            priority: newTask.priority,
+            reporterId: staff?.id || newTask.staffId,
+            reportingDepartmentId: staff?.departmentId || undefined
+          }
+        });
+        if (res.data.status) {
+          toast.success('Đã cập nhật công việc');
+          setIsModalOpen(false);
+          setNewTask({ title: '', deviceId: undefined, damageLocation: '', damageContent: '', priority: DamageReportPriority.Normal, staffId: staff?.id || undefined });
+          loadData();
+        }
+      } else {
+        const res = await api.post('/work-plans', {
+          planDate,
+          staffId: newTask.staffId,
+          isNewTask: true,
+          title: finalTitle,
+          draftData: {
+            deviceId: taskTab === 'device' ? newTask.deviceId : undefined,
+            damageLocation: taskTab === 'general' ? finalTitle : '',
+            damageContent: newTask.damageContent,
+            priority: newTask.priority,
+            reporterId: staff?.id || newTask.staffId,
+            reportingDepartmentId: staff?.departmentId || undefined
+          },
+          createdBy: user?.id
+        });
+        if (res.data.status) {
+          toast.success(scheduleMode === 'date' ? 'Đã lưu kế hoạch có ngày áp dụng' : 'Đã lưu vào kho kế hoạch');
+          setIsModalOpen(false);
+          setNewTask({ title: '', deviceId: undefined, damageLocation: '', damageContent: '', priority: DamageReportPriority.Normal, staffId: staff?.id || undefined });
+          loadData();
+        }
       }
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Lỗi khi tạo kế hoạch');
@@ -333,7 +357,7 @@ export default function WorkPlanPage() {
 
   const handleImplement = async (itemId: number) => {
     try {
-      const res = await api.post(`/work-plans/${itemId}/implement`, { staffId: staff.id, userId: user?.id });
+      const res = await api.post(`/work-plans/${itemId}/implement`, { staffId: staff?.id || 0, userId: user?.id });
       if (res.data.status) { toast.success('Đã xác nhận triển khai'); loadData(); }
     } catch (error: any) { toast.error('Lỗi: ' + (error.response?.data?.error || error.message)); }
   };
@@ -341,29 +365,56 @@ export default function WorkPlanPage() {
   const handleDeleteItem = async (itemId: number) => {
     if (!window.confirm('Xóa mục này?')) return;
     try {
-      const res = await api.delete(`/work-plans?id=${itemId}&staffId=${staff.id}&isAdmin=${isAdmin}`);
+      const res = await api.delete(`/work-plans?id=${itemId}&staffId=${staff?.id || 0}&isAdmin=${isAdmin}`);
       if (res.data.status) { toast.success('Đã xóa'); loadData(); }
     } catch (error) { toast.error('Lỗi khi xóa'); }
   };
 
-  const handleCopyTask = async () => {
-    if (!copyTaskModalData) return;
+  const handleMoveTask = async () => {
+    if (!moveTaskModalData) return;
     try {
-      const dateStr = format(copyTargetDate, 'yyyy-MM-dd');
-      const res = await api.post('/work-plans', {
+      const dateStr = format(moveTargetDate, 'yyyy-MM-dd');
+      const res = await api.patch(`/work-plans/${moveTaskModalData.id}`, {
         planDate: dateStr,
-        staffId: copyTaskModalData.staffId,
-        isNewTask: true,
-        title: copyTaskModalData.title,
-        draftData: copyTaskModalData.draftData,
-        createdBy: user?.id
+        staffId: moveTaskModalData.staffId,
+        isAdmin: isAdmin
       });
       if (res.data.status) {
-        toast.success(`Đã copy sang ngày ${format(copyTargetDate, 'dd/MM/yyyy')}`);
-        setCopyTaskModalData(null);
+        toast.success(`Đã chuyển sang ngày ${format(moveTargetDate, 'dd/MM/yyyy')}`);
+        setMoveTaskModalData(null);
         loadData();
       }
-    } catch (error) { toast.error('Lỗi khi copy công việc'); }
+    } catch (error) { toast.error('Lỗi khi chuyển công việc'); }
+  };
+
+  const handleMoveToArchiveFromList = async (item: WorkPlanItemVM) => {
+    if (!window.confirm('Bạn có chắc muốn chuyển kế hoạch này lại kho?')) return;
+    try {
+      const res = await api.patch(`/work-plans/${item.id}`, {
+        planDate: null,
+        staffId: item.staffId,
+        isAdmin: isAdmin
+      });
+      if (res.data.status) {
+        toast.success('Đã chuyển lại kho kế hoạch');
+        loadData();
+      }
+    } catch (error) { toast.error('Lỗi khi chuyển về kho'); }
+  };
+
+  const handleEditItem = (item: WorkPlanItemVM) => {
+    setModalMode('edit');
+    setEditingTaskId(item.id);
+    setTaskTab(item.draftData?.deviceId ? 'device' : 'general');
+    setNewTask({
+      title: item.title,
+      deviceId: item.draftData?.deviceId,
+      damageLocation: item.draftData?.damageLocation || '',
+      damageContent: item.draftData?.damageContent || '',
+      priority: item.draftData?.priority || DamageReportPriority.Normal,
+      staffId: item.staffId,
+    });
+    setIsModalOpen(true);
   };
 
   const getDateLabel = () => {
@@ -537,8 +588,18 @@ export default function WorkPlanPage() {
                       </div>
                         <div className="task-actions">
                           {item.isNewTask && !item.isImplemented && (
-                            <button className="btn btn-icon btn-copy" onClick={() => setCopyTaskModalData(item)} title="Copy sang ngày khác">
-                              <i className="fas fa-copy"></i>
+                            <button className="btn btn-icon btn-edit" onClick={() => handleEditItem(item)} title="Sửa công việc">
+                              <i className="fas fa-edit"></i>
+                            </button>
+                          )}
+                          {!item.isImplemented && (
+                            <button className="btn btn-icon btn-move" onClick={() => setMoveTaskModalData(item)} title="Chuyển sang ngày khác">
+                              <i className="fas fa-calendar-day"></i>
+                            </button>
+                          )}
+                          {!item.isImplemented && (
+                            <button className="btn btn-icon btn-archive" onClick={() => handleMoveToArchiveFromList(item)} title="Chuyển lại kho kế hoạch">
+                              <i className="fas fa-box-archive"></i>
                             </button>
                           )}
                           {!item.isImplemented ? (
@@ -770,20 +831,20 @@ export default function WorkPlanPage() {
         </>
       )}
 
-      {/* Copy Task Modal */}
-      {copyTaskModalData && (
+      {/* Move Task Modal */}
+      {moveTaskModalData && (
         <div className="custom-modal-overlay">
           <div className="custom-modal glass-card p-0 shadow-lg border-0" style={{ maxWidth: '400px' }}>
             <div className="modal-header-premium p-3 border-bottom bg-white d-flex justify-content-between align-items-center" style={{ borderTopLeftRadius: '16px', borderTopRightRadius: '16px' }}>
-              <h5 className="m-0 fw-bold text-dark">Copy công việc</h5>
-              <button className="btn-close-custom" onClick={() => setCopyTaskModalData(null)}><i className="fas fa-times"></i></button>
+              <h5 className="m-0 fw-bold text-dark">Chuyển ngày</h5>
+              <button className="btn-close-custom" onClick={() => setMoveTaskModalData(null)}><i className="fas fa-times"></i></button>
             </div>
             <div className="modal-body p-4 bg-white text-center" style={{ borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
-              <p className="mb-3 text-muted small">Chọn ngày để copy công việc này:</p>
+              <p className="mb-3 text-muted small">Chọn ngày để chuyển công việc này:</p>
               <div className="d-flex justify-content-center mb-4">
                 <DatePicker
-                  selected={copyTargetDate}
-                  onChange={(date: Date) => setCopyTargetDate(date || new Date())}
+                  selected={moveTargetDate}
+                  onChange={(date: Date) => setMoveTargetDate(date || new Date())}
                   dateFormat="dd/MM/yyyy"
                   highlightDates={activeDates}
                   className="form-control form-control-premium text-center fw-bold"
@@ -792,10 +853,10 @@ export default function WorkPlanPage() {
                 />
               </div>
               <div className="d-flex gap-2 justify-content-center">
-                <button className="btn btn-light px-4" onClick={() => setCopyTaskModalData(null)}>Hủy</button>
-                <button className="btn btn-primary px-4 d-flex align-items-center gap-2" onClick={handleCopyTask}>
-                  <i className="fas fa-copy"></i>
-                  <span>Copy ngay</span>
+                <button className="btn btn-light px-4" onClick={() => setMoveTaskModalData(null)}>Hủy</button>
+                <button className="btn btn-warning px-4 d-flex align-items-center gap-2" onClick={handleMoveTask}>
+                  <i className="fas fa-calendar-check"></i>
+                  <span>Chuyển ngay</span>
                 </button>
               </div>
             </div>
@@ -809,7 +870,7 @@ export default function WorkPlanPage() {
           <div className="custom-modal glass-card p-0 overflow-hidden shadow-lg border-0" style={{ maxWidth: '620px' }}>
             <div className="modal-header-premium compact p-3 border-bottom bg-white d-flex justify-content-between align-items-center">
               <div>
-                <h4 className="m-0 fw-bold text-dark">Lên kế hoạch mới</h4>
+                <h4 className="m-0 fw-bold text-dark">{modalMode === 'edit' ? 'Sửa công việc' : 'Lên kế hoạch mới'}</h4>
               </div>
               <button className="btn-close-custom" onClick={() => setIsModalOpen(false)}><i className="fas fa-times"></i></button>
             </div>
@@ -835,29 +896,31 @@ export default function WorkPlanPage() {
 
             <div className="modal-body compact p-3 bg-white">
               <form onSubmit={handleSavePlan}>
-                <div className="schedule-option-box compact mb-3">
-                  <div className="schedule-inline-row">
-                    <span className="schedule-label small fw-bold text-uppercase ls-1">Ngày áp dụng</span>
-                    <label className="schedule-check m-0">
-                      <input
-                        type="checkbox"
-                        checked={scheduleMode === 'date'}
-                        onChange={e => setScheduleMode(e.target.checked ? 'date' : 'archive')}
-                      />
-                      <span>Gán ngày áp dụng</span>
-                    </label>
-                    {scheduleMode === 'date' && (
-                      <DatePicker
-                        selected={planApplyDate}
-                        onChange={(date: Date) => setPlanApplyDate(date || addDays(new Date(), 1))}
-                        dateFormat="dd/MM/yyyy"
-                        minDate={new Date()}
-                        className="form-control form-control-premium schedule-date-input"
-                        portalId="root-portal"
-                      />
-                    )}
+                {modalMode !== 'edit' && (
+                  <div className="schedule-option-box compact mb-3">
+                    <div className="schedule-inline-row">
+                      <span className="schedule-label small fw-bold text-uppercase ls-1">Ngày áp dụng</span>
+                      <label className="schedule-check m-0">
+                        <input
+                          type="checkbox"
+                          checked={scheduleMode === 'date'}
+                          onChange={e => setScheduleMode(e.target.checked ? 'date' : 'archive')}
+                        />
+                        <span>Gán ngày áp dụng</span>
+                      </label>
+                      {scheduleMode === 'date' && (
+                        <DatePicker
+                          selected={planApplyDate}
+                          onChange={(date: Date) => setPlanApplyDate(date || addDays(new Date(), 1))}
+                          dateFormat="dd/MM/yyyy"
+                          minDate={new Date()}
+                          className="form-control form-control-premium schedule-date-input"
+                          portalId="root-portal"
+                        />
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
                 <div className="row g-2">
                   {/* Title only for General Task */}
                   {taskTab === 'general' && (
@@ -964,8 +1027,12 @@ export default function WorkPlanPage() {
         .btn-confirm:hover { background: #0d6efd; color: white; }
         .btn-delete { background: #fff5f5; color: #fa5252; }
         .btn-delete:hover { background: #fa5252; color: white; }
-        .btn-copy { background: #e0f2fe; color: #0ea5e9; }
-        .btn-copy:hover { background: #0ea5e9; color: white; }
+        .btn-edit { background: #f8f9fa; color: #495057; }
+        .btn-edit:hover { background: #495057; color: white; }
+        .btn-move { background: #fff8e6; color: #f59f00; }
+        .btn-move:hover { background: #f59f00; color: white; }
+        .btn-archive { background: #f3f0ff; color: #845ef7; }
+        .btn-archive:hover { background: #845ef7; color: white; }
         .implemented-check { color: #40c057; font-size: 1.1rem; margin-right: 8px; }
 
         /* DatePicker Highlights */

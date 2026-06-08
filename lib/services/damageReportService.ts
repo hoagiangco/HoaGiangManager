@@ -50,7 +50,7 @@ export class DamageReportService {
   }
 
   async getAll(filters?: {
-    status?: DamageReportStatus;
+    status?: DamageReportStatus | string | number[];
     priority?: DamageReportPriority;
     deviceId?: number;
     reporterId?: number;
@@ -142,8 +142,15 @@ export class DamageReportService {
 
     if (filters) {
       if (filters.status) {
-        query += ` AND dr."Status" = $${paramIndex}`;
-        params.push(filters.status.toString());
+        const statusStr = filters.status.toString();
+        if (statusStr.includes(',')) {
+          const statuses = statusStr.split(',').map(s => s.trim());
+          query += ` AND dr."Status"::text = ANY($${paramIndex}::text[])`;
+          params.push(statuses);
+        } else {
+          query += ` AND dr."Status" = $${paramIndex}`;
+          params.push(statusStr);
+        }
         paramIndex++;
       }
 
@@ -227,7 +234,7 @@ export class DamageReportService {
   async getPaginated(filters: {
     page: number;
     limit: number;
-    status?: DamageReportStatus;
+    status?: DamageReportStatus | string | number[];
     priority?: DamageReportPriority;
     deviceId?: number;
     reporterId?: number;
@@ -273,8 +280,15 @@ export class DamageReportService {
     }
 
     if (status) {
-      params.push(status.toString());
-      whereClause += ` AND dr."Status" = $${params.length}`;
+      const statusStr = status.toString();
+      if (statusStr.includes(',')) {
+        const statuses = statusStr.split(',').map(s => s.trim());
+        params.push(statuses);
+        whereClause += ` AND dr."Status"::text = ANY($${params.length}::text[])`;
+      } else {
+        params.push(statusStr);
+        whereClause += ` AND dr."Status" = $${params.length}`;
+      }
     }
 
     if (priority) {
@@ -1637,7 +1651,7 @@ export class DamageReportService {
    * Uses DailyWorkLog for accurate "active today" section
    * @param dateStr - date in 'YYYY-MM-DD' format (local date)
    */
-  async getDailyReportData(dateStr: string, filters?: { departmentId?: number, handlerId?: number, maintenanceBatchId?: string }): Promise<{
+  async getDailyReportData(dateStr: string, filters?: { departmentId?: number, handlerId?: number, maintenanceBatchId?: string, search?: string }): Promise<{
     newReports: DamageReportVM[];
     activeReports: DamageReportVM[];
     completedReports: DamageReportVM[];
@@ -1678,6 +1692,18 @@ export class DamageReportService {
         filterClause += ` AND dr."MaintenanceBatchId" = $${paramIdx++}`;
         queryParams.push(filters.maintenanceBatchId);
       }
+    }
+
+    if (filters?.search) {
+      filterClause += ` AND (
+        dr."DamageContent" ILIKE $${paramIdx} OR
+        dr."DamageLocation" ILIKE $${paramIdx} OR
+        d."Name" ILIKE $${paramIdx} OR
+        reporter."Name" ILIKE $${paramIdx} OR
+        handler."Name" ILIKE $${paramIdx}
+      )`;
+      queryParams.push(`%${filters.search}%`);
+      paramIdx++;
     }
 
     // 1. New reports (Việc mới phát sinh hôm nay): created today, NOT handled/completed today
@@ -1875,7 +1901,10 @@ export class DamageReportService {
        LEFT JOIN "Location" loc ON d."LocationID" = loc."ID"
        LEFT JOIN "DeviceCategory" cat ON d."DeviceCategoryID" = cat."ID"
        WHERE dr."ReportDate" <= $${paramIdx}
-       AND dr."HandlingDate" IS NOT NULL AND dr."HandlingDate" <= $${paramIdx}
+       AND (
+         (dr."HandlingDate" IS NOT NULL AND dr."HandlingDate" <= $${paramIdx})
+         OR (dr."HandlingDate" IS NULL AND CAST(dr."Status"::text AS INTEGER) = 3)
+       )
        AND (
          (dr."CompletedDate" IS NULL AND CAST(dr."Status"::text AS INTEGER) NOT IN (4, 5, 6))
          OR dr."CompletedDate" > $${paramIdx}

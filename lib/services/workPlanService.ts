@@ -262,6 +262,39 @@ export class WorkPlanService {
     return (result.rowCount ?? 0) > 0;
   }
 
+  async updateDate(id: number, planDate: string | null, staffId: number, isAdmin: boolean = false): Promise<boolean> {
+    const query = isAdmin
+      ? { text: 'UPDATE "WorkPlanItem" SET "PlanDate" = $1 WHERE "ID" = $2', values: [planDate, id] }
+      : {
+          text: `UPDATE "WorkPlanItem" SET "PlanDate" = $1 WHERE "ID" = $2 AND (
+                  "StaffID" = $3 OR
+                  "DamageReportID" IN (SELECT "ID" FROM "DamageReport" WHERE "HandlerID" = $3)
+                )`,
+          values: [planDate, id, staffId]
+        };
+
+    const result = await pool.query(query.text, query.values);
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async update(id: number, staffId: number, title: string, draftData: any, reqStaffId: number, isAdmin: boolean = false): Promise<boolean> {
+    const query = isAdmin
+      ? { 
+          text: 'UPDATE "WorkPlanItem" SET "StaffID" = $1, "Title" = $2, "DraftData" = $3 WHERE "ID" = $4 AND "IsImplemented" = false', 
+          values: [staffId, title, draftData ? JSON.stringify(draftData) : null, id] 
+        }
+      : {
+          text: `UPDATE "WorkPlanItem" SET "StaffID" = $1, "Title" = $2, "DraftData" = $3 WHERE "ID" = $4 AND "IsImplemented" = false AND (
+                  "StaffID" = $5 OR
+                  "DamageReportID" IN (SELECT "ID" FROM "DamageReport" WHERE "HandlerID" = $5)
+                )`,
+          values: [staffId, title, draftData ? JSON.stringify(draftData) : null, id, reqStaffId]
+        };
+
+    const result = await pool.query(query.text, query.values);
+    return (result.rowCount ?? 0) > 0;
+  }
+
   private async createDamageReportFromPlan(client: PoolClient, item: any, userId: string): Promise<number> {
     const draft: WorkPlanDraftData = item.DraftData;
     if (!draft?.damageContent || draft.damageContent.trim() === '') {
@@ -290,7 +323,7 @@ export class WorkPlanService {
         reportDate,
         draft.damageContent,
         draft.images ? JSON.stringify(draft.images) : null,
-        DamageReportStatus.Assigned.toString(),
+        DamageReportStatus.Pending.toString(),
         (draft.priority || DamageReportPriority.Normal).toString(),
         userId,
         userId,
@@ -332,7 +365,7 @@ export class WorkPlanService {
           item.StaffID,
           item.PlanDate || getVNNow(),
           DamageReportStatus.Pending.toString(),
-          DamageReportStatus.Assigned.toString(),
+          DamageReportStatus.Pending.toString(),
           userId,
           damageReportId
         ]
