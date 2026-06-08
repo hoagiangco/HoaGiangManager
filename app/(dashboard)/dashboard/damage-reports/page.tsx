@@ -3659,9 +3659,11 @@ export default function DamageReportsPage() {
                     onChange={(e) => updateCompletionModal({ finalDeviceStatus: Number(e.target.value) })}
                     disabled={completionModal.submitting}
                   >
-                    <option value={DeviceStatus.DangSuDung}>Đang sử dụng (Bình thường)</option>
+                    <option value={DeviceStatus.DangSuDung}>Đang sử dụng</option>
+                    <option value={DeviceStatus.DangSuaChua}>Đang sửa chữa</option>
+                    <option value={DeviceStatus.CoHuHong}>Có sự cố</option>
                     <option value={DeviceStatus.HuHong}>Lỗi/Ngưng hoạt động</option>
-                    <option value={DeviceStatus.CoHuHong}>Có sự cố (Cần theo dõi thêm)</option>
+                    <option value={DeviceStatus.DaThanhLy}>Đã thanh lý</option>
                   </select>
                 </div>
                 )}
