@@ -785,13 +785,42 @@ export default function WorkPlanPage() {
                                 </span>
                               )}
                             </div>
-                            <div className="fw-bold text-dark" style={{ fontSize: '0.88rem' }}>
-                              {item.maintenanceBatchId ? (item.maintenanceTitle || item.maintenanceBatchId) : (item.damageContent || item.title)}
-                            </div>
-                            {item.location && (
-                              <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-                                <i className="fas fa-map-marker-alt me-1"></i>{item.location}
-                              </div>
+                            {item.isNewTask ? (
+                              <>
+                                <div className="fw-bold text-dark" style={{ fontSize: '0.88rem' }}>
+                                  {item.title}
+                                </div>
+                                {item.draftData?.damageContent && item.draftData.damageContent !== item.title && (
+                                  <div className="mt-1 text-secondary" style={{ fontSize: '0.8rem' }}>
+                                    {item.draftData.damageContent}
+                                  </div>
+                                )}
+                              </>
+                            ) : item.maintenanceBatchId ? (
+                              <>
+                                <div className="fw-bold text-dark" style={{ fontSize: '0.88rem' }}>
+                                  {item.maintenanceTitle || item.maintenanceBatchId}
+                                </div>
+                                {item.damageContent && item.damageContent !== (item.maintenanceTitle || item.maintenanceBatchId) && (
+                                  <div className="mt-1 text-secondary" style={{ fontSize: '0.8rem' }}>
+                                    {item.damageContent}
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <div className="fw-bold text-dark" style={{ fontSize: '0.88rem' }}>
+                                  {item.damageContent || item.title}
+                                </div>
+                                {(item.deviceName || item.location) && (
+                                  <div className="mt-1 text-muted" style={{ fontSize: '0.75rem' }}>
+                                    <i className="fas fa-map-marker-alt me-1"></i>
+                                    {item.deviceName
+                                      ? `${item.deviceName}${item.location ? ` — ${item.location}` : ''}`
+                                      : item.location}
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
                           <div className="overdue-item-action">

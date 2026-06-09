@@ -117,7 +117,7 @@ function LocationsPageContent() {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (keepOpen: boolean = false) => {
     if (!formData.name || !formData.name.trim()) {
       toast.error('Vui lòng nhập tên vị trí');
       return;
@@ -130,8 +130,13 @@ function LocationsPageContent() {
         await api.post('/locations', { name: formData.name.trim(), parentId: formData.parentId || null });
         toast.success('Thêm mới thành công');
       }
-      setShowModal(false);
+      
       loadData();
+      if (keepOpen) {
+        setFormData(prev => ({ ...prev, name: '' }));
+      } else {
+        setShowModal(false);
+      }
     } catch (error: any) {
       const msg = error.response?.data?.error;
       toast.error(msg || (isEdit ? 'Lỗi khi cập nhật' : 'Lỗi khi thêm mới'));
@@ -426,7 +431,7 @@ function LocationsPageContent() {
                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                     placeholder="Ví dụ: Bếp, Sảnh lễ tân, Kho hàng, Phòng họp..."
                     autoFocus
-                    onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
+                    onKeyDown={e => { if (e.key === 'Enter') handleSave(false); }}
                   />
                   <div className="form-text">Nhập tên khu vực vật lý nơi thiết bị được đặt.</div>
                 </div>
@@ -452,8 +457,13 @@ function LocationsPageContent() {
               </div>
               <div className="modal-footer d-flex justify-content-end gap-2">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Đóng</button>
-                <button type="button" className="btn btn-primary" onClick={handleSave}>
-                  <i className="fas fa-save me-1"></i>Lưu
+                {!isEdit && (
+                  <button type="button" className="btn btn-success d-flex align-items-center gap-1" onClick={() => handleSave(true)}>
+                    <i className="fas fa-plus-circle"></i>Lưu & Tiếp tục
+                  </button>
+                )}
+                <button type="button" className="btn btn-primary d-flex align-items-center gap-1" onClick={() => handleSave(false)}>
+                  <i className="fas fa-save"></i>Lưu
                 </button>
               </div>
             </div>
