@@ -700,13 +700,13 @@ export class DeviceService {
       case DeviceStatus.DangSuDung:
         return 'Đang sử dụng';
       case DeviceStatus.DangSuaChua:
-        return 'Đang sửa chữa';
+        return 'Đang xử lý';
       case DeviceStatus.HuHong:
         return 'Lỗi/Ngưng hoạt động';
       case DeviceStatus.DaThanhLy:
         return 'Đã thanh lý';
       case DeviceStatus.CoHuHong:
-        return 'Có sự cố';
+        return 'Chờ xử lý';
       default:
         return 'Không xác định';
     }

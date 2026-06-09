@@ -2833,7 +2833,7 @@ function MaintenancePageContent() {
                                           <td>{device.departmentName || '-'}</td>
                                           <td>
                                             {device.status === 1 && <span className="badge bg-success">Đang sử dụng</span>}
-                                            {device.status === 2 && <span className="badge bg-warning">Đang sửa chữa</span>}
+                                            {device.status === 2 && <span className="badge bg-warning">Đang xử lý</span>}
                                             {device.status === 3 && <span className="badge bg-danger">Lỗi/Ngưng h.động</span>}
                                             {device.status === 4 && <span className="badge bg-secondary">Đã thanh lý</span>}
                                           </td>
@@ -2912,7 +2912,7 @@ function MaintenancePageContent() {
                                         <td>{device.departmentName || '-'}</td>
                                         <td>
                                           {device.status === 1 && <span className="badge bg-success">Đang sử dụng</span>}
-                                          {device.status === 2 && <span className="badge bg-warning">Đang sửa chữa</span>}
+                                          {device.status === 2 && <span className="badge bg-warning">Đang xử lý</span>}
                                           {device.status === 3 && <span className="badge bg-danger">Lỗi/Ngưng h.động</span>}
                                           {device.status === 4 && <span className="badge bg-secondary">Đã thanh lý</span>}
                                         </td>
@@ -5840,7 +5840,7 @@ function MaintenancePageContent() {
                                 <td>{device.departmentName || '-'}</td>
                                 <td>
                                   {device.status === 1 && <span className="badge bg-success">Đang sử dụng</span>}
-                                  {device.status === 2 && <span className="badge bg-warning">Đang sửa chữa</span>}
+                                  {device.status === 2 && <span className="badge bg-warning">Đang xử lý</span>}
                                   {device.status === 3 && <span className="badge bg-danger">Lỗi/Ngưng h.động</span>}
                                   {device.status === 4 && <span className="badge bg-secondary">Đã thanh lý</span>}
                                 </td>
@@ -6002,7 +6002,7 @@ function MaintenancePageContent() {
                                   <td>{device.departmentName || '-'}</td>
                                   <td>
                                     {device.status === 1 && <span className="badge bg-success">Đang sử dụng</span>}
-                                    {device.status === 2 && <span className="badge bg-warning">Đang sửa chữa</span>}
+                                    {device.status === 2 && <span className="badge bg-warning">Đang xử lý</span>}
                                     {device.status === 3 && <span className="badge bg-danger">Lỗi/Ngưng h.động</span>}
                                     {device.status === 4 && <span className="badge bg-secondary">Đã thanh lý</span>}
                                   </td>
@@ -6330,7 +6330,7 @@ function MaintenancePageContent() {
                                 <td>{device.departmentName || '-'}</td>
                                 <td>
                                   {device.status === 1 && <span className="badge bg-success">Đang sử dụng</span>}
-                                  {device.status === 2 && <span className="badge bg-warning">Đang sửa chữa</span>}
+                                  {device.status === 2 && <span className="badge bg-warning">Đang xử lý</span>}
                                   {device.status === 3 && <span className="badge bg-danger">Lỗi/Ngưng h.động</span>}
                                   {device.status === 4 && <span className="badge bg-secondary">Đã thanh lý</span>}
                                 </td>

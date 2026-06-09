@@ -986,10 +986,10 @@ export default function StatisticsPage() {
                   >
                     <option value="0">Tất cả</option>
                     <option value="1">Đang sử dụng</option>
-                    <option value="2">Đang sửa chữa</option>
+                    <option value="2">Đang xử lý</option>
                     <option value="3">Lỗi/Ngưng hoạt động</option>
                     <option value="4">Đã thanh lý</option>
-                    <option value="5">Sự cố</option>
+                    <option value="5">Chờ xử lý</option>
                   </select>
                 </div>
                 <div className="col-12 col-md">
@@ -1009,8 +1009,8 @@ export default function StatisticsPage() {
                 {[
                   { label: 'Tổng', value: deviceSummary?.data?.devices?.total, color: 'primary' },
                   { label: 'Dùng', value: deviceSummary?.data?.devices?.dangSuDung, color: 'success' },
-                  { label: 'Sửa', value: deviceSummary?.data?.devices?.dangSuaChua, color: 'warning' },
-                  { label: 'Sự cố', value: deviceSummary?.data?.devices?.coHuHong, color: 'info' },
+                  { label: 'Đang xử lý', value: deviceSummary?.data?.devices?.dangSuaChua, color: 'warning' },
+                  { label: 'Chờ xử lý', value: deviceSummary?.data?.devices?.coHuHong, color: 'info' },
                   { label: 'Lỗi', value: deviceSummary?.data?.devices?.huHong, color: 'danger' },
                 ].map((stat, idx) => (
                   <div key={idx} className="d-flex align-items-center gap-1 border-end pe-2">

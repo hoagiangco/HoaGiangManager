@@ -3660,8 +3660,8 @@ export default function DamageReportsPage() {
                     disabled={completionModal.submitting}
                   >
                     <option value={DeviceStatus.DangSuDung}>Đang sử dụng</option>
-                    <option value={DeviceStatus.DangSuaChua}>Đang sửa chữa</option>
-                    <option value={DeviceStatus.CoHuHong}>Có sự cố</option>
+                    <option value={DeviceStatus.DangSuaChua}>Đang xử lý</option>
+                    <option value={DeviceStatus.CoHuHong}>Chờ xử lý</option>
                     <option value={DeviceStatus.HuHong}>Lỗi/Ngưng hoạt động</option>
                     <option value={DeviceStatus.DaThanhLy}>Đã thanh lý</option>
                   </select>

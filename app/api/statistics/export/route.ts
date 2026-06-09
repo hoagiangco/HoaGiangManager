@@ -94,10 +94,10 @@ export async function GET(request: NextRequest) {
 
       const deviceStatusMap: Record<number, string> = {
         1: 'Đang sử dụng',
-        2: 'Đang sửa chữa',
+        2: 'Đang xử lý',
         3: 'Lỗi/Ngưng hoạt động',
         4: 'Đã thanh lý',
-        5: 'Có sự cố'
+        5: 'Chờ xử lý'
       };
 
       const columnIdsParam = searchParams.get('columns');
