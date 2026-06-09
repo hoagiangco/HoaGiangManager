@@ -72,6 +72,7 @@ function DevicesPageContent() {
   // File Manager state
   const [showFileManager, setShowFileManager] = useState(false);
   const [fileManagerMode, setFileManagerMode] = useState<'image' | 'all'>('image');
+  const [fileManagerMultiSelect, setFileManagerMultiSelect] = useState(false);
   const [fileManagerCallback, setFileManagerCallback] = useState<((url: string) => void) | null>(null);
   const fileManagerCallbackRef = useRef<((url: string) => void) | null>(null);
   const pendingImageUrl = useRef<string | null>(null);
@@ -161,6 +162,8 @@ function DevicesPageContent() {
               }
             }, 50);
           };
+          setFileManagerMode('image');
+          setFileManagerMultiSelect(false);
           setFileManagerCallback(quillImageCallback);
           fileManagerCallbackRef.current = quillImageCallback;
           setShowFileManager(true);
@@ -175,9 +178,10 @@ function DevicesPageContent() {
     serial: '',
     description: '',
     img: '',
-    warrantyDate: '',
-    useDate: '',
-    endDate: '',
+    images: [] as string[],
+    warrantyDate: undefined as string | undefined,
+    useDate: '' as string | undefined,
+    endDate: '' as string | undefined,
     departmentId: 0,
     locationId: 0,
     deviceCategoryId: 0,
@@ -207,7 +211,11 @@ function DevicesPageContent() {
           from: prev.img,
           to: relativePath
         });
-        return { ...prev, img: relativePath };
+        return { 
+            ...prev, 
+            img: relativePath,
+            images: prev.images.includes(relativePath) ? prev.images : [...prev.images, relativePath]
+        };
       });
     }
   }, [showFileManager]); // Trigger when modal closes
@@ -289,7 +297,8 @@ function DevicesPageContent() {
       serial: '',
       description: '',
       img: '',
-      warrantyDate: '',
+      images: [],
+      warrantyDate: undefined,
       useDate: '',
       endDate: '',
       departmentId: departments[0]?.id || 0,
@@ -312,8 +321,12 @@ function DevicesPageContent() {
       toast.warning('Vui lòng chọn 1 thiết bị để sửa');
       return;
     }
+    handleQuickViewDevice(selectedIds[0]);
+  };
 
-    const device = devices.find((d) => d.id === selectedIds[0]);
+  const handleQuickViewDevice = (id: number) => {
+    setSelectedIds([id]);
+    const device = devices.find((d) => d.id === id);
     if (device) {
       setIsEdit(true);
       // Giữ nguyên đường dẫn ảnh từ device (không chuẩn hóa để tương thích với thẻ src img của absolute URL)
@@ -325,6 +338,7 @@ function DevicesPageContent() {
         serial: device.serial || '',
         description: device.description || '',
         img: normalizedImg,
+        images: device.images || (normalizedImg ? [normalizedImg] : []),
         warrantyDate: formatDateInput(device.warrantyDate),
         useDate: formatDateInput(device.useDate),
         endDate: formatDateInput(device.endDate),
@@ -618,13 +632,15 @@ function DevicesPageContent() {
         serial: formData.serial || null,
         description: formData.description || null,
         img: formData.img || null,
+        images: formData.images || [],
         warrantyDate: formData.warrantyDate || null,
         useDate: formData.useDate || null,
         endDate: formData.endDate || null,
         departmentId: formData.departmentId,
         locationId: formData.locationId || null,
         deviceCategoryId: formData.deviceCategoryId,
-        status: formData.status,
+        status: formData.status ?? DeviceStatus.DangSuDung,
+        supplierId: formData.supplierId || 0,
       };
 
       if (isEdit) {
@@ -644,7 +660,8 @@ function DevicesPageContent() {
           serial: '',
           description: '',
           img: '',
-          warrantyDate: '',
+          images: [],
+          warrantyDate: undefined,
           useDate: '',
           endDate: '',
         });
@@ -1131,11 +1148,12 @@ function DevicesPageContent() {
             >
               <thead className="table-dark dashboard-table-header" style={{ backgroundColor: '#2c3e50' }}>
                 <tr style={{ fontWeight: '600', color: '#ffffff', fontSize: '0.8rem' }}>
-                  <th style={{ width: '50px' }}>
+                  <th style={{ width: '90px', textAlign: 'center' }}>
                     <input
                       type="checkbox"
                       checked={selectedIds.length === currentDevices.length && currentDevices.length > 0 && selectedIds.length > 0}
                       onChange={handleSelectAll}
+                      style={{ transform: 'scale(1.2)', cursor: 'pointer' }}
                     />
                   </th>
                   <th 
@@ -1221,12 +1239,46 @@ function DevicesPageContent() {
                 ) : (
                   currentDevices.map((device) => (
                     <tr key={device.id} style={{ fontSize: '0.8rem', verticalAlign: 'middle' }}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.includes(device.id)}
-                          onChange={() => handleCheckboxChange(device.id)}
-                        />
+                      <td style={{ padding: '0.3rem 0.4rem', width: '90px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(device.id)}
+                            onChange={() => handleCheckboxChange(device.id)}
+                            style={{ transform: 'scale(1.15)', cursor: 'pointer', flexShrink: 0 }}
+                          />
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '6px',
+                            overflow: 'hidden',
+                            backgroundColor: '#f8fafc',
+                            flexShrink: 0
+                          }}>
+                            <button
+                              type="button"
+                              title="Xem nhanh"
+                              onClick={(e) => { e.stopPropagation(); handleQuickViewDevice(device.id); }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                padding: '3px 6px',
+                                cursor: 'pointer',
+                                color: '#2563eb',
+                                fontSize: '0.72rem',
+                                lineHeight: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                transition: 'background 0.12s'
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.background = '#eff6ff')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                            >
+                              <i className="fas fa-eye"></i>
+                            </button>
+                          </div>
+                        </div>
                       </td>
                       <td>
                         <div className="fw-medium">{device.name}</div>
@@ -1544,63 +1596,67 @@ function DevicesPageContent() {
                       </div>
                     </div>
                     <div className="form-group mb-3">
-                      <label>Hình ảnh</label>
-                      <div className="input-group">
-                        <input
-                          type="text"
-                          className="form-control"
-                          value={formData.img || ''}
-                          onChange={(e) => {
-                            console.log('Input onChange:', e.target.value);
-                            setFormData((prev) => ({ ...prev, img: e.target.value }));
-                          }}
-                          placeholder="Đường dẫn ảnh"
-                          readOnly={false}
-                        />
+                      <label>Hình ảnh thiết bị</label>
+                      <div className="mb-2">
                         <button
                           type="button"
-                          className="btn btn-outline-primary"
+                          className="btn btn-outline-primary btn-sm"
                           onClick={() => {
                             setFileManagerMode('image');
+                            setFileManagerMultiSelect(true);
                             setFileManagerCallback((url: string) => {
                               if (!url) return;
-                              
-                              // Giữ nguyên URL (hỗ trợ Vercel Blob và absolute URLs)
-                              setFormData((prev) => ({ ...prev, img: url.trim() }));
+                              setFormData((prev) => {
+                                const newImages = [...(prev.images || []), url.trim()];
+                                return { ...prev, images: newImages, img: newImages[0] || '' };
+                              });
                             });
                             fileManagerCallbackRef.current = (url: string) => {
                               if (!url) return;
-                              setFormData((prev) => ({ ...prev, img: url.trim() }));
+                              setFormData((prev) => {
+                                const newImages = [...(prev.images || []), url.trim()];
+                                return { ...prev, images: newImages, img: newImages[0] || '' };
+                              });
                             };
                             setShowFileManager(true);
                           }}
-                          title="Chọn ảnh từ thư viện"
                         >
-                          <i className="fas fa-image"></i> Chọn ảnh
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline-info"
-                          disabled={!formData.img}
-                          onClick={() => setShowImagePreview((prev) => !prev)}
-                          title={showImagePreview ? 'Ẩn ảnh' : 'Xem ảnh'}
-                          aria-pressed={showImagePreview}
-                        >
-                          <i className={showImagePreview ? 'fas fa-eye' : 'fas fa-eye-slash'}></i>
+                          <i className="fas fa-plus"></i> Thêm ảnh
                         </button>
                       </div>
-                      {showImagePreview && formData.img && (
-                        <div className="mt-2">
-                          <div className="image-preview-box">
-                            <img
-                              src={formData.img}
-                              alt="Preview"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none';
-                              }}
-                            />
-                          </div>
-                          <div className="image-preview-caption">{formData.img}</div>
+                      
+                      {(!formData.images || formData.images.length === 0) ? (
+                        <div className="text-muted small fst-italic py-2 border rounded text-center bg-light">
+                          Chưa có hình ảnh nào.
+                        </div>
+                      ) : (
+                        <div className="d-flex flex-wrap gap-2">
+                          {formData.images.map((url, idx) => (
+                            <div key={idx} className="position-relative border rounded p-1" style={{ width: '100px', height: '100px', backgroundColor: '#f8f9fa' }}>
+                              <img 
+                                src={url} 
+                                alt="" 
+                                style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="btn btn-danger btn-sm position-absolute rounded-circle d-flex align-items-center justify-content-center shadow-sm"
+                                style={{ top: '-8px', right: '-8px', width: '22px', height: '22px', padding: 0 }}
+                                onClick={() => {
+                                  setFormData((prev) => {
+                                    const newImages = (prev.images || []).filter((_, i) => i !== idx);
+                                    return { ...prev, images: newImages, img: newImages[0] || '' };
+                                  });
+                                }}
+                                title="Xoá ảnh này"
+                              >
+                                <i className="fas fa-times" style={{ fontSize: '10px' }}></i>
+                              </button>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -1821,7 +1877,7 @@ function DevicesPageContent() {
         }}
         mode={fileManagerMode}
         accept={fileManagerMode === 'image' ? 'image/*' : undefined}
-        multiSelect={false}
+        multiSelect={fileManagerMultiSelect}
         canManageFiles
       />
 

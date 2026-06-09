@@ -31,7 +31,7 @@ export default function WorkPlanPage() {
   const [devices, setDevices] = useState<DeviceVM[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [allStaff, setAllStaff] = useState<Staff[]>([]);
-  const [viewStaffId, setViewStaffId] = useState<number | undefined>(undefined);
+  const [viewStaffId, setViewStaffId] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'pending' | 'new' | 'edit'>('pending');
@@ -71,10 +71,7 @@ export default function WorkPlanPage() {
         const staffData = staffRes.data.data;
         setStaff(staffData);
         let targetStaffId = viewStaffId;
-        if (targetStaffId === undefined) {
-          targetStaffId = staffData.id;
-          setViewStaffId(targetStaffId);
-        } else if (!isAdmin) {
+        if (!isAdmin) {
           targetStaffId = staffData.id;
         }
         const dateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -216,12 +213,7 @@ export default function WorkPlanPage() {
     toast.success('Đã xoá các kế hoạch được chọn');
   };
 
-  // Set default staff for new task when staff info is loaded
-  useEffect(() => {
-    if (staff && !newTask.staffId) {
-      setNewTask(prev => ({ ...prev, staffId: staff.id }));
-    }
-  }, [staff, newTask.staffId]);
+  // Removed auto-assignment of staffId for new task
 
   const handleAddPending = async (reportId: number, content: string, reportHandlerId?: number) => {
     try {
@@ -272,8 +264,9 @@ export default function WorkPlanPage() {
       });
       if (res.data.status) {
         toast.success('Đã thêm việc mới'); setIsModalOpen(false);
-        setNewTask({ title: '', deviceId: undefined, damageLocation: '', damageContent: '', priority: DamageReportPriority.Normal, staffId: staff?.id || undefined });
+        setNewTask({ title: '', deviceId: undefined, damageLocation: '', damageContent: '', priority: DamageReportPriority.Normal, staffId: undefined });
         loadData();
+        if (overdueDrawerOpen) loadArchiveItems();
       }
     } catch (error) { toast.error('Lỗi khi tạo việc'); }
   };
@@ -315,8 +308,9 @@ export default function WorkPlanPage() {
         if (res.data.status) {
           toast.success('Đã cập nhật công việc');
           setIsModalOpen(false);
-          setNewTask({ title: '', deviceId: undefined, damageLocation: '', damageContent: '', priority: DamageReportPriority.Normal, staffId: staff?.id || undefined });
+          setNewTask({ title: '', deviceId: undefined, damageLocation: '', damageContent: '', priority: DamageReportPriority.Normal, staffId: undefined });
           loadData();
+          if (overdueDrawerOpen) loadArchiveItems();
         }
       } else {
         const res = await api.post('/work-plans', {
@@ -337,8 +331,9 @@ export default function WorkPlanPage() {
         if (res.data.status) {
           toast.success(scheduleMode === 'date' ? 'Đã lưu kế hoạch có ngày áp dụng' : 'Đã lưu vào kho kế hoạch');
           setIsModalOpen(false);
-          setNewTask({ title: '', deviceId: undefined, damageLocation: '', damageContent: '', priority: DamageReportPriority.Normal, staffId: staff?.id || undefined });
+          setNewTask({ title: '', deviceId: undefined, damageLocation: '', damageContent: '', priority: DamageReportPriority.Normal, staffId: undefined });
           loadData();
+          if (overdueDrawerOpen) loadArchiveItems();
         }
       }
     } catch (error: any) {
@@ -424,6 +419,18 @@ export default function WorkPlanPage() {
   };
 
   if (loading && !staff) return <Loading />;
+
+  if (!isAdmin) {
+    return (
+      <div className="container p-5 text-center mt-5">
+        <div className="empty-state-icon text-danger mb-3" style={{ fontSize: '3rem' }}>
+          <i className="fas fa-lock"></i>
+        </div>
+        <h4 className="text-danger fw-bold">Không có quyền truy cập</h4>
+        <p className="text-muted">Tính năng này chỉ dành cho Admin và Quản trị viên.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="work-plan-container container-fluid p-3">
@@ -798,6 +805,17 @@ export default function WorkPlanPage() {
                               portalId="root-portal"
                             />
                             <div className="d-flex align-items-center gap-2 mt-2 w-100 justify-content-end">
+                              {item.isNewTask && (
+                                <button
+                                  className="btn btn-sm btn-outline-primary d-flex align-items-center justify-content-center"
+                                  style={{ width: '32px', height: '32px', padding: 0 }}
+                                  onClick={() => handleEditItem(item)}
+                                  disabled={isMoving}
+                                  title="Sửa kế hoạch này"
+                                >
+                                  <i className="fas fa-edit"></i>
+                                </button>
+                              )}
                               <button
                                 className="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center"
                                 style={{ width: '32px', height: '32px', padding: 0 }}

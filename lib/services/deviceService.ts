@@ -68,11 +68,16 @@ export class DeviceService {
         return [];
       }
 
-      return result.rows.map((row: any) => ({
-        ...row,
-        status: row.status ? parseInt(row.status) as DeviceStatus : DeviceStatus.DangSuDung,
-        statusName: this.getStatusName(row.status ? parseInt(row.status) : DeviceStatus.DangSuDung)
-      }));
+      return result.rows.map((row: any) => {
+        const { img, images } = this.parseDeviceImg(row.img);
+        return {
+          ...row,
+          img,
+          images,
+          status: row.status ? parseInt(row.status) as DeviceStatus : DeviceStatus.DangSuDung,
+          statusName: this.getStatusName(row.status ? parseInt(row.status) : DeviceStatus.DangSuDung)
+        };
+      });
     } catch (error: any) {
       console.error('DeviceService.getDeviceByCategory error:', error);
       throw error;
@@ -214,10 +219,15 @@ export class DeviceService {
       const dataParams = [...params, limit, offset];
       const result = await pool.query(dataQuery, dataParams);
 
-      const devices = result.rows.map((row: any) => ({
-        ...row,
-        statusName: this.getStatusName(row.status ? parseInt(row.status) : DeviceStatus.DangSuDung)
-      }));
+      const devices = result.rows.map((row: any) => {
+        const { img, images } = this.parseDeviceImg(row.img);
+        return {
+          ...row,
+          img,
+          images,
+          statusName: this.getStatusName(row.status ? parseInt(row.status) : DeviceStatus.DangSuDung)
+        };
+      });
 
       return { devices, total };
     } catch (error) {
@@ -280,11 +290,16 @@ export class DeviceService {
         return [];
       }
 
-      return result.rows.map((row: any) => ({
-        ...row,
-        status: row.status ? parseInt(row.status) as DeviceStatus : DeviceStatus.DangSuDung,
-        statusName: this.getStatusName(row.status ? parseInt(row.status) : DeviceStatus.DangSuDung)
-      }));
+      return result.rows.map((row: any) => {
+        const { img, images } = this.parseDeviceImg(row.img);
+        return {
+          ...row,
+          img,
+          images,
+          status: row.status ? parseInt(row.status) as DeviceStatus : DeviceStatus.DangSuDung,
+          statusName: this.getStatusName(row.status ? parseInt(row.status) : DeviceStatus.DangSuDung)
+        };
+      });
     } catch (error: any) {
       console.error('DeviceService.getDevicesByIds error:', error);
       throw error;
@@ -344,11 +359,16 @@ export class DeviceService {
         return [];
       }
 
-      return result.rows.map((row: any) => ({
-        ...row,
-        status: row.status ? parseInt(row.status) as DeviceStatus : DeviceStatus.DangSuDung,
-        statusName: this.getStatusName(row.status ? parseInt(row.status) : DeviceStatus.DangSuDung)
-      }));
+      return result.rows.map((row: any) => {
+        const { img, images } = this.parseDeviceImg(row.img);
+        return {
+          ...row,
+          img,
+          images,
+          status: row.status ? parseInt(row.status) as DeviceStatus : DeviceStatus.DangSuDung,
+          statusName: this.getStatusName(row.status ? parseInt(row.status) : DeviceStatus.DangSuDung)
+        };
+      });
     } catch (error: any) {
       console.error('DeviceService.getDevicesByDepartment error:', error);
       throw error;
@@ -366,12 +386,14 @@ export class DeviceService {
     }
 
     const row = result.rows[0];
+    const { img, images } = this.parseDeviceImg(row.Img);
     return {
       id: row.ID,
       name: row.Name,
       serial: row.Serial,
       description: row.Description,
-      img: row.Img,
+      img,
+      images,
       warrantyDate: row.WarrantyDate,
       useDate: row.UseDate,
       endDate: row.EndDate,
@@ -424,7 +446,7 @@ export class DeviceService {
         device.name,
         device.serial || null,
         device.description || null,
-        device.img || null,
+        this.serializeDeviceImages(device),
         device.warrantyDate || null,
         device.useDate || null,
         device.endDate || null,
@@ -463,7 +485,7 @@ export class DeviceService {
         device.name,
         device.serial || null,
         device.description || null,
-        device.img || null,
+        this.serializeDeviceImages(device),
         device.warrantyDate || null,
         device.useDate || null,
         device.endDate || null,
@@ -753,5 +775,30 @@ export class DeviceService {
       return null;
     }
     return date.toISOString();
+  }
+
+  private parseDeviceImg(imgValue: string | null): { img: string; images: string[] } {
+    if (!imgValue) {
+      return { img: '', images: [] };
+    }
+    const val = imgValue.trim();
+    if (val.startsWith('[')) {
+      try {
+        const arr = JSON.parse(val);
+        if (Array.isArray(arr) && arr.length > 0) {
+          return { img: arr[0], images: arr };
+        }
+      } catch (e) {
+        // Fallback below
+      }
+    }
+    return { img: val, images: [val] };
+  }
+
+  private serializeDeviceImages(device: Partial<Device>): string | null {
+    if (device.images && device.images.length > 0) {
+      return JSON.stringify(device.images);
+    }
+    return device.img || null;
   }
 }

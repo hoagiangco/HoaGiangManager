@@ -47,6 +47,7 @@ export interface Device {
   serial?: string;
   description?: string;
   img?: string;
+  images?: string[];
   warrantyDate?: Date;
   useDate?: Date;
   endDate?: Date;
