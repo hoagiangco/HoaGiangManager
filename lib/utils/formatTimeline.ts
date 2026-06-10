@@ -11,8 +11,8 @@ export const formatTimelineForExcel = (jsonStr: string | null | undefined): stri
           return `[${dateStr}] ${t.author}: ${t.content}`;
         }).join('\n');
     }
-  } catch (e) {}
-  
+  } catch (e) { }
+
   // Strip HTML as fallback for legacy content
   return jsonStr.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ').trim();
 };
