@@ -1769,10 +1769,10 @@ export class DamageReportService {
     const activeDateIdx = activeParams.length;
 
     if (filters?.handlerId && filters.handlerId > 0) {
-       activeFilterClause = activeFilterClause.replace(`dr."HandlerID"`, `dwl."StaffID"`);
+       activeFilterClause = activeFilterClause.replace(`dr."HandlerID" =`, `COALESCE(dwl."StaffID", dr."HandlerID") =`);
     }
     if (filters?.departmentId && filters.departmentId > 0) {
-       activeFilterClause = activeFilterClause.replace(`handler."DepartmentID"`, `s."DepartmentID"`);
+       activeFilterClause = activeFilterClause.replace(`handler."DepartmentID" =`, `COALESCE(s."DepartmentID", handler."DepartmentID") =`);
     }
 
     const activeReportsRes = await pool.query(
