@@ -1471,14 +1471,14 @@ export default function DamageReportsPage() {
 
   const getStatusStyle = (status: DamageReportStatus) => {
     const statusMap = {
-      [DamageReportStatus.Pending]: { color: '#64748b', backgroundColor: '#f1f5f9', borderColor: '#cbd5e1', tint: '#f8fafc' },
-      [DamageReportStatus.Assigned]: { color: '#64748b', backgroundColor: '#f1f5f9', borderColor: '#cbd5e1', tint: '#f8fafc' },
-      [DamageReportStatus.InProgress]: { color: '#1d4ed8', backgroundColor: '#dbeafe', borderColor: '#93c5fd', tint: '#eff6ff' },
-      [DamageReportStatus.Completed]: { color: '#15803d', backgroundColor: '#dcfce7', borderColor: '#86efac', tint: '#f0fdf4' },
-      [DamageReportStatus.Cancelled]: { color: '#374151', backgroundColor: '#f3f4f6', borderColor: '#d1d5db', tint: '#f9fafb' },
-      [DamageReportStatus.Rejected]: { color: '#b91c1c', backgroundColor: '#fee2e2', borderColor: '#fca5a5', tint: '#fef2f2' },
+      [DamageReportStatus.Pending]: { color: '#ffffff', backgroundColor: '#64748b', borderColor: '#475569', tint: '#f1f5f9' },
+      [DamageReportStatus.Assigned]: { color: '#ffffff', backgroundColor: '#64748b', borderColor: '#475569', tint: '#f1f5f9' },
+      [DamageReportStatus.InProgress]: { color: '#ffffff', backgroundColor: '#3b82f6', borderColor: '#2563eb', tint: '#eff6ff' },
+      [DamageReportStatus.Completed]: { color: '#ffffff', backgroundColor: '#10b981', borderColor: '#059669', tint: '#f0fdf4' },
+      [DamageReportStatus.Cancelled]: { color: '#ffffff', backgroundColor: '#1f2937', borderColor: '#111827', tint: '#f3f4f6' },
+      [DamageReportStatus.Rejected]: { color: '#ffffff', backgroundColor: '#ef4444', borderColor: '#dc2626', tint: '#fef2f2' },
     };
-    return statusMap[status] || { color: '#64748b', backgroundColor: '#f1f5f9', borderColor: '#cbd5e1', tint: '#f8fafc' };
+    return statusMap[status] || { color: '#ffffff', backgroundColor: '#64748b', borderColor: '#475569', tint: '#f1f5f9' };
   };
 
   const getStatusLabel = (status: DamageReportStatus) => {
@@ -1506,12 +1506,12 @@ export default function DamageReportsPage() {
 
   const getPriorityStyle = (priority: DamageReportPriority) => {
     const priorityMap = {
-      [DamageReportPriority.Low]: { color: '#64748b', backgroundColor: '#f8fafc', borderColor: 'transparent' },
-      [DamageReportPriority.Normal]: { color: '#2563eb', backgroundColor: '#eff6ff', borderColor: 'transparent' },
-      [DamageReportPriority.High]: { color: '#a16207', backgroundColor: '#fefce8', borderColor: 'transparent' },
-      [DamageReportPriority.Urgent]: { color: '#be123c', backgroundColor: '#fff1f2', borderColor: 'transparent' },
+      [DamageReportPriority.Low]: { color: '#ffffff', backgroundColor: '#64748b', borderColor: '#475569' },
+      [DamageReportPriority.Normal]: { color: '#ffffff', backgroundColor: '#3b82f6', borderColor: '#2563eb' },
+      [DamageReportPriority.High]: { color: '#ffffff', backgroundColor: '#f97316', borderColor: '#ea580c' },
+      [DamageReportPriority.Urgent]: { color: '#ffffff', backgroundColor: '#ef4444', borderColor: '#dc2626' },
     };
-    return priorityMap[priority] || { color: '#64748b', backgroundColor: '#f8fafc', borderColor: 'transparent' };
+    return priorityMap[priority] || { color: '#ffffff', backgroundColor: '#64748b', borderColor: '#475569' };
   };
 
   const canUpdateStatusForReport = (report?: DamageReportVM | null): boolean => {
@@ -2479,25 +2479,25 @@ export default function DamageReportsPage() {
                             >
                               {isAdmin(currentUser?.roles) ? (
                                 <>
-                                  <option value={report.status === DamageReportStatus.Assigned ? DamageReportStatus.Assigned : DamageReportStatus.Pending}>Chờ</option>
-                                  <option value={DamageReportStatus.InProgress}>Đang XL</option>
-                                  <option value={DamageReportStatus.Completed}>Xong</option>
-                                  <option value={DamageReportStatus.Cancelled}>Hủy</option>
-                                  <option value={DamageReportStatus.Rejected}>Từ chối</option>
+                                  <option value={report.status === DamageReportStatus.Assigned ? DamageReportStatus.Assigned : DamageReportStatus.Pending} style={{ color: getStatusStyle(DamageReportStatus.Pending).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Chờ</option>
+                                  <option value={DamageReportStatus.InProgress} style={{ color: getStatusStyle(DamageReportStatus.InProgress).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Đang XL</option>
+                                  <option value={DamageReportStatus.Completed} style={{ color: getStatusStyle(DamageReportStatus.Completed).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Xong</option>
+                                  <option value={DamageReportStatus.Cancelled} style={{ color: getStatusStyle(DamageReportStatus.Cancelled).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Hủy</option>
+                                  <option value={DamageReportStatus.Rejected} style={{ color: getStatusStyle(DamageReportStatus.Rejected).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Từ chối</option>
                                 </>
                               ) : (
                                 <>
                                   {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned) && (
-                                    <option value={report.status}>Chờ</option>
+                                    <option value={report.status} style={{ color: getStatusStyle(report.status).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Chờ</option>
                                   )}
                                   {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned || report.status === DamageReportStatus.InProgress) && (
-                                    <option value={DamageReportStatus.InProgress}>Đang XL</option>
+                                    <option value={DamageReportStatus.InProgress} style={{ color: getStatusStyle(DamageReportStatus.InProgress).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Đang XL</option>
                                   )}
-                                  <option value={DamageReportStatus.Completed}>Xong</option>
+                                  <option value={DamageReportStatus.Completed} style={{ color: getStatusStyle(DamageReportStatus.Completed).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Xong</option>
                                   {report.status === DamageReportStatus.Cancelled && (
-                                    <option value={DamageReportStatus.Cancelled}>Hủy</option>
+                                    <option value={DamageReportStatus.Cancelled} style={{ color: getStatusStyle(DamageReportStatus.Cancelled).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Hủy</option>
                                   )}
-                                  <option value={DamageReportStatus.Rejected}>Từ chối</option>
+                                  <option value={DamageReportStatus.Rejected} style={{ color: getStatusStyle(DamageReportStatus.Rejected).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Từ chối</option>
                                 </>
                               )}
                             </select>
@@ -2524,10 +2524,10 @@ export default function DamageReportsPage() {
                               }}
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <option value={DamageReportPriority.Low}>Thấp</option>
-                              <option value={DamageReportPriority.Normal}>Thường</option>
-                              <option value={DamageReportPriority.High}>Cao</option>
-                              <option value={DamageReportPriority.Urgent}>Khẩn</option>
+                              <option value={DamageReportPriority.Low} style={{ color: getPriorityStyle(DamageReportPriority.Low).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Thấp</option>
+                              <option value={DamageReportPriority.Normal} style={{ color: getPriorityStyle(DamageReportPriority.Normal).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Thường</option>
+                              <option value={DamageReportPriority.High} style={{ color: getPriorityStyle(DamageReportPriority.High).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Cao</option>
+                              <option value={DamageReportPriority.Urgent} style={{ color: getPriorityStyle(DamageReportPriority.Urgent).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Khẩn</option>
                             </select>
                           </td>
 
@@ -2584,7 +2584,7 @@ export default function DamageReportsPage() {
                           boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
                           border: '1px solid #e2e8f0',
                           transition: 'all 0.3s ease',
-                          borderLeft: `6px solid ${getStatusStyle(report.status).color}`
+                          borderLeft: `6px solid ${getStatusStyle(report.status).backgroundColor}`
                         }}
                       >
                         {/* Card Header - Branded Midnight Blue (#2c3e50) */}
@@ -2606,7 +2606,7 @@ export default function DamageReportsPage() {
                               <span 
                                 className="badge rounded-pill" 
                                 style={{ 
-                                  backgroundColor: getStatusStyle(report.status).color, 
+                                  backgroundColor: getStatusStyle(report.status).backgroundColor, 
                                   color: '#ffffff', 
                                   fontSize: '0.6rem',
                                   fontWeight: '901',
@@ -2738,29 +2738,28 @@ export default function DamageReportsPage() {
                                   fontSize: '0.75rem',
                                   borderRadius: '6px',
                                   height: '34px',
-                                  borderColor: '#e2e8f0',
-                                  color: '#2c3e50',
-                                  backgroundColor: '#f8fafc'
+                                  ...getStatusStyle(report.status),
+                                  border: `1.5px solid ${getStatusStyle(report.status).borderColor}`
                                 }}
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 {isAdmin(currentUser?.roles) ? (
                                   <>
-                                    <option value={report.status === DamageReportStatus.Assigned ? DamageReportStatus.Assigned : DamageReportStatus.Pending}>Chờ xử lý</option>
-                                    <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
-                                    <option value={DamageReportStatus.Completed}>Hoàn thành</option>
-                                    <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
-                                    <option value={DamageReportStatus.Rejected}>Từ chối</option>
+                                    <option value={report.status === DamageReportStatus.Assigned ? DamageReportStatus.Assigned : DamageReportStatus.Pending} style={{ color: getStatusStyle(DamageReportStatus.Pending).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Chờ xử lý</option>
+                                    <option value={DamageReportStatus.InProgress} style={{ color: getStatusStyle(DamageReportStatus.InProgress).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Đang xử lý</option>
+                                    <option value={DamageReportStatus.Completed} style={{ color: getStatusStyle(DamageReportStatus.Completed).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Hoàn thành</option>
+                                    <option value={DamageReportStatus.Cancelled} style={{ color: getStatusStyle(DamageReportStatus.Cancelled).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Đã hủy</option>
+                                    <option value={DamageReportStatus.Rejected} style={{ color: getStatusStyle(DamageReportStatus.Rejected).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Từ chối</option>
                                   </>
                                 ) : (
                                   <>
                                     {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned) && (
-                                      <option value={report.status}>Chờ xử lý</option>
+                                      <option value={report.status} style={{ color: getStatusStyle(report.status).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Chờ xử lý</option>
                                     )}
-                                    <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
-                                    <option value={DamageReportStatus.Completed}>Hoàn thành</option>
-                                    <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
-                                    <option value={DamageReportStatus.Rejected}>Từ chối</option>
+                                    <option value={DamageReportStatus.InProgress} style={{ color: getStatusStyle(DamageReportStatus.InProgress).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Đang xử lý</option>
+                                    <option value={DamageReportStatus.Completed} style={{ color: getStatusStyle(DamageReportStatus.Completed).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Hoàn thành</option>
+                                    <option value={DamageReportStatus.Cancelled} style={{ color: getStatusStyle(DamageReportStatus.Cancelled).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Đã hủy</option>
+                                    <option value={DamageReportStatus.Rejected} style={{ color: getStatusStyle(DamageReportStatus.Rejected).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Từ chối</option>
                                   </>
                                 )}
                               </select>
@@ -2778,15 +2777,14 @@ export default function DamageReportsPage() {
                                   fontSize: '0.75rem',
                                   borderRadius: '6px',
                                   height: '34px',
-                                  borderColor: '#e2e8f0',
-                                  color: getPriorityStyle(report.priority).color,
-                                  backgroundColor: '#f8fafc'
+                                  ...getPriorityStyle(report.priority),
+                                  border: `1.5px solid ${getPriorityStyle(report.priority).borderColor}`
                                 }}
                               >
-                                <option value={DamageReportPriority.Low}>Thấp</option>
-                                <option value={DamageReportPriority.Normal}>Bình thường</option>
-                                <option value={DamageReportPriority.High}>Cao</option>
-                                <option value={DamageReportPriority.Urgent}>Khẩn cấp</option>
+                                <option value={DamageReportPriority.Low} style={{ color: getPriorityStyle(DamageReportPriority.Low).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Thấp</option>
+                                <option value={DamageReportPriority.Normal} style={{ color: getPriorityStyle(DamageReportPriority.Normal).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Bình thường</option>
+                                <option value={DamageReportPriority.High} style={{ color: getPriorityStyle(DamageReportPriority.High).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Cao</option>
+                                <option value={DamageReportPriority.Urgent} style={{ color: getPriorityStyle(DamageReportPriority.Urgent).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Khẩn cấp</option>
                               </select>
                             </div>
                           </div>
