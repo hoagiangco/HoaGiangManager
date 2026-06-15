@@ -500,7 +500,7 @@ export default function WorkPlanPage() {
             title="Kho lưu trữ kế hoạch"
           >
             <i className="fas fa-box-archive"></i>
-            <span className="d-none d-sm-inline">Kho kế hoạch</span>
+            <span>Kho kế hoạch</span>
           </button>
           <button className="btn btn-primary rounded-pill px-4 py-2 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2" onClick={() => { setModalMode('new'); setScheduleMode('archive'); setPlanApplyDate(selectedDate); setIsModalOpen(true); }}>
             <i className="fas fa-plus"></i>
@@ -764,17 +764,18 @@ export default function WorkPlanPage() {
                       const isSelected = selectedOverdueIds.has(item.id);
                       return (
                         <div key={item.id} className={`overdue-item ${isSelected ? 'selected' : ''} ${isMoving ? 'moving' : ''}`}>
-                          <input
-                            type="checkbox"
-                            className="form-check-input flex-shrink-0"
-                            checked={isSelected}
-                            onChange={e => setSelectedOverdueIds(prev => {
-                              const s = new Set(prev);
-                              e.target.checked ? s.add(item.id) : s.delete(item.id);
-                              return s;
-                            })}
-                          />
-                          <div className="overdue-item-info">
+                          <div className="d-flex align-items-start gap-2 w-100" style={{ minWidth: 0 }}>
+                            <input
+                              type="checkbox"
+                              className="form-check-input flex-shrink-0 mt-1"
+                              checked={isSelected}
+                              onChange={e => setSelectedOverdueIds(prev => {
+                                const s = new Set(prev);
+                                e.target.checked ? s.add(item.id) : s.delete(item.id);
+                                return s;
+                              })}
+                            />
+                            <div className="overdue-item-info">
                             <div className="d-flex align-items-center gap-1 flex-wrap mb-1">
                               {item.maintenanceBatchId && <span className="mini-badge bg-primary">Bảo trì</span>}
                               {item.isNewTask && <span className="mini-badge bg-info">Mới</span>}
@@ -822,6 +823,7 @@ export default function WorkPlanPage() {
                                 )}
                               </>
                             )}
+                            </div>
                           </div>
                           <div className="overdue-item-action">
                             <DatePicker
@@ -1184,6 +1186,12 @@ export default function WorkPlanPage() {
         .overdue-item.moving { opacity: 0.5; pointer-events: none; }
         .overdue-item-info { flex: 1; min-width: 0; }
         .overdue-item-action { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+
+        @media (max-width: 575.98px) {
+          .overdue-item { flex-direction: column; align-items: flex-start; }
+          .overdue-item-action { width: 100%; flex-direction: row; justify-content: space-between; align-items: center; margin-top: 8px; border-top: 1px dashed #e9ecef; padding-top: 12px; gap: 10px; }
+          .overdue-item-action > .d-flex { margin-top: 0 !important; width: auto !important; }
+        }
       `}</style>
     </div>
   );

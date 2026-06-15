@@ -1004,18 +1004,23 @@ export default function StatisticsPage() {
                 </div>
               </div>
 
-              {/* Compact Device Stats Bar */}
-              <div className="d-flex flex-wrap gap-2 mb-2 p-2 bg-white rounded border d-print-none">
+              {/* Modern Device Stats Bar */}
+              <div className="d-flex flex-wrap gap-2 mb-2 d-print-none">
                 {[
-                  { label: 'Tổng', value: deviceSummary?.data?.devices?.total, color: 'primary' },
-                  { label: 'Dùng', value: deviceSummary?.data?.devices?.dangSuDung, color: 'success' },
-                  { label: 'Đang xử lý', value: deviceSummary?.data?.devices?.dangSuaChua, color: 'warning' },
-                  { label: 'Chờ xử lý', value: deviceSummary?.data?.devices?.coHuHong, color: 'info' },
-                  { label: 'Lỗi', value: deviceSummary?.data?.devices?.huHong, color: 'danger' },
+                  { label: 'Tổng', value: deviceSummary?.data?.devices?.total, color: 'primary', icon: 'fa-desktop' },
+                  { label: 'Dùng', value: deviceSummary?.data?.devices?.dangSuDung, color: 'success', icon: 'fa-check-circle' },
+                  { label: 'Đang xử lý', value: deviceSummary?.data?.devices?.dangSuaChua, color: 'warning', icon: 'fa-tools' },
+                  { label: 'Chờ xử lý', value: deviceSummary?.data?.devices?.coHuHong, color: 'info', icon: 'fa-clock' },
+                  { label: 'Lỗi', value: deviceSummary?.data?.devices?.huHong, color: 'danger', icon: 'fa-exclamation-triangle' },
                 ].map((stat, idx) => (
-                  <div key={idx} className="d-flex align-items-center gap-1 border-end pe-2">
-                    <span className="x-small text-muted uppercase fw-bold">{stat.label}:</span>
-                    <span className={`fw-bold text-${stat.color}`}>{stat.value ?? 0}</span>
+                  <div key={idx} className={`flex-fill d-flex align-items-center gap-2 px-2 py-1 rounded-2 border bg-${stat.color} bg-opacity-10 border-${stat.color} border-opacity-25 transition-all`} style={{ minWidth: '110px' }}>
+                    <div className={`d-flex align-items-center justify-content-center rounded-circle bg-${stat.color} bg-opacity-25 text-${stat.color}`} style={{ width: '24px', height: '24px' }}>
+                      <i className={`fas ${stat.icon}`} style={{ fontSize: '0.75rem' }}></i>
+                    </div>
+                    <div className="d-flex flex-column">
+                      <span className="text-muted fw-bold text-uppercase" style={{ fontSize: '0.6rem', letterSpacing: '0.3px' }}>{stat.label}</span>
+                      <span className={`fw-bold text-${stat.color} mt-1`} style={{ fontSize: '0.9rem', lineHeight: '1' }}>{stat.value ?? 0}</span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1178,33 +1183,58 @@ export default function StatisticsPage() {
                 </div>
               </div>
 
-              {/* Compact Stats Bar for Reports */}
-              <div className="d-flex flex-wrap gap-3 mb-2 p-2 bg-white rounded border d-print-none">
+              {/* Modern Stats Bar for Reports */}
+              <div className="d-flex flex-wrap gap-2 mb-2 d-print-none">
                 {reportFilters.dailyMode ? (
                   [
-                    { label: 'Việc làm hôm nay', value: (dailyListResponse?.summary?.totalNew || 0) + (dailyListResponse?.summary?.totalActive || 0) + (dailyListResponse?.summary?.totalCompleted || 0), color: 'info' },
-                    { label: 'Việc hoàn thành', value: dailyListResponse?.summary?.totalCompleted ?? 0, color: 'primary' },
+                    { 
+                      label: 'Việc làm hôm nay', 
+                      value: (dailyListResponse?.summary?.totalNew || 0) + (dailyListResponse?.summary?.totalActive || 0) + (dailyListResponse?.summary?.totalCompleted || 0), 
+                      color: 'info',
+                      icon: 'fa-calendar-day'
+                    },
+                    { 
+                      label: 'Việc hoàn thành', 
+                      value: dailyListResponse?.summary?.totalCompleted ?? 0, 
+                      color: 'success',
+                      icon: 'fa-check-circle'
+                    },
                     { 
                       label: 'Việc tồn đọng', 
-                      value: ((dailyListResponse?.summary?.totalPending || 0) + (dailyListResponse?.summary?.totalPendingActive || 0)) + pendingBreakdownStr, 
-                      color: 'danger' 
+                      value: (dailyListResponse?.summary?.totalPending || 0) + (dailyListResponse?.summary?.totalPendingActive || 0),
+                      subtext: pendingBreakdownStr,
+                      color: 'danger',
+                      icon: 'fa-exclamation-circle'
                     },
                   ].map((stat, idx) => (
-                    <div key={idx} className="d-flex align-items-center gap-1 border-end pe-3">
-                      <span className="x-small text-muted uppercase fw-bold">{stat.label}:</span>
-                      <span className={`fw-bold text-${stat.color}`}>{stat.value ?? 0}</span>
+                    <div key={idx} className={`flex-fill d-flex align-items-center gap-2 px-2 py-1 rounded-2 border bg-${stat.color} bg-opacity-10 border-${stat.color} border-opacity-25 transition-all`} style={{ minWidth: '160px' }}>
+                      <div className={`d-flex align-items-center justify-content-center rounded-circle bg-${stat.color} bg-opacity-25 text-${stat.color}`} style={{ width: '28px', height: '28px' }}>
+                        <i className={`fas ${stat.icon}`} style={{ fontSize: '0.85rem' }}></i>
+                      </div>
+                      <div className="d-flex flex-column">
+                        <span className="text-muted fw-bold text-uppercase" style={{ fontSize: '0.6rem', letterSpacing: '0.3px' }}>{stat.label}</span>
+                        <div className="d-flex align-items-baseline gap-1 mt-1">
+                          <span className={`fw-bold text-${stat.color}`} style={{ fontSize: '1rem', lineHeight: '1' }}>{stat.value ?? 0}</span>
+                          {stat.subtext && <span className={`text-${stat.color} fw-medium`} style={{ fontSize: '0.7rem' }}>{stat.subtext}</span>}
+                        </div>
+                      </div>
                     </div>
                   ))
                 ) : (
                   [
-                    { label: 'Tổng sự cố', value: reportSummary?.data?.reports?.total, color: 'primary' },
-                    { label: 'Chờ xử lý', value: reportSummary?.data?.reports?.pending, color: 'warning' },
-                    { label: 'Đang xử lý', value: reportSummary?.data?.reports?.inProgress, color: 'info' },
-                    { label: 'Hoàn thành', value: reportSummary?.data?.reports?.completed, color: 'success' },
+                    { label: 'Tổng sự cố', value: reportSummary?.data?.reports?.total, color: 'primary', icon: 'fa-list-ol' },
+                    { label: 'Chờ xử lý', value: reportSummary?.data?.reports?.pending, color: 'warning', icon: 'fa-clock' },
+                    { label: 'Đang xử lý', value: reportSummary?.data?.reports?.inProgress, color: 'info', icon: 'fa-tools' },
+                    { label: 'Hoàn thành', value: reportSummary?.data?.reports?.completed, color: 'success', icon: 'fa-check-double' },
                   ].map((stat, idx) => (
-                    <div key={idx} className="d-flex align-items-center gap-1 border-end pe-3">
-                      <span className="x-small text-muted uppercase fw-bold">{stat.label}:</span>
-                      <span className={`fw-bold text-${stat.color}`}>{stat.value ?? 0}</span>
+                    <div key={idx} className={`flex-fill d-flex align-items-center gap-2 px-2 py-1 rounded-2 border bg-${stat.color} bg-opacity-10 border-${stat.color} border-opacity-25 transition-all`} style={{ minWidth: '130px' }}>
+                      <div className={`d-flex align-items-center justify-content-center rounded-circle bg-${stat.color} bg-opacity-25 text-${stat.color}`} style={{ width: '26px', height: '26px' }}>
+                        <i className={`fas ${stat.icon}`} style={{ fontSize: '0.8rem' }}></i>
+                      </div>
+                      <div className="d-flex flex-column">
+                        <span className="text-muted fw-bold text-uppercase" style={{ fontSize: '0.6rem', letterSpacing: '0.3px' }}>{stat.label}</span>
+                        <span className={`fw-bold text-${stat.color} mt-1`} style={{ fontSize: '0.95rem', lineHeight: '1' }}>{stat.value ?? 0}</span>
+                      </div>
                     </div>
                   ))
                 )}
