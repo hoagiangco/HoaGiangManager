@@ -48,38 +48,48 @@ export const calculateNextDueDate = (
     if (!validDays || validDays.length === 0) return addDays(current, 7); // Fallback
 
     const currentDayOfWeek = current.getDay();
-    
+
     // Sort days to ensure they are in order
     const sortedDays = [...validDays].sort((a, b) => a - b);
-    
+
+    // Helper: given a base date and a target day-of-week, return the date of that
+    // weekday within the same week (week starts on Sunday).
+    const getWeekdayInSameWeek = (base: Date, targetDay: number): Date => {
+      // Move back to Sunday (start of week)
+      const sundayOffset = -base.getDay();
+      const sunday = addDays(base, sundayOffset);
+      return addDays(sunday, targetDay);
+    };
+
     if (isFirstCalculation) {
-      // Find the first valid day in the current week that is >= today
-      for (const day of sortedDays) {
-        if (day >= currentDayOfWeek) {
-          const diff = day - currentDayOfWeek;
-          return addDays(current, diff);
-        }
-      }
-      // If none found this week, go to the next valid week
-      const firstValidDay = sortedDays[0];
-      let nextBase = addDays(current, intervalValue * 7);
-      const nextBaseDayOfWeek = nextBase.getDay();
-      const diff = firstValidDay - nextBaseDayOfWeek;
-      return addDays(nextBase, diff);
-    } else {
-      // Not first calculation: find the next valid day in the current week AFTER today
+      // Find the first valid weekday in the current week that is strictly > current
+      // (or == current only if it falls exactly on that weekday, we still want next occurrence)
       for (const day of sortedDays) {
         if (day > currentDayOfWeek) {
-          const diff = day - currentDayOfWeek;
-          return addDays(current, diff);
+          return getWeekdayInSameWeek(current, day);
         }
       }
-      // If none found, add interval weeks and pick the first valid day
+      // If current day itself is a valid day (day === currentDayOfWeek),
+      // return current as the first occurrence (schedule starts today).
+      if (sortedDays.includes(currentDayOfWeek)) {
+        return new Date(current);
+      }
+      // No valid day remaining this week — jump to first valid day next interval
       const firstValidDay = sortedDays[0];
-      let nextBase = addDays(current, intervalValue * 7);
-      const nextBaseDayOfWeek = nextBase.getDay();
-      const diff = firstValidDay - nextBaseDayOfWeek;
-      return addDays(nextBase, diff);
+      const nextBase = addDays(current, intervalValue * 7);
+      return getWeekdayInSameWeek(nextBase, firstValidDay);
+    } else {
+      // Not first calculation: next occurrence must be strictly AFTER current.
+      // First check same week for any remaining valid days.
+      for (const day of sortedDays) {
+        if (day > currentDayOfWeek) {
+          return getWeekdayInSameWeek(current, day);
+        }
+      }
+      // No valid day left this week — advance by intervalValue weeks and take first valid day.
+      const firstValidDay = sortedDays[0];
+      const nextBase = addDays(current, intervalValue * 7);
+      return getWeekdayInSameWeek(nextBase, firstValidDay);
     }
   } 
   

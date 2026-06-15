@@ -1468,6 +1468,8 @@ export class DamageReportService {
         drp."EventTypeID" as "eventTypeId",
         drp."IntervalValue" as "intervalValue",
         drp."IntervalUnit" as "intervalUnit",
+        drp."NextDueDate" as "nextDueDate",
+        drp."Metadata" as metadata,
         d."Name" as "deviceName"
       FROM "DeviceReminderPlan" drp
       LEFT JOIN "Device" d ON drp."DeviceID" = d."ID"
@@ -1554,24 +1556,33 @@ export class DamageReportService {
     if (s === DamageReportStatus.Completed) {
       console.log(`Bumping nextDueDate for batch ${batchId} due to report ${reportId} completion`);
       
+      const { calculateNextDueDate } = require('../utils/maintenanceScheduler');
+
       const planUpdatePromises = plans.map((plan: any) => {
         if (!plan.intervalValue || !plan.intervalUnit) {
           console.log(`Skipping plan ${plan.id} - no interval defined`);
           return Promise.resolve();
         }
 
-        const correctNextDueDate = new Date(now);
-        correctNextDueDate.setHours(0, 0, 0, 0);
+        // Use the plan's existing nextDueDate as the base, or fallback to today if missing
+        const baseDate = plan.nextDueDate ? new Date(plan.nextDueDate) : new Date(now);
+        baseDate.setHours(0, 0, 0, 0);
         
-        if (plan.intervalUnit === 'day') {
-          correctNextDueDate.setDate(correctNextDueDate.getDate() + plan.intervalValue);
-        } else if (plan.intervalUnit === 'week') {
-          correctNextDueDate.setDate(correctNextDueDate.getDate() + plan.intervalValue * 7);
-        } else if (plan.intervalUnit === 'month') {
-          correctNextDueDate.setMonth(correctNextDueDate.getMonth() + plan.intervalValue);
-        } else if (plan.intervalUnit === 'year') {
-          correctNextDueDate.setFullYear(correctNextDueDate.getFullYear() + plan.intervalValue);
+        let scheduleConfig = null;
+        if (plan.metadata) {
+          try {
+            const meta = typeof plan.metadata === 'string' ? JSON.parse(plan.metadata) : plan.metadata;
+            scheduleConfig = meta.scheduleConfig || null;
+          } catch(e) {}
         }
+
+        const correctNextDueDate = calculateNextDueDate(
+          baseDate,
+          plan.intervalValue,
+          plan.intervalUnit,
+          scheduleConfig,
+          false
+        );
 
         return pool.query(
           `UPDATE "DeviceReminderPlan" 

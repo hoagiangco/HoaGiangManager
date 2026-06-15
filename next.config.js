@@ -46,6 +46,11 @@ const nextConfig = {
   poweredByHeader: false,
   // Output configuration
   output: 'standalone', // For Docker deployment
+  experimental: {
+    // Prevent 3221226505 (buffer overrun / OOM) error on Windows
+    workerThreads: false,
+    cpus: 2
+  }
 }
 
 module.exports = withPWA(nextConfig)

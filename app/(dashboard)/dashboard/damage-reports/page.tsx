@@ -3451,6 +3451,24 @@ export default function DamageReportsPage() {
                     <i className="fas fa-times me-1"></i>Hủy
                   </button>
 
+                  {canFinishImmediately && !isEdit && (
+                    <button 
+                      type="button" 
+                      className="btn btn-success rounded-pill btn-sm shadow-sm flex-fill d-flex align-items-center justify-content-center gap-1" 
+                      style={{ fontWeight: '700' }} 
+                      onClick={() => {
+                        if (formData.deviceSelection === 'other') {
+                          handleSave(true);
+                        } else {
+                          setShowDoneConfirm(true);
+                        }
+                      }}
+                    >
+                      <i className="fas fa-check"></i>
+                      <span>Xong</span>
+                    </button>
+                  )}
+
                   <button type="button" className="btn btn-primary rounded-pill btn-sm shadow-sm flex-fill" style={{ fontWeight: '700' }} onClick={() => handleSave(false)}>
                     <i className="fas fa-save me-1"></i>Lưu
                   </button>
