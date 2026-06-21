@@ -3456,9 +3456,9 @@ export default function DamageReportsPage() {
                       style={{ fontWeight: '700' }} 
                       onClick={() => {
                         if (formData.deviceSelection === 'other') {
-                          handleSave(true);
-                        } else {
                           setShowDoneConfirm(true);
+                        } else {
+                          handleSave(true);
                         }
                       }}
                     >

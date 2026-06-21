@@ -98,8 +98,9 @@ export async function POST(request: NextRequest) {
     if (!reportData.reportDate) {
       reportData.reportDate = getVNTodayStr();
     }
-    // Force Pending status for all new reports from Reports and Plans
-    if (reportData.deviceSelection !== 'maintenance') {
+    // Force Pending status for all new reports from Reports and Plans, 
+    // UNLESS the frontend explicitly requested Completed (e.g., Quick Complete via 'Xong' button)
+    if (reportData.deviceSelection !== 'maintenance' && reportData.status !== DamageReportStatus.Completed) {
       reportData.status = DamageReportStatus.Pending;
       reportData.handlingDate = null;
       reportData.completedDate = null;
