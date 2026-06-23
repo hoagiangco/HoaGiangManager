@@ -969,19 +969,13 @@ function DevicesPageContent() {
                     <div style={{ width: '85px' }}>
                       <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Danh mục:</span>
                     </div>
-                    <select
-                      className="form-select form-select-sm flex-grow-1"
+                    <SearchableSelect
+                      className="form-control form-control-sm flex-grow-1"
+                      options={categories}
                       value={selectedCategory}
-                      onChange={(e) => setSelectedCategory(Number(e.target.value))}
-                      style={{ borderRadius: '6px', width: '100%', minWidth: '120px' }}
-                    >
-                      <option value="0">Tất cả</option>
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(val: number) => setSelectedCategory(val)}
+                      placeholder="Tất cả"
+                    />
                   </div>
                 </div>
 
@@ -1010,20 +1004,16 @@ function DevicesPageContent() {
                 {/* Location Filter */}
                 <div className="col-12 col-md-auto order-last order-md-first">
                   <div className="d-flex align-items-center gap-2">
-                    <div style={{ width: '85px' }}>
+                    <div style={{ width: '40px' }}>
                       <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Vị trí:</span>
                     </div>
-                    <select
-                      className="form-select form-select-sm flex-grow-1"
+                    <SearchableSelect
+                      className="form-control form-control-sm flex-grow-1"
+                      options={formattedLocations}
                       value={selectedLocation}
-                      onChange={(e) => setSelectedLocation(Number(e.target.value))}
-                      style={{ borderRadius: '6px', width: '100%', minWidth: '120px' }}
-                    >
-                      <option value="0">Tất cả</option>
-                      {formattedLocations.map((loc) => (
-                        <option key={loc.id} value={loc.id}>{loc.name}</option>
-                      ))}
-                    </select>
+                      onChange={(val: number) => setSelectedLocation(val)}
+                      placeholder="Tất cả"
+                    />
                   </div>
                 </div>
 
