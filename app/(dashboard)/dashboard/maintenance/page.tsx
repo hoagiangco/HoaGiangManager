@@ -109,6 +109,7 @@ interface DeviceReminderPlanVM {
   // Thông tin về lần bảo trì hoàn thành gần nhất
   lastCompletedEvent?: {
     endDate?: Date | null;
+    reportDate?: Date | null;
     staffName?: string | null;
     notes?: string | null;
   } | null;
@@ -630,6 +631,7 @@ function MaintenancePageContent() {
               const lastCompleted = completedEvents[0];
               plan.lastCompletedEvent = {
                 endDate: lastCompleted.endDate ? new Date(lastCompleted.endDate) : null,
+                reportDate: lastCompleted.eventDate ? new Date(lastCompleted.eventDate) : (lastCompleted.createdAt ? new Date(lastCompleted.createdAt) : null),
                 staffName: lastCompleted.staffName || null,
                 notes: lastCompleted.description || lastCompleted.notes || null,
               };
@@ -871,8 +873,8 @@ function MaintenancePageContent() {
     Object.values(groups).forEach((group) => {
       const completedDates: Date[] = [];
       group.plans.forEach((plan) => {
-        if (plan.lastCompletedEvent?.endDate) {
-          const date = plan.lastCompletedEvent.endDate;
+        if (plan.lastCompletedEvent) {
+          const date = plan.lastCompletedEvent.reportDate || plan.lastCompletedEvent.endDate;
           if (date instanceof Date && !isNaN(date.getTime())) {
             completedDates.push(date);
           } else if (typeof date === 'string') {
@@ -881,9 +883,12 @@ function MaintenancePageContent() {
           }
         }
         const currentEvent = planEvents[plan.id];
-        if (currentEvent && currentEvent.status === 'completed' && currentEvent.endDate) {
-          const parsedDate = new Date(currentEvent.endDate);
-          if (!isNaN(parsedDate.getTime())) completedDates.push(parsedDate);
+        if (currentEvent && currentEvent.status === 'completed') {
+          const eventDateStr = currentEvent.eventDate || currentEvent.createdAt || currentEvent.endDate;
+          if (eventDateStr) {
+            const parsedDate = new Date(eventDateStr);
+            if (!isNaN(parsedDate.getTime())) completedDates.push(parsedDate);
+          }
         }
       });
       if (completedDates.length > 0) {
@@ -1311,8 +1316,8 @@ function MaintenancePageContent() {
           if ((intervalChanged || startFromChanged || scheduleConfigChanged) && effectiveStartFrom) {
             // Nếu đổi chu kỳ, ngày bắt đầu hoặc loại lịch, tính lại nextDueDate từ startFrom mới 
             // hoặc hoàn thành gần nhất (ưu tiên startFrom mới cho kế hoạch chưa chạy)
-            const baseDate = plan.lastCompletedEvent?.endDate 
-              ? new Date(plan.lastCompletedEvent.endDate) 
+            const baseDate = (plan.lastCompletedEvent?.reportDate || plan.lastCompletedEvent?.endDate)
+              ? new Date(plan.lastCompletedEvent.reportDate || plan.lastCompletedEvent.endDate!) 
               : new Date(effectiveStartFrom);
             
             newNextDueDate = calculateNextDueDate(baseDate, editIntervalValue, editIntervalUnit, scheduleConfig, true);
@@ -4845,12 +4850,15 @@ function MaintenancePageContent() {
           // Calculate lastMaintenanceDate and nextMaintenanceDate
           const completedDates = selectedGroup.plans
             .map(plan => {
-              if (plan.lastCompletedEvent?.endDate) {
-                return new Date(plan.lastCompletedEvent.endDate);
+              const lastCompleted = plan.lastCompletedEvent;
+              if (lastCompleted) {
+                const date = lastCompleted.reportDate || lastCompleted.endDate;
+                if (date) return new Date(date);
               }
               const event = planEvents[plan.id];
-              if (event?.status === 'completed' && event?.endDate) {
-                return new Date(event.endDate);
+              if (event?.status === 'completed') {
+                const eventDateStr = event.eventDate || event.createdAt || event.endDate;
+                if (eventDateStr) return new Date(eventDateStr);
               }
               return null;
             })
