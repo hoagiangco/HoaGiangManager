@@ -15,6 +15,20 @@ interface MaintenanceNotifications {
   overduePlans: number;
   upcomingPlans: number;
   pendingEvents: number;
+  batches?: {
+    overdue: number;
+    upcoming: number;
+    pending: number;
+    planned: number;
+    inProgress: number;
+  };
+  devices?: {
+    overdue: number;
+    upcoming: number;
+    pending: number;
+    planned: number;
+    inProgress: number;
+  };
 }
 
 interface ReportHandler {
@@ -42,7 +56,16 @@ export default function DashboardPage() {
   // Fetch notifications with 10s polling
   const { data: notificationsData } = useSWR('/maintenance/notifications', fetcher, {
     refreshInterval: 10000,
-    fallbackData: { status: true, data: { overduePlans: 0, upcomingPlans: 0, pendingEvents: 0 } }
+    fallbackData: {
+      status: true,
+      data: {
+        overduePlans: 0,
+        upcomingPlans: 0,
+        pendingEvents: 0,
+        batches: { overdue: 0, upcoming: 0, pending: 0, planned: 0, inProgress: 0 },
+        devices: { overdue: 0, upcoming: 0, pending: 0, planned: 0, inProgress: 0 },
+      }
+    }
   });
 
   // Fetch pending reports with 10s polling
@@ -67,7 +90,27 @@ export default function DashboardPage() {
 
   const checkinsTodayCount = checkinsTodayData?.data?.length || 0;
 
-  const notifications = notificationsData?.data || { overduePlans: 0, upcomingPlans: 0, pendingEvents: 0 };
+  const notifications: MaintenanceNotifications = notificationsData?.data || {
+    overduePlans: 0,
+    upcomingPlans: 0,
+    pendingEvents: 0,
+    batches: { overdue: 0, upcoming: 0, pending: 0, planned: 0, inProgress: 0 },
+    devices: { overdue: 0, upcoming: 0, pending: 0, planned: 0, inProgress: 0 },
+  };
+  const maintenanceBatches = notifications.batches || {
+    overdue: notifications.overduePlans || 0,
+    upcoming: notifications.upcomingPlans || 0,
+    pending: 0,
+    planned: 0,
+    inProgress: 0,
+  };
+  const maintenanceDevices = notifications.devices || {
+    overdue: 0,
+    upcoming: 0,
+    pending: notifications.pendingEvents || 0,
+    planned: 0,
+    inProgress: 0,
+  };
   const pendingReports = pendingReportsData?.data || {
     pending: { totalCount: 0, unassignedCount: 0, handlers: [] },
     inProgress: { totalCount: 0, unassignedCount: 0, handlers: [] }
@@ -142,7 +185,7 @@ export default function DashboardPage() {
   }
 
 
-  const hasNotifications = notifications.overduePlans > 0 || notifications.upcomingPlans > 0 || notifications.pendingEvents > 0;
+  const hasNotifications = maintenanceBatches.overdue > 0 || maintenanceBatches.upcoming > 0 || maintenanceDevices.pending > 0;
   const hasPendingReports = pendingReports.pending.totalCount > 0 || pendingReports.inProgress.totalCount > 0;
 
   return (
@@ -195,32 +238,46 @@ export default function DashboardPage() {
               </div>
             )}
             {/* Maintenance */}
-            {notifications.overduePlans > 0 && (
+            {maintenanceBatches.overdue > 0 && (
               <div className="col-lg-3 col-md-6">
                 <Link href="/dashboard/maintenance?tab=overdue" className="alert-item-compact border-left-danger h-100">
                   <i className="fas fa-calendar-times text-danger"></i>
                   <div className="alert-item-text text-danger">
-                    {notifications.overduePlans} bảo trì quá hạn
+                    {maintenanceBatches.overdue} đợt bảo trì quá hạn
+                    {maintenanceDevices.overdue > 0 && (
+                      <div className="alert-item-sub text-danger fw-bold">
+                        {maintenanceDevices.overdue} thiết bị trong các đợt này
+                      </div>
+                    )}
                   </div>
                 </Link>
               </div>
             )}
-            {notifications.upcomingPlans > 0 && (
+            {maintenanceBatches.upcoming > 0 && (
               <div className="col-lg-3 col-md-6">
                 <Link href="/dashboard/maintenance?tab=upcoming" className="alert-item-compact border-left-warning h-100">
                   <i className="fas fa-calendar-alt text-warning"></i>
                   <div className="alert-item-text">
-                    {notifications.upcomingPlans} bảo trì sắp đến hạn
+                    {maintenanceBatches.upcoming} đợt bảo trì sắp đến hạn
+                    {maintenanceDevices.upcoming > 0 && (
+                      <div className="alert-item-sub text-warning fw-bold">
+                        {maintenanceDevices.upcoming} thiết bị trong 30 ngày tới
+                      </div>
+                    )}
                   </div>
                 </Link>
               </div>
             )}
-            {notifications.pendingEvents > 0 && (
+            {maintenanceDevices.pending > 0 && (
               <div className="col-lg-3 col-md-6">
                 <Link href="/dashboard/events" className="alert-item-compact border-left-primary h-100">
                   <i className="fas fa-tools text-primary"></i>
                   <div className="alert-item-text text-primary">
-                    {notifications.pendingEvents} bảo trì được phân công
+                    {maintenanceBatches.pending} đợt đang/chờ thực hiện
+                    <div className="alert-item-sub text-primary fw-bold">
+                      {maintenanceDevices.pending} thiết bị bảo trì
+                      {maintenanceDevices.inProgress > 0 ? ', ' + maintenanceDevices.inProgress + ' đang xử lý' : ''}
+                    </div>
                   </div>
                 </Link>
               </div>
