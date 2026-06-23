@@ -56,11 +56,14 @@ export class DamageReportService {
     reporterId?: number;
     handlerId?: number;
     departmentId?: number;
+    reportingDepartmentId?: number;
     locationId?: number;
     search?: string;
     maintenanceBatchId?: string;
     currentUserId?: string; // For filtering by current user's staffId
     isAdmin?: boolean; // If false, only show reports created by current user
+    fromDate?: string;
+    toDate?: string;
   }): Promise<DamageReportVM[]> {
     let query = `
       SELECT 
@@ -184,6 +187,24 @@ export class DamageReportService {
         paramIndex++;
       }
 
+      if (filters.reportingDepartmentId) {
+        query += ` AND dr."ReportingDepartmentID" = $${paramIndex}`;
+        params.push(filters.reportingDepartmentId);
+        paramIndex++;
+      }
+
+      if (filters.fromDate) {
+        query += ` AND DATE(dr."ReportDate") >= $${paramIndex}`;
+        params.push(filters.fromDate);
+        paramIndex++;
+      }
+
+      if (filters.toDate) {
+        query += ` AND DATE(dr."ReportDate") <= $${paramIndex}`;
+        params.push(filters.toDate);
+        paramIndex++;
+      }
+
       if (filters.locationId) {
         // Filter reports where the device's location matches (recursive parent-child check)
         query += ` AND d."LocationID" IN (
@@ -240,6 +261,7 @@ export class DamageReportService {
     reporterId?: number;
     handlerId?: number;
     departmentId?: number;
+    reportingDepartmentId?: number;
     locationId?: number;
     search?: string;
     maintenanceBatchId?: string;
@@ -247,6 +269,8 @@ export class DamageReportService {
     sortOrder?: 'asc' | 'desc';
     isAdmin?: boolean;
     currentUserId?: string;
+    fromDate?: string;
+    toDate?: string;
   }): Promise<{ reports: DamageReportVM[]; total: number }> {
     const { 
       page = 1, 
@@ -257,13 +281,16 @@ export class DamageReportService {
       reporterId, 
       handlerId, 
       departmentId, 
+      reportingDepartmentId,
       locationId,
       search, 
       maintenanceBatchId,
       sortField = 'reportDate', 
       sortOrder = 'desc',
       isAdmin = false,
-      currentUserId
+      currentUserId,
+      fromDate,
+      toDate
     } = filters;
     
     const offset = (page - 1) * limit;
@@ -314,6 +341,21 @@ export class DamageReportService {
     if (departmentId) {
       params.push(departmentId);
       whereClause += ` AND handler."DepartmentID" = $${params.length}`;
+    }
+
+    if (reportingDepartmentId) {
+      params.push(reportingDepartmentId);
+      whereClause += ` AND dr."ReportingDepartmentID" = $${params.length}`;
+    }
+
+    if (fromDate) {
+      params.push(fromDate);
+      whereClause += ` AND DATE(dr."ReportDate") >= $${params.length}`;
+    }
+
+    if (toDate) {
+      params.push(toDate);
+      whereClause += ` AND DATE(dr."ReportDate") <= $${params.length}`;
     }
 
     if (locationId) {

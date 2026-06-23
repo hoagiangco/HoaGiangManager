@@ -53,6 +53,16 @@ export async function GET(request: NextRequest) {
       filters.search = search;
     }
 
+    const fromDate = searchParams.get('fromDate');
+    if (fromDate) {
+      filters.fromDate = fromDate;
+    }
+
+    const toDate = searchParams.get('toDate');
+    if (toDate) {
+      filters.toDate = toDate;
+    }
+
     const damageReportService = new DamageReportService();
     
     // Import helper

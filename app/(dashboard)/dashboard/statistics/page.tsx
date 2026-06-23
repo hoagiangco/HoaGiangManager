@@ -105,8 +105,27 @@ const defaultDeviceColumnOrder = [
   'stt', 'id', 'deviceName', 'deviceSerial', 'deviceCategoryName', 'deviceDepartmentName', 'deviceLocationName', 'statusName', 'useDate', 'notes'
 ];
 
+const getOneMonthAgoDateStr = () => {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getDateOffsetStr = (monthsOffset: number, daysOffset: number = 0) => {
+  const d = new Date();
+  if (monthsOffset) d.setMonth(d.getMonth() - monthsOffset);
+  if (daysOffset) d.setDate(d.getDate() - daysOffset);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function StatisticsPage() {
-  const [activeTab, setActiveTab] = useState<'devices' | 'reports'>('reports');
+  const [activeTab, setActiveTab] = useState<'devices' | 'reports' | 'dept-report'>('reports');
   
   // States for local filters
   const [deviceFilters, setDeviceFilters] = useState({ deptId: 0, locId: 0, categoryId: 0, status: 0, search: '' });
@@ -123,6 +142,13 @@ export default function StatisticsPage() {
     dailyMode: true,
     dailyCategory: 'all' // all, pending, completed, backlog, priority
   });
+
+  // Dept Report Tab State
+  const [deptTabFromDate, setDeptTabFromDate] = useState(getOneMonthAgoDateStr());
+  const [deptTabSelectedDeptId, setDeptTabSelectedDeptId] = useState(0);
+  const [deptTabStatusFilter, setDeptTabStatusFilter] = useState<'all' | 'completed' | 'backlog' | 'cancelled' | 'rejected'>('all');
+  const [deptReportPage, setDeptReportPage] = useState(1);
+  const [deptReportPageSize, setDeptReportPageSize] = useState(50);
 
   // Pagination states
   const [reportPage, setReportPage] = useState(1);
@@ -449,7 +475,16 @@ export default function StatisticsPage() {
     return `/damage-reports/daily-report-list?${params.toString()}`;
   };
   const { data: dailyListResponse } = useSWR(getDailyListUrl(), fetcher);
-  
+
+  // Dept Report Tab - fetch reports for date range, group client-side by reportingDepartmentId
+  const getDeptReportListUrl = () => {
+    if (activeTab !== 'dept-report') return null;
+    const params = new URLSearchParams();
+    if (deptTabFromDate) params.append('fromDate', deptTabFromDate);
+    return `/damage-reports?${params.toString()}`;
+  };
+  const { data: deptReportData, isLoading: deptReportLoading } = useSWR(getDeptReportListUrl(), fetcher);
+
   // Normalize report list for pagination
   const reportList = useMemo(() => {
      if (!reportListResponse?.data) return { data: [], total: 0 };
@@ -498,6 +533,61 @@ export default function StatisticsPage() {
     const parts = Object.entries(counts).map(([dept, count]) => `${dept}: ${count}`);
     return parts.length > 0 ? ` (${parts.join(', ')})` : '';
   }, [dailyListResponse, reportFilters.dailyMode]);
+
+  // Dept Report Tab - computed values
+  const deptAvailableDepts = useMemo(() => {
+    if (!deptReportData?.data || !departments.length) return [];
+    const deptIdSet = new Set<number>();
+    deptReportData.data.forEach((r: any) => {
+      if (r.reportingDepartmentId) deptIdSet.add(Number(r.reportingDepartmentId));
+    });
+    return (departments as any[])
+      .filter((d: any) => deptIdSet.has(Number(d.id)))
+      .sort((a: any, b: any) => a.name.localeCompare(b.name, 'vi'));
+  }, [deptReportData, departments]);
+
+  const deptReportFilteredByDept = useMemo(() => {
+    if (!deptReportData?.data) return [];
+    if (deptTabSelectedDeptId === 0) return deptReportData.data;
+    return deptReportData.data.filter((r: any) =>
+      Number(r.reportingDepartmentId) === deptTabSelectedDeptId
+    );
+  }, [deptReportData, deptTabSelectedDeptId]);
+
+  const deptReportStats = useMemo(() => ({
+    total: deptReportFilteredByDept.length,
+    completed: deptReportFilteredByDept.filter((r: any) => Number(r.status) === 4).length,
+    backlog: deptReportFilteredByDept.filter((r: any) => [1, 2, 3].includes(Number(r.status))).length,
+    cancelled: deptReportFilteredByDept.filter((r: any) => Number(r.status) === 5).length,
+    rejected: deptReportFilteredByDept.filter((r: any) => Number(r.status) === 6).length,
+  }), [deptReportFilteredByDept]);
+
+  const deptReportFiltered = useMemo(() => {
+    if (deptTabStatusFilter === 'all') return deptReportFilteredByDept;
+    if (deptTabStatusFilter === 'completed') return deptReportFilteredByDept.filter((r: any) => Number(r.status) === 4);
+    if (deptTabStatusFilter === 'backlog') return deptReportFilteredByDept.filter((r: any) => [1, 2, 3].includes(Number(r.status)));
+    if (deptTabStatusFilter === 'cancelled') return deptReportFilteredByDept.filter((r: any) => Number(r.status) === 5);
+    if (deptTabStatusFilter === 'rejected') return deptReportFilteredByDept.filter((r: any) => Number(r.status) === 6);
+    return deptReportFilteredByDept;
+  }, [deptReportFilteredByDept, deptTabStatusFilter]);
+
+  const deptReportSorted = useMemo(() => {
+    return [...deptReportFiltered].sort((a: any, b: any) => {
+      const dateA = new Date(a.reportDate || a.createdAt || 0).getTime();
+      const dateB = new Date(b.reportDate || b.createdAt || 0).getTime();
+      return dateB - dateA; // Mới nhất xếp trước
+    });
+  }, [deptReportFiltered]);
+
+  const deptReportPaginated = useMemo(() => {
+    const start = (deptReportPage - 1) * deptReportPageSize;
+    return deptReportSorted.slice(start, start + deptReportPageSize);
+  }, [deptReportSorted, deptReportPage, deptReportPageSize]);
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setDeptReportPage(1);
+  }, [deptTabFromDate, deptTabSelectedDeptId, deptTabStatusFilter]);
 
   const togglePreview = (tab: string) => {
     setShowPreview(prev => ({ ...prev, [tab]: !prev[tab] }));
@@ -790,6 +880,102 @@ export default function StatisticsPage() {
     }
   };
 
+  const handleDeptPrint = () => {
+    if (!deptReportFiltered.length) {
+      toast.warning('Không có dữ liệu để in');
+      return;
+    }
+    setIsPrinting(true);
+    const selectedDeptName = deptTabSelectedDeptId > 0
+      ? ((deptAvailableDepts as any[]).find((d: any) => d.id === deptTabSelectedDeptId)?.name || 'Bộ phận')
+      : 'Tất cả bộ phận';
+      
+    let filterText = '';
+    if (deptTabStatusFilter === 'completed') filterText = 'ĐÃ HOÀN THÀNH';
+    if (deptTabStatusFilter === 'backlog') filterText = 'CHƯA HOÀN THÀNH';
+    if (deptTabStatusFilter === 'cancelled') filterText = 'ĐÃ HỦY';
+    if (deptTabStatusFilter === 'rejected') filterText = 'TỪ CHỐI';
+
+    const title = `SỔ GHI NHẬN - ${selectedDeptName.toUpperCase()}`;
+    const subtitle = deptTabFromDate 
+      ? `Từ ngày ${formatVietnameseDate(deptTabFromDate)} đến nay`
+      : 'Tất cả thời gian';
+    const tableRows = [...deptReportSorted].map((row: any, i: number) => {
+      const devName = row.deviceName || row.damageLocation || '-';
+      let hn = '-';
+      if (row.handlerNotes && typeof row.handlerNotes === 'string' && row.handlerNotes.startsWith('[')) {
+        try { const tl = JSON.parse(row.handlerNotes); if (Array.isArray(tl) && tl.length > 0) hn = tl[tl.length - 1].content || '-'; } catch {}
+      } else if (row.handlerNotes) { hn = String(row.handlerNotes); }
+      return `<tr>
+        <td style="text-align:center">${i + 1}</td>
+        <td style="text-align:center">${formatVietnameseDate(row.reportDate)}</td>
+        <td>${devName}</td>
+        <td>${(row.damageContent || '-').replace(/<[^>]*>?/gm, '')}</td>
+        <td>${row.handlerName || 'Chưa phân công'}</td>
+        <td style="text-align:center">${row.statusName || '-'}</td>
+        <td>${hn}</td>
+      </tr>`;
+    }).join('');
+    const summaryHtml = `
+      <div class="summary-box" style="flex-wrap: wrap; margin-bottom: ${deptTabStatusFilter !== 'all' ? '10px' : '25px'};">
+        <div class="summary-item" style="border-bottom:3px solid #06b6d4">Tổng số: <span style="color:#06b6d4">${deptReportStats.total}</span></div>
+        <div class="summary-item" style="border-bottom:3px solid #22c55e">Hoàn thành: <span style="color:#22c55e">${deptReportStats.completed}</span></div>
+        <div class="summary-item" style="border-bottom:3px solid #ef4444">Chưa hoàn thành: <span style="color:#ef4444">${deptReportStats.backlog}</span></div>
+        ${deptReportStats.cancelled > 0 ? `<div class="summary-item" style="border-bottom:3px solid #6c757d">Đã hủy: <span style="color:#6c757d">${deptReportStats.cancelled}</span></div>` : ''}
+        ${deptReportStats.rejected > 0 ? `<div class="summary-item" style="border-bottom:3px solid #212529">Từ chối: <span style="color:#212529">${deptReportStats.rejected}</span></div>` : ''}
+      </div>
+      ${deptTabStatusFilter !== 'all' ? `<div style="text-align: center; color: #ef4444; font-style: italic; margin-bottom: 15px; font-size: 10.5pt; font-weight: 500;">(Lưu ý: Danh sách bên dưới chỉ hiển thị ${deptReportSorted.length} kết quả thuộc nhóm ${filterText})</div>` : ''}`;
+    const contentHtml = summaryHtml + `
+      <table>
+        <thead><tr>
+          <th style="width:40px">STT</th><th style="width:90px">Ngày báo</th><th style="width:150px">Thiết bị/Vị trí</th>
+          <th>Nội dung sự cố</th><th style="width:120px">Người xử lý</th><th style="width:90px">Trạng thái</th><th style="width:180px">Tiến độ xử lý</th>
+        </tr></thead>
+        <tbody>${tableRows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8">Không có dữ liệu</td></tr>'}</tbody>
+      </table>`;
+    const htmlContent = `<html><head><meta charset="utf-8"><title>${title}</title>
+      <style>
+        @page{size:landscape;margin:10mm}
+        body{font-family:"Segoe UI",Roboto,Arial,sans-serif;font-size:10pt;color:#334155;margin:0;padding:0}
+        .header{border-bottom:2px solid #334155;padding-bottom:10px;margin-bottom:20px;display:flex;justify-content:space-between}
+        .company-name{font-weight:bold;font-size:12pt} .system-name{font-size:9pt;color:#64748b}
+        .title{text-align:center;font-size:18pt;font-weight:bold;margin:10px 0 5px;color:#1e293b}
+        .subtitle{text-align:center;font-size:11pt;color:#475569;margin-bottom:20px;font-style:italic}
+        table{width:100%;border-collapse:collapse;margin-bottom:20px}
+        th{background-color:#475569!important;color:white!important;border:1px solid #334155;padding:8px;font-size:9pt;text-transform:uppercase;-webkit-print-color-adjust:exact}
+        td{border:1px solid #cbd5e1;padding:6px;vertical-align:middle;font-size:9pt;word-wrap:break-word}
+        .section-title{font-size:11pt;font-weight:bold;color:#2563eb;margin-top:25px;margin-bottom:8px;border-left:4px solid #2563eb;padding-left:10px}
+        .summary-box{display:flex;justify-content:center;gap:40px;margin-bottom:25px;padding:0 20px}
+        .summary-item{font-weight:bold;font-size:10.5pt;padding:5px 15px;min-width:120px;text-align:center}
+        tr:nth-child(even){background-color:#fcfcfc}
+      </style>
+    </head><body>
+      <div class="header">
+        <div>
+          <div class="company-name">CÔNG TY CỔ PHẦN DU LỊCH - THƯƠNG MẠI HOÀ GIANG</div>
+          <div class="system-name">Hệ thống quản lý Thiết bị và Báo cáo công việc</div>
+        </div>
+        <div style="font-size:9pt">Ngày in: ${new Date().toLocaleDateString('vi-VN')}</div>
+      </div>
+      <div class="title">${title}</div>
+      <div class="subtitle">${subtitle}</div>
+      ${contentHtml}
+    </body></html>`;
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+      doc.open(); doc.write(htmlContent); doc.close();
+      setTimeout(() => {
+        if (iframe.contentWindow) {
+          iframe.contentWindow.focus(); iframe.contentWindow.print();
+          setTimeout(() => { document.body.removeChild(iframe); setIsPrinting(false); }, 1000);
+        }
+      }, 500);
+    } else { document.body.removeChild(iframe); setIsPrinting(false); }
+  };
+
   return (
     <div className="container-fluid px-2 py-1">
       {/* Page Header & Tabs - Combined for compactness */}
@@ -805,6 +991,13 @@ export default function StatisticsPage() {
               onClick={() => setActiveTab('reports')}
             >
               <i className="fas fa-file-invoice me-1"></i>Báo cáo
+            </button>
+            <button 
+              className={`nav-link px-3 py-1 small fw-bold ${activeTab === 'dept-report' ? 'active text-dark' : 'text-muted'}`}
+              onClick={() => setActiveTab('dept-report')}
+              style={activeTab === 'dept-report' ? { backgroundColor: '#f59e0b' } : {}}
+            >
+              <i className="fas fa-book me-1"></i>Sổ Bộ Phận
             </button>
             <button 
               className={`nav-link px-3 py-1 small fw-bold ${activeTab === 'devices' ? 'active bg-primary' : 'text-muted'}`}
@@ -912,6 +1105,19 @@ export default function StatisticsPage() {
                   <i className={`fas ${isExporting ? 'fa-spinner fa-spin' : 'fa-file-excel'} me-1`}></i>Xuất
                 </button>
              </div>
+          )}
+
+          {activeTab === 'dept-report' && (
+            <div className="d-flex gap-1 d-print-none">
+              <button 
+                className="btn btn-light border shadow-sm btn-xs px-2 fw-bold text-dark" 
+                onClick={handleDeptPrint}
+                disabled={isPrinting || deptReportFiltered.length === 0}
+                title="In sổ bộ phận"
+              >
+                <i className={`fas ${isPrinting ? 'fa-spinner fa-spin' : 'fa-print'} text-warning me-1`}></i>In
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -1255,6 +1461,231 @@ export default function StatisticsPage() {
                   }}
                   maintenanceBatches={maintenanceBatches}
                 />
+              )}
+            </div>
+          )}
+
+          {/* Tab Content: Sổ Ghi Nhận Bộ Phận */}
+          {activeTab === 'dept-report' && (
+            <div>
+              {/* Filter Row */}
+              <div className="d-flex flex-wrap align-items-center gap-3 mb-2 bg-light p-2 rounded-3 mx-0 border d-print-none">
+                <div className="d-flex align-items-center gap-2">
+                  <label className="form-label x-small fw-bold text-muted mb-0 uppercase text-nowrap">Từ ngày</label>
+                  <div className="d-flex flex-wrap align-items-center gap-2">
+                    <input 
+                      type="date" 
+                      className="form-control form-control-xs border shadow-none"
+                      style={{ width: '130px' }}
+                      value={deptTabFromDate}
+                      onChange={e => setDeptTabFromDate(e.target.value)}
+                    />
+                    <div className="btn-group">
+                      <button 
+                        className={`btn btn-xs ${deptTabFromDate === getDateOffsetStr(0, 7) ? 'btn-secondary' : 'btn-outline-secondary'} mb-0`}
+                        onClick={() => setDeptTabFromDate(getDateOffsetStr(0, 7))}
+                      >1 Tuần</button>
+                      <button 
+                        className={`btn btn-xs ${deptTabFromDate === getDateOffsetStr(1) ? 'btn-secondary' : 'btn-outline-secondary'} mb-0`}
+                        onClick={() => setDeptTabFromDate(getDateOffsetStr(1))}
+                      >1 Tháng</button>
+                      <button 
+                        className={`btn btn-xs ${deptTabFromDate === getDateOffsetStr(3) ? 'btn-secondary' : 'btn-outline-secondary'} mb-0`}
+                        onClick={() => setDeptTabFromDate(getDateOffsetStr(3))}
+                      >3 Tháng</button>
+                      <button 
+                        className={`btn btn-xs ${deptTabFromDate === getDateOffsetStr(12) ? 'btn-secondary' : 'btn-outline-secondary'} mb-0`}
+                        onClick={() => setDeptTabFromDate(getDateOffsetStr(12))}
+                      >1 Năm</button>
+                      <button 
+                        className={`btn btn-xs ${deptTabFromDate === '' ? 'btn-secondary' : 'btn-outline-secondary'} mb-0`}
+                        onClick={() => setDeptTabFromDate('')}
+                      >Tất cả</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="ms-auto d-flex align-items-center gap-2" style={{ minWidth: '320px' }}>
+                  <label className="form-label x-small fw-bold text-muted mb-0 uppercase text-nowrap">Bộ phận báo cáo</label>
+                  <select 
+                    className="form-select form-select-xs border shadow-none"
+                    value={deptTabSelectedDeptId}
+                    onChange={e => {
+                      setDeptTabSelectedDeptId(Number(e.target.value));
+                      setDeptTabStatusFilter('all');
+                    }}
+                  >
+                    <option value={0}>-- Tất cả bộ phận --</option>
+                    {deptAvailableDepts.map((d: any) => (
+                      <option key={d.id} value={d.id}>{d.name} ({deptReportData?.data?.filter((r: any) => Number(r.reportingDepartmentId) === d.id).length} báo cáo)</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Stats Bar */}
+              <div className="d-flex flex-wrap gap-2 mb-2 d-print-none">
+                {[
+                  { id: 'all', label: 'Tổng số báo cáo', value: deptReportStats.total, color: 'info', icon: 'fa-list' },
+                  { id: 'completed', label: 'Hoàn thành', value: deptReportStats.completed, color: 'success', icon: 'fa-check-circle' },
+                  { id: 'backlog', label: 'Chưa hoàn thành', value: deptReportStats.backlog, color: 'danger', icon: 'fa-exclamation-circle' },
+                  ...(deptReportStats.cancelled > 0 ? [{ id: 'cancelled', label: 'Đã hủy', value: deptReportStats.cancelled, color: 'secondary', icon: 'fa-ban' }] : []),
+                  ...(deptReportStats.rejected > 0 ? [{ id: 'rejected', label: 'Từ chối', value: deptReportStats.rejected, color: 'dark', icon: 'fa-times-circle' }] : []),
+                ].map((stat, idx) => {
+                  const isSelected = deptTabStatusFilter === stat.id;
+                  const opacityClass = (deptTabStatusFilter !== 'all' && !isSelected) ? 'opacity-50' : '';
+                  return (
+                    <div 
+                      key={idx} 
+                      onClick={() => setDeptTabStatusFilter(isSelected ? 'all' : stat.id as any)}
+                      className={`position-relative flex-fill d-flex align-items-center gap-2 px-2 py-1 rounded-2 border bg-${stat.color} ${isSelected && stat.id !== 'all' ? `bg-opacity-25 border-${stat.color}` : `bg-opacity-10 border-${stat.color} border-opacity-25`} ${opacityClass}`} 
+                      style={{ minWidth: '160px', cursor: 'pointer', transition: 'all 0.2s', userSelect: 'none' }}
+                    >
+                      {isSelected && stat.id !== 'all' && (
+                        <span 
+                          className={`position-absolute top-0 end-0 badge bg-${stat.color} rounded-circle p-1 shadow-sm d-flex align-items-center justify-content-center`} 
+                          style={{ transform: 'translate(30%, -30%)', width: '18px', height: '18px' }}
+                        >
+                          <i className="fas fa-times" style={{ fontSize: '0.6rem' }}></i>
+                        </span>
+                      )}
+                      <div className={`d-flex align-items-center justify-content-center rounded-circle bg-${stat.color} bg-opacity-25 text-${stat.color}`} style={{ width: '28px', height: '28px' }}>
+                        <i className={`fas ${stat.icon}`} style={{ fontSize: '0.85rem' }}></i>
+                      </div>
+                      <div className="d-flex flex-column">
+                        <span className="text-muted fw-bold text-uppercase" style={{ fontSize: '0.6rem', letterSpacing: '0.3px' }}>{stat.label}</span>
+                        <span className={`fw-bold text-${stat.color} mt-1`} style={{ fontSize: '1rem', lineHeight: '1' }}>{stat.value}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Content */}
+              {deptReportLoading ? (
+                <Loading />
+              ) : !deptReportData?.data ? (
+                <div className="alert alert-light text-center border p-4 my-3 text-muted" style={{ borderRadius: '12px' }}>
+                  <i className="fas fa-book-open me-2 opacity-50"></i>Chọn ngày để xem sổ ghi nhận
+                </div>
+              ) : deptReportFiltered.length === 0 ? (
+                <div className="alert alert-light text-center border p-4 my-3 text-muted" style={{ borderRadius: '12px' }}>
+                  <i className="fas fa-inbox me-2 opacity-50"></i>Không có báo cáo nào cho bộ phận này trong ngày
+                </div>
+              ) : (
+                <div className="card border shadow-sm mt-1" style={{ borderRadius: '8px', overflow: 'hidden' }}>
+                  <div className="table-responsive">
+                    <table className="table table-sm table-hover mb-0 align-middle" style={{ fontSize: '0.85rem' }}>
+                      <thead className="sticky-top bg-white" style={{ zIndex: 10 }}>
+                        <tr>
+                          {['STT', 'Ngày báo', 'Thiết bị / Vị trí', 'Nội dung sự cố', 'Người báo cáo', 'Người xử lý', 'Trạng thái', 'Tiến độ xử lý'].map((h, i) => (
+                            <th key={i} className="px-3 py-2 text-nowrap fw-bold text-muted uppercase bg-light"
+                              style={{ fontSize: '0.68rem', borderBottom: '2px solid #e2e8f0',
+                                width: i === 0 ? '40px' : i === 1 ? '88px' : 'auto' }}>
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {deptReportPaginated.map((row: any, idx: number) => {
+                          const isMaintenance = row.maintenanceBatchId;
+                          let deviceDisplay: string;
+                          if (isMaintenance && (!row.deviceName || row.deviceName === '-')) {
+                            const batch = maintenanceBatches?.find((b: any) => b.id === row.maintenanceBatchId);
+                            deviceDisplay = batch ? batch.name : 'Bảo trì';
+                          } else {
+                            deviceDisplay = row.deviceName || row.damageLocation || '-';
+                          }
+                          let handlerNotesDisplay = '-';
+                          if (row.handlerNotes && typeof row.handlerNotes === 'string') {
+                            if (row.handlerNotes.startsWith('[')) {
+                              try {
+                                const tl = JSON.parse(row.handlerNotes);
+                                if (Array.isArray(tl) && tl.length > 0) handlerNotesDisplay = tl[tl.length - 1].content || '-';
+                              } catch { handlerNotesDisplay = row.handlerNotes; }
+                            } else { handlerNotesDisplay = row.handlerNotes; }
+                          }
+                          const scMap: Record<number, string> = { 1: 'secondary', 2: 'primary', 3: 'warning', 4: 'success', 5: 'dark', 6: 'danger' };
+                          const sColor = scMap[row.status] || 'secondary';
+                          return (
+                            <tr key={idx} className="border-bottom" style={{ borderColor: '#f1f5f9' }}>
+                              <td className="px-3 py-2 text-center text-muted small fw-bold">{idx + 1}</td>
+                              <td className="px-3 py-2 text-nowrap" style={{ color: '#64748b', fontSize: '0.8rem' }}>
+                                {formatVietnameseDate(row.reportDate)}
+                              </td>
+                              <td className="px-3 py-2 text-truncate" style={{ maxWidth: '160px', color: '#1e293b', fontWeight: 500 }} title={deviceDisplay}>
+                                {isMaintenance && (!row.deviceName || row.deviceName === '-') ? (
+                                  <span className="badge bg-info bg-opacity-10 text-info fw-bold" style={{ fontSize: '0.75rem' }}>
+                                    <i className="fas fa-tools me-1"></i>{deviceDisplay}
+                                  </span>
+                                ) : deviceDisplay}
+                              </td>
+                              <td className="px-3 py-2 text-truncate" style={{ maxWidth: '250px', color: '#334155' }} title={(row.damageContent || '-').replace(/<[^>]*>?/gm, '')}>
+                                {(row.damageContent || '-').replace(/<[^>]*>?/gm, '')}
+                              </td>
+                              <td className="px-3 py-2 text-nowrap" style={{ color: '#475569', fontSize: '0.82rem' }}>
+                                {row.reporterName ? (
+                                  <span><i className="fas fa-user-edit me-1 opacity-50" style={{ fontSize: '0.7rem' }}></i>{row.reporterName}</span>
+                                ) : (
+                                  '-'
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-nowrap" style={{ color: '#475569', fontSize: '0.82rem' }}>
+                                {row.handlerName ? (
+                                  <span><i className="fas fa-user me-1 opacity-50" style={{ fontSize: '0.7rem' }}></i>{row.handlerName}</span>
+                                ) : (
+                                  <span className="text-muted fst-italic" style={{ fontSize: '0.78rem' }}>Chưa phân công</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                <span
+                                  className="badge fw-medium"
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    background: `color-mix(in srgb, var(--bs-${sColor}) 15%, transparent)`,
+                                    color: `var(--bs-${sColor})`,
+                                    border: `1px solid color-mix(in srgb, var(--bs-${sColor}) 35%, transparent)`,
+                                    padding: '3px 7px'
+                                  }}
+                                >
+                                  {row.statusName || '-'}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-truncate" style={{ maxWidth: '220px', color: '#64748b', fontSize: '0.8rem' }} title={handlerNotesDisplay}>
+                                {handlerNotesDisplay}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="bg-light py-1 px-3 border-top d-flex align-items-center justify-content-between" style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                    <div>
+                      Tổng: <strong className="text-dark ms-1 me-1">{deptReportSorted.length}</strong> báo cáo &bull; Sắp xếp theo ngày mới nhất
+                    </div>
+                    {deptReportSorted.length > deptReportPageSize && (
+                      <div className="d-flex align-items-center gap-2">
+                        <button 
+                          className="btn btn-xs btn-outline-secondary px-2 py-0" 
+                          disabled={deptReportPage === 1}
+                          onClick={() => setDeptReportPage(p => p - 1)}
+                        >
+                          <i className="fas fa-chevron-left" style={{ fontSize: '0.6rem' }}></i>
+                        </button>
+                        <span>Trang {deptReportPage} / {Math.ceil(deptReportSorted.length / deptReportPageSize)}</span>
+                        <button 
+                          className="btn btn-xs btn-outline-secondary px-2 py-0" 
+                          disabled={deptReportPage >= Math.ceil(deptReportSorted.length / deptReportPageSize)}
+                          onClick={() => setDeptReportPage(p => p + 1)}
+                        >
+                          <i className="fas fa-chevron-right" style={{ fontSize: '0.6rem' }}></i>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -1622,6 +2053,161 @@ function ColumnDropdown({ isOpen, onToggle, cols, setCols, disabled }: { isOpen:
           border-radius: 10px;
         }
       `}</style>
+    </div>
+  );
+}
+
+function DeptReportSection({ title, data, color, maintenanceBatches }: {
+  title: string;
+  data: any[];
+  color: string;
+  maintenanceBatches?: any[];
+}) {
+  const [isCollapsed, setIsCollapsed] = React.useState(false);
+
+  const statusColors: Record<number, string> = { 1: 'secondary', 2: 'primary', 3: 'warning', 4: 'success', 5: 'dark', 6: 'danger' };
+
+  const getBorderColor = (c: string) => {
+    const map: Record<string, string> = { info: '#0dcaf0', warning: '#ffc107', danger: '#dc3545', success: '#198754' };
+    return map[c] || '#6c757d';
+  };
+
+  return (
+    <div className="mb-3">
+      {/* Section Header */}
+      <div
+        className="d-flex align-items-center justify-content-between px-3 py-2 rounded-top"
+        onClick={() => setIsCollapsed(!isCollapsed)}
+        style={{
+          cursor: 'pointer',
+          background: `linear-gradient(135deg, var(--bs-${color}-bg-subtle, #e0f2fe) 0%, #fff 100%)`,
+          borderLeft: `4px solid ${getBorderColor(color)}`,
+          border: `1px solid var(--bs-${color}-border-subtle, #bae6fd)`,
+          borderRadius: isCollapsed ? '8px' : '8px 8px 0 0',
+          userSelect: 'none',
+        }}
+      >
+        <div className="d-flex align-items-center gap-2">
+          <i className={`fas fa-chevron-${isCollapsed ? 'right' : 'down'} text-${color}`} style={{ fontSize: '0.72rem', width: '12px' }}></i>
+          <span className={`fw-bold text-${color}`} style={{ fontSize: '0.88rem' }}>{title}</span>
+          <span
+            className={`badge text-${color} fw-bold`}
+            style={{ fontSize: '0.7rem', background: `color-mix(in srgb, ${getBorderColor(color)} 15%, transparent)`, border: `1px solid ${getBorderColor(color)}40` }}
+          >
+            {data.length}
+          </span>
+        </div>
+        <i className={`fas fa-${isCollapsed ? 'plus' : 'minus'} text-${color} opacity-50`} style={{ fontSize: '0.7rem' }}></i>
+      </div>
+
+      {/* Section Table */}
+      {!isCollapsed && (
+        <div className="card border-top-0 shadow-sm" style={{ borderRadius: '0 0 8px 8px', overflow: 'hidden', borderColor: `${getBorderColor(color)}40` }}>
+          {data.length === 0 ? (
+            <div className="text-center text-muted py-3" style={{ fontSize: '0.8rem', fontStyle: 'italic', background: '#fafafa' }}>
+              <i className="fas fa-inbox me-2 opacity-25"></i>Không có dữ liệu
+            </div>
+          ) : (
+            <div className="table-responsive" style={{ maxHeight: '420px' }}>
+              <table className="table table-sm table-hover mb-0 align-middle" style={{ fontSize: '0.84rem' }}>
+                <thead className="sticky-top bg-white" style={{ zIndex: 10 }}>
+                  <tr>
+                    {['STT', 'Ngày báo', 'Thiết bị / Vị trí', 'Nội dung sự cố', 'Người xử lý', 'Trạng thái', 'Tiến độ xử lý'].map((h, i) => (
+                      <th
+                        key={i}
+                        className="px-3 py-2 text-nowrap fw-bold text-muted uppercase bg-light"
+                        style={{ fontSize: '0.68rem', borderBottom: `2px solid ${getBorderColor(color)}40`, width: i === 0 ? '42px' : i === 1 ? '88px' : 'auto' }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.map((row: any, idx: number) => {
+                    // Device/Location display
+                    const isMaintenance = row.maintenanceBatchId;
+                    let deviceDisplay: string;
+                    if (isMaintenance && (!row.deviceName || row.deviceName === '-')) {
+                      if (maintenanceBatches) {
+                        const batch = maintenanceBatches.find((b: any) => b.id === row.maintenanceBatchId);
+                        deviceDisplay = batch ? `${batch.name}` : 'Bảo trì';
+                      } else {
+                        deviceDisplay = 'Bảo trì';
+                      }
+                    } else {
+                      deviceDisplay = row.deviceName || row.damageLocation || '-';
+                    }
+
+                    // Handler notes - extract last timeline entry
+                    let handlerNotesDisplay = '-';
+                    if (row.handlerNotes && typeof row.handlerNotes === 'string') {
+                      if (row.handlerNotes.startsWith('[')) {
+                        try {
+                          const tl = JSON.parse(row.handlerNotes);
+                          if (Array.isArray(tl) && tl.length > 0) {
+                            handlerNotesDisplay = tl[tl.length - 1].content || '-';
+                          }
+                        } catch { handlerNotesDisplay = row.handlerNotes; }
+                      } else {
+                        handlerNotesDisplay = row.handlerNotes;
+                      }
+                    }
+
+                    const sColor = statusColors[row.status] || 'secondary';
+
+                    return (
+                      <tr key={idx} className="border-bottom" style={{ borderColor: '#f1f5f9' }}>
+                        <td className="px-3 py-2 text-center text-muted small fw-bold">{idx + 1}</td>
+                        <td className="px-3 py-2 text-nowrap" style={{ color: '#64748b', fontSize: '0.8rem' }}>
+                          {formatVietnameseDate(row.reportDate)}
+                        </td>
+                        <td className="px-3 py-2 text-truncate" style={{ maxWidth: '160px', color: '#1e293b', fontWeight: 500 }}>
+                          {isMaintenance && (!row.deviceName || row.deviceName === '-') ? (
+                            <span className="badge bg-info bg-opacity-10 text-info fw-bold" style={{ fontSize: '0.75rem' }}>
+                              <i className="fas fa-tools me-1"></i>{deviceDisplay}
+                            </span>
+                          ) : deviceDisplay}
+                        </td>
+                        <td className="px-3 py-2 text-truncate" style={{ maxWidth: '280px', color: '#334155' }}>
+                          {(row.damageContent || '-').replace(/<[^>]*>?/gm, '')}
+                        </td>
+                        <td className="px-3 py-2 text-nowrap" style={{ color: '#475569', fontSize: '0.82rem' }}>
+                          {row.handlerName ? (
+                            <span><i className="fas fa-user me-1 opacity-50" style={{ fontSize: '0.7rem' }}></i>{row.handlerName}</span>
+                          ) : (
+                            <span className="text-muted fst-italic" style={{ fontSize: '0.78rem' }}>Chưa phân công</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`badge fw-medium`}
+                            style={{
+                              fontSize: '0.72rem',
+                              background: `color-mix(in srgb, var(--bs-${sColor}) 15%, transparent)`,
+                              color: `var(--bs-${sColor})`,
+                              border: `1px solid color-mix(in srgb, var(--bs-${sColor}) 35%, transparent)`,
+                              padding: '3px 7px'
+                            }}
+                          >
+                            {row.statusName || '-'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-truncate" style={{ maxWidth: '220px', color: '#64748b', fontSize: '0.8rem' }}>
+                          {handlerNotesDisplay}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="bg-light py-1 px-3 border-top d-flex justify-content-between align-items-center" style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+            <span>Tổng: <strong className={`text-${color}`}>{data.length}</strong> báo cáo</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
