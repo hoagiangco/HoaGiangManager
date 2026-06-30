@@ -65,7 +65,7 @@ const columnLabels: Record<string, string> = {
   'reportDate': 'Ngày báo',
   'handlingDate': 'Ngày xử lý',
   'completedDate': 'Ngày xong',
-  'damageContent': 'Nội dung sự cố',
+  'damageContent': 'Nội dung',
   'priorityName': 'Mức độ',
   'notes': 'Ghi chú',
   'handlerNotes': 'Tiến độ xử lý',
@@ -192,7 +192,7 @@ export default function StatisticsPage() {
       return html.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ').trim();
     };
 
-    const getVal = (row: any, colId: string, idx: number) => {
+    const getVal = (row: any, colId: string, idx: number, currentSection?: string) => {
       const lowerId = colId.toLowerCase();
       if (lowerId === 'stt') return idx + 1;
       
@@ -233,10 +233,29 @@ export default function StatisticsPage() {
         return formatVietnameseDate(row[colId]);
       }
 
+      if (lowerId === 'statusname') {
+        const val = row[colId] || row['statusName'] || '';
+        
+        if (currentSection === '1. VIỆC TRONG NGÀY') {
+          if (val === 'Hoàn thành') return 'Hoàn thành';
+          if (val === 'Chờ xử lý' || val === 'Đang xử lý' || val === 'Đã phân công') return 'Chưa xong';
+        } else if (currentSection === '2. VIỆC TỒN (ĐANG XỬ LÝ + CHỜ XỬ LÝ)' || currentSection === 'VIỆC TỒN ĐỌNG') {
+          if (val === 'Chờ xử lý' || val === 'Đã phân công') return 'Chưa làm';
+          if (val === 'Đang xử lý') return 'Đang làm';
+          if (val === 'Hoàn thành') return 'Hoàn thành';
+        } else {
+          // Default logic if no section (e.g. standard report)
+          if (val === 'Hoàn thành') return 'Hoàn thành';
+          if (val === 'Chờ xử lý' || val === 'Đang xử lý' || val === 'Đã phân công') return 'Chưa xong';
+        }
+        
+        return val;
+      }
+
       return row[colId] || '-';
     };
 
-    const renderTable = (tableData: any[], startIndex = 0) => {
+    const renderTable = (tableData: any[], startIndex = 0, currentSection?: string) => {
       return `
         <table>
           <thead>
@@ -250,7 +269,7 @@ export default function StatisticsPage() {
               : tableData.map((row, i) => `
                 <tr>
                   ${visibleCols.map(c => {
-                    const val = getVal(row, c.id, startIndex + i);
+                    const val = getVal(row, c.id, startIndex + i, currentSection);
                     const isCenter = ['stt', 'id', 'reportDate', 'statusName', 'priorityName', 'completedDate', 'handlingDate'].includes(c.id);
                     return `<td style="text-align: ${isCenter ? 'center' : 'left'}">${val}</td>`;
                   }).join('')}
@@ -271,19 +290,19 @@ export default function StatisticsPage() {
           <div class="section-title">VIỆC TỒN ĐỌNG</div>
           ${renderTable(data.filter((r: any) => {
             const sections = r.allSections || [r.section || r.dailyCategory];
-            return sections.includes('2. VIỆC ĐANG XỬ LÝ') || sections.includes('3. VIỆC CHỜ XỬ LÝ') || sections.includes('VIỆC TỒN ĐỌNG');
-          }))}
+            return sections.includes('2. VIỆC TỒN (ĐANG XỬ LÝ + CHỜ XỬ LÝ)') || sections.includes('2. VIỆC ĐANG XỬ LÝ') || sections.includes('3. VIỆC CHỜ XỬ LÝ') || sections.includes('VIỆC TỒN ĐỌNG');
+          }), 0, 'VIỆC TỒN ĐỌNG')}
         `;
       } else {
         tableHtml = `
           <div class="section-title">1. VIỆC TRONG NGÀY</div>
-          ${renderTable(data.filter((r: any) => (r.allSections || [r.section || r.dailyCategory]).includes('1. VIỆC TRONG NGÀY')))}
+          ${renderTable(data.filter((r: any) => (r.allSections || [r.section || r.dailyCategory]).includes('1. VIỆC TRONG NGÀY')), 0, '1. VIỆC TRONG NGÀY')}
           
-          <div class="section-title">2. VIỆC ĐANG XỬ LÝ</div>
-          ${renderTable(data.filter((r: any) => (r.allSections || [r.section || r.dailyCategory]).includes('2. VIỆC ĐANG XỬ LÝ')))}
-
-          <div class="section-title">3. VIỆC CHỜ XỬ LÝ</div>
-          ${renderTable(data.filter((r: any) => (r.allSections || [r.section || r.dailyCategory]).includes('3. VIỆC CHỜ XỬ LÝ')))}
+          <div class="section-title">2. VIỆC TỒN (ĐANG XỬ LÝ + CHỜ XỬ LÝ)</div>
+          ${renderTable(data.filter((r: any) => {
+            const sections = r.allSections || [r.section || r.dailyCategory];
+            return sections.includes('2. VIỆC TỒN (ĐANG XỬ LÝ + CHỜ XỬ LÝ)') || sections.includes('2. VIỆC ĐANG XỬ LÝ') || sections.includes('3. VIỆC CHỜ XỬ LÝ');
+          }), 0, '2. VIỆC TỒN (ĐANG XỬ LÝ + CHỜ XỬ LÝ)')}
         `;
       }
 

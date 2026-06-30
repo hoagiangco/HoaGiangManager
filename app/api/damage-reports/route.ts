@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/auth/middleware';
 import { DamageReportService } from '@/lib/services/damageReportService';
+import { WorkPlanService } from '@/lib/services/workPlanService';
 import { DamageReportStatus, DamageReportPriority } from '@/types';
-import { getVNTodayStr } from '@/lib/utils/dateFormat';
+import { getVNTodayStr, getVNNow } from '@/lib/utils/dateFormat';
+import { format } from 'date-fns';
 
 export async function GET(request: NextRequest) {
   try {
@@ -68,6 +70,13 @@ export async function GET(request: NextRequest) {
     // Import helper
     const { isSupervisor } = await import('@/lib/auth/permissions');
     const isSupervisorUser = isSupervisor(user.roles);
+
+    // Tự động implement các kế hoạch công việc đã đến hạn (fire-and-forget, không chặn response)
+    const workPlanService = new WorkPlanService();
+    const today = format(getVNNow(), 'yyyy-MM-dd');
+    workPlanService.implementDuePlans(today, 'system', 0).catch((err) => {
+      console.error('[damage-reports GET] implementDuePlans error:', err);
+    });
     
     // Add currentUserId and isAdmin to filters (isAdmin is used by service to bypass filters)
     const filtersWithUser = {

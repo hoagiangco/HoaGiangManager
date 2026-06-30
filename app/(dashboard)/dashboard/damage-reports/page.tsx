@@ -3759,7 +3759,7 @@ export default function DamageReportsPage() {
                   </small>
                 </div>
 
-                {completionModal.targetStatus === DamageReportStatus.Completed && completionModal.report.deviceId && (
+                {completionModal.targetStatus === DamageReportStatus.Completed && (
                 <div className="mb-3">
                   <div className="p-3 border rounded shadow-sm" style={{ backgroundColor: '#f6fff9', borderColor: '#d1e7dd' }}>
                     <label className="form-label d-flex align-items-center justify-content-between mb-2">

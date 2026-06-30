@@ -146,8 +146,8 @@ export async function GET(request: NextRequest) {
       const taggedNew = data.newReports.map((r: any) => ({ ...r, dailyCategory: 'Chưa làm', section: '1. VIỆC TRONG NGÀY' }));
       const taggedActive = data.activeReports.map((r: any) => ({ ...r, dailyCategory: 'Đang xử lý', section: '1. VIỆC TRONG NGÀY' }));
       const taggedCompleted = data.completedReports.map((r: any) => ({ ...r, dailyCategory: 'Hoàn thành', section: '1. VIỆC TRONG NGÀY' }));
-      const taggedPendingActive = data.pendingActiveReports.map((r: any) => ({ ...r, dailyCategory: 'Đang xử lý', section: '2. VIỆC ĐANG XỬ LÝ' }));
-      const taggedPending = data.pendingReports.map((r: any) => ({ ...r, dailyCategory: 'Tồn đọng', section: '3. VIỆC CHỜ XỬ LÝ' }));
+      const taggedPendingActive = data.pendingActiveReports.map((r: any) => ({ ...r, dailyCategory: 'Đang xử lý', section: '2. VIỆC TỒN (ĐANG XỬ LÝ + CHỜ XỬ LÝ)' }));
+      const taggedPending = data.pendingReports.map((r: any) => ({ ...r, dailyCategory: 'Tồn đọng', section: '2. VIỆC TỒN (ĐANG XỬ LÝ + CHỜ XỬ LÝ)' }));
 
       // For the full report (Excel), we keep all sections with duplicates
       allReports = [...taggedNew, ...taggedActive, ...taggedCompleted, ...taggedPendingActive, ...taggedPending];
@@ -172,16 +172,24 @@ export async function GET(request: NextRequest) {
         allReports = Array.from(uniqueMap.values());
       }
 
+      // Sort each group by reportDate descending (newest first)
+      const sortDesc = (arr: any[]) => arr.sort((a, b) => {
+        const da = a.reportDate ? new Date(a.reportDate).getTime() : 0;
+        const db = b.reportDate ? new Date(b.reportDate).getTime() : 0;
+        return db - da;
+      });
+      allReports = sortDesc(allReports);
+
       // Filter by category
       if (category !== 'all') {
         if (category === 'new') allReports = allReports.filter((r: any) => r.dailyCategory === 'Chưa làm');
         else if (category === 'active') allReports = allReports.filter((r: any) => r.dailyCategory === 'Đang xử lý' && r.section === '1. VIỆC TRONG NGÀY');
         else if (category === 'completed') allReports = allReports.filter((r: any) => r.dailyCategory === 'Hoàn thành');
-        else if (category === 'backlog') allReports = allReports.filter((r: any) => (r.allSections || [r.section]).some((s: string) => s === '2. VIỆC ĐANG XỬ LÝ' || s === '3. VIỆC CHỜ XỬ LÝ'));
+        else if (category === 'backlog') allReports = allReports.filter((r: any) => (r.allSections || [r.section]).some((s: string) => s === '2. VIỆC TỒN (ĐANG XỬ LÝ + CHỜ XỬ LÝ)' || s === '2. VIỆC ĐANG XỬ LÝ' || s === '3. VIỆC CHỜ XỬ LÝ'));
         else if (category === 'priority') allReports = allReports.filter((r: any) => r.priority >= DamageReportPriority.High);
         else if (category === 'today') allReports = allReports.filter((r: any) => (r.allSections || [r.section]).includes('1. VIỆC TRONG NGÀY'));
-        else if (category === 'pendingActive') allReports = allReports.filter((r: any) => (r.allSections || [r.section]).includes('2. VIỆC ĐANG XỬ LÝ'));
-        else if (category === 'pending') allReports = allReports.filter((r: any) => (r.allSections || [r.section]).includes('3. VIỆC CHỜ XỬ LÝ'));
+        else if (category === 'pendingActive') allReports = allReports.filter((r: any) => (r.allSections || [r.section]).includes('2. VIỆC TỒN (ĐANG XỬ LÝ + CHỜ XỬ LÝ)') && (r.dailyCategory === 'Đang xử lý' || !r.dailyCategory));
+        else if (category === 'pending') allReports = allReports.filter((r: any) => (r.allSections || [r.section]).includes('2. VIỆC TỒN (ĐANG XỬ LÝ + CHỜ XỬ LÝ)') && (r.dailyCategory === 'Tồn đọng' || !r.dailyCategory));
       }
     } else {
       // Standard filtering
@@ -276,7 +284,7 @@ export async function GET(request: NextRequest) {
       { id: 'handlingDate', label: 'Ngày xử lý' },
       { id: 'completedDate', label: 'Ngày hoàn thành' },
       { id: 'deviceAndLocation', label: 'Thiết bị/Vị trí' },
-      { id: 'damageContent', label: 'Nội dung báo cáo', dailyLabel: 'Nội dung sự cố' },
+      { id: 'damageContent', label: 'Nội dung báo cáo', dailyLabel: 'Nội dung' },
       { id: 'statusName', label: 'Trạng thái' },
       { id: 'priorityName', label: 'Mức độ' },
       { id: 'handlerNotes', label: 'Tiến độ xử lý' }
@@ -295,7 +303,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Helper to get data for a column
-    const getColValue = (report: any, colId: string, idx: number) => {
+    const getColValue = (report: any, colId: string, idx: number, currentSection?: string) => {
       const reporterName = report.reporterName || staffMap.get(report.reporterId) || 'N/A';
       const handlerName = report.handlerName || (report.handlerId ? (staffMap.get(report.handlerId) || 'N/A') : 'Chưa phân công');
       const isMaintenance = report.maintenanceBatchId || (report.damageContent && (report.damageContent.toLowerCase().includes('bảo trì') || report.damageContent.toUpperCase().startsWith('BT ')));
@@ -315,7 +323,24 @@ export async function GET(request: NextRequest) {
         case 'completeddate': return formatDateDisplay(report.completedDate) || '';
         case 'deviceandlocation': return deviceName;
         case 'damagecontent': return stripHtml(report.damageContent || '');
-        case 'statusname': return report.statusName || statusMap[report.status as DamageReportStatus] || '';
+        case 'statusname': {
+          const s = report.statusName || statusMap[report.status as DamageReportStatus] || '';
+          
+          if (currentSection === '1. VIỆC TRONG NGÀY') {
+            if (s === 'Hoàn thành') return 'Hoàn thành';
+            if (s === 'Chờ xử lý' || s === 'Đang xử lý' || s === 'Đã phân công') return 'Chưa xong';
+          } else if (currentSection === '2. VIỆC TỒN (ĐANG XỬ LÝ + CHỜ XỬ LÝ)' || currentSection === 'VIỆC TỒN ĐỌNG') {
+            if (s === 'Chờ xử lý' || s === 'Đã phân công') return 'Chưa làm';
+            if (s === 'Đang xử lý') return 'Đang làm';
+            if (s === 'Hoàn thành') return 'Hoàn thành';
+          } else {
+            // Default logic if no section (e.g. standard report)
+            if (s === 'Hoàn thành') return 'Hoàn thành';
+            if (s === 'Chờ xử lý' || s === 'Đang xử lý' || s === 'Đã phân công') return 'Chưa xong';
+          }
+          
+          return s;
+        }
         case 'priorityname': return report.priorityName || priorityMap[report.priority as DamageReportPriority] || '';
         case 'handlernotes': return formatTimelineForExcel(report.handlerNotes || '');
         default: return '';
@@ -343,8 +368,15 @@ export async function GET(request: NextRequest) {
     
     if (dailyMode) {
       const headers = finalColumns.map(c => c.dailyLabel || c.label);
-      const mapToRow = (reports: any[]) => reports.map((r, idx) => {
-        return finalColumns.map(col => getColValue(r, col.id, idx));
+      
+      const sortByDateDesc = (reports: any[]) => [...reports].sort((a, b) => {
+        const da = a.reportDate ? new Date(a.reportDate).getTime() : 0;
+        const db = b.reportDate ? new Date(b.reportDate).getTime() : 0;
+        return db - da;
+      });
+
+      const mapToRow = (reports: any[], currentSection?: string) => reports.map((r, idx) => {
+        return finalColumns.map(col => getColValue(r, col.id, idx, currentSection));
       });
 
       // Split into sections (using the categorization logic from earlier)
@@ -365,21 +397,14 @@ export async function GET(request: NextRequest) {
             title: '1. VIỆC TRONG NGÀY', 
             headers, 
             rows: (category === 'all' || category === 'today' || category === 'new' || category === 'active' || category === 'completed' || (category === 'priority' && [...dataForSections.newReports, ...dataForSections.activeReports, ...dataForSections.completedReports].some(r => r.priority >= DamageReportPriority.High))) 
-              ? mapToRow([...dataForSections.newReports, ...dataForSections.activeReports, ...dataForSections.completedReports].filter(r => category !== 'priority' || r.priority >= DamageReportPriority.High)) 
+              ? mapToRow(sortByDateDesc([...dataForSections.newReports, ...dataForSections.activeReports, ...dataForSections.completedReports].filter(r => category !== 'priority' || r.priority >= DamageReportPriority.High)), '1. VIỆC TRONG NGÀY') 
               : [] 
           },
           { 
-            title: '2. VIỆC ĐANG XỬ LÝ', 
+            title: '2. VIỆC TỒN (ĐANG XỬ LÝ + CHỜ XỬ LÝ)', 
             headers, 
-            rows: (category === 'all' || category === 'pendingActive' || category === 'backlog' || (category === 'priority' && dataForSections.pendingActiveReports.some(r => r.priority >= DamageReportPriority.High)))
-              ? mapToRow(dataForSections.pendingActiveReports.filter(r => category !== 'priority' || r.priority >= DamageReportPriority.High)) 
-              : [] 
-          },
-          { 
-            title: '3. VIỆC CHỜ XỬ LÝ', 
-            headers, 
-            rows: (category === 'all' || category === 'pending' || category === 'backlog' || (category === 'priority' && dataForSections.pendingReports.some(r => r.priority >= DamageReportPriority.High)))
-              ? mapToRow(dataForSections.pendingReports.filter(r => category !== 'priority' || r.priority >= DamageReportPriority.High)) 
+            rows: (category === 'all' || category === 'pendingActive' || category === 'pending' || category === 'backlog' || (category === 'priority' && [...dataForSections.pendingActiveReports, ...dataForSections.pendingReports].some(r => r.priority >= DamageReportPriority.High)))
+              ? mapToRow(sortByDateDesc([...(category === 'pending' ? [] : dataForSections.pendingActiveReports), ...(category === 'pendingActive' ? [] : dataForSections.pendingReports)].filter(r => category !== 'priority' || r.priority >= DamageReportPriority.High)), '2. VIỆC TỒN (ĐANG XỬ LÝ + CHỜ XỬ LÝ)') 
               : [] 
           },
         ],
