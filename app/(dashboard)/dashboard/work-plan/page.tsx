@@ -20,8 +20,9 @@ import { format, addDays, isToday, isTomorrow, isAfter, startOfDay } from 'date-
 import { vi } from 'date-fns/locale';
 import Loading from '@/components/Loading';
 import SearchableSelect from '@/components/SearchableSelect';
+import SuperAdminRoute from '@/components/SuperAdminRoute';
 
-export default function WorkPlanPage() {
+function WorkPlanPageContent() {
   const { user, isAdmin } = useAuth();
   const [staff, setStaff] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(addDays(new Date(), 1));
@@ -67,27 +68,36 @@ export default function WorkPlanPage() {
     setLoading(true);
     try {
       const staffRes = await api.get(`/staff/me?userId=${user.id}`).catch(() => ({ data: { status: false } }));
+      
+      let targetStaffId = viewStaffId;
       if (staffRes.data.status) {
         const staffData = staffRes.data.data;
         setStaff(staffData);
-        let targetStaffId = viewStaffId;
         if (!isAdmin) {
           targetStaffId = staffData.id;
         }
-        const dateStr = format(selectedDate, 'yyyy-MM-dd');
-
-        await Promise.allSettled([
-          api.get(`/work-plans?date=${dateStr}&staffId=${targetStaffId}`).then(res => {
-            if (res.data.status) setPlanItems(res.data.data);
-          }),
-          api.get(`/work-plans/pending?staffId=${isAdmin ? 0 : targetStaffId}`).then(res => {
-            if (res.data.status) setPendingReports(res.data.data);
-          }),
-          api.get(`/work-plans/active-dates?startDate=${new Date(selectedDate).getFullYear() - 1}-01-01&endDate=${new Date(selectedDate).getFullYear() + 1}-12-31&staffId=${targetStaffId}`).then(res => {
-            if (res.data.status) setActiveDates(res.data.data.map((d: string) => new Date(d)));
-          })
-        ]);
+      } else {
+        if (!isAdmin) {
+          toast.warning('Tài khoản của bạn chưa được liên kết với nhân viên nào.');
+          return;
+        } else {
+          toast.info('Tài khoản không liên kết với nhân viên. Đang hiển thị dữ liệu chung.', { toastId: 'no-staff-info' });
+        }
       }
+      
+      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+
+      await Promise.allSettled([
+        api.get(`/work-plans?date=${dateStr}&staffId=${targetStaffId}`).then(res => {
+          if (res.data.status) setPlanItems(res.data.data);
+        }),
+        api.get(`/work-plans/pending?staffId=${isAdmin ? 0 : targetStaffId}`).then(res => {
+          if (res.data.status) setPendingReports(res.data.data);
+        }),
+        api.get(`/work-plans/active-dates?startDate=${new Date(selectedDate).getFullYear() - 1}-01-01&endDate=${new Date(selectedDate).getFullYear() + 1}-12-31&staffId=${targetStaffId}`).then(res => {
+          if (res.data.status) setActiveDates(res.data.data.map((d: string) => new Date(d)));
+        })
+      ]);
 
       await Promise.allSettled([
         api.get('/devices?limit=1000').then(res => {
@@ -115,9 +125,8 @@ export default function WorkPlanPage() {
     setOverdueLoading(true);
     try {
       const staffRes = await api.get(`/staff/me?userId=${user.id}`).catch(() => ({ data: { status: false } }));
-      if (!staffRes.data.status) return;
-      const myStaff = staffRes.data.data;
-      const targetStaffId = isAdmin ? 0 : myStaff.id;
+      if (!staffRes.data.status && !isAdmin) return;
+      const targetStaffId = isAdmin ? 0 : staffRes.data.data.id;
       const res = await api.get(`/work-plans?archive=true&staffId=${targetStaffId}`);
       if (res.data.status) {
         setOverdueItems(res.data.data);
@@ -219,7 +228,7 @@ export default function WorkPlanPage() {
     try {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       
-      const targetStaffId = !isAdmin ? staff.id : (viewStaffId === undefined ? staff.id : viewStaffId);
+      const targetStaffId = !isAdmin ? (staff?.id || 0) : (viewStaffId === undefined ? (staff?.id || 0) : viewStaffId);
       // Assign to the DamageReport Handler if available, else target viewed staff, else current staff
       const assignToStaffId = reportHandlerId || (targetStaffId !== 0 ? targetStaffId : (staff?.id || 0));
 
@@ -1194,5 +1203,13 @@ export default function WorkPlanPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+export default function WorkPlanPage() {
+  return (
+    <SuperAdminRoute>
+      <WorkPlanPageContent />
+    </SuperAdminRoute>
   );
 }

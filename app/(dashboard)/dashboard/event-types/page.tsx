@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
 import { EventType } from '@/types';
-import AdminRoute from '@/components/AdminRoute';
+import SuperAdminRoute from '@/components/SuperAdminRoute';
 
 function EventTypesPageContent() {
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -568,9 +568,9 @@ function EventTypesPageContent() {
 
 export default function EventTypesPage() {
   return (
-    <AdminRoute>
+    <SuperAdminRoute>
       <EventTypesPageContent />
-    </AdminRoute>
+    </SuperAdminRoute>
   );
 }
 

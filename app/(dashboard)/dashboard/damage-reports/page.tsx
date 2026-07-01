@@ -7,7 +7,7 @@ import api from '@/lib/utils/api';
 import useSWR, { mutate as globalMutate } from 'swr';
 import { fetcher } from '@/lib/utils/swr-fetcher';
 import { toast } from 'react-toastify';
-import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, StaffVM, Department, DeviceCategory, EventType, DeviceStatus, TimelineEntry } from '@/types';
+import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, StaffVM, Department, DeviceCategory, EventType, DeviceStatus, TimelineEntry, Location } from '@/types';
 import { formatDateDisplay, formatDateInput, formatDateRange, formatDateFilename } from '@/lib/utils/dateFormat';
 import FileManager from '@/components/FileManager';
 import DateInput from '@/components/DateInput';
@@ -302,6 +302,7 @@ export default function DamageReportsPage() {
   const [deviceCategories, setDeviceCategories] = useState<DeviceCategory[]>([]);
   const [staff, setStaff] = useState<StaffVM[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userPermissions, setUserPermissions] = useState<ReturnType<typeof getDamageReportPermissions>>({
@@ -409,6 +410,19 @@ export default function DamageReportsPage() {
   const [isOverflowMenuOpen, setIsOverflowMenuOpen] = useState(false);
   const overflowMenuRef = useRef<HTMLDivElement | null>(null);
 
+  // Searchable reporter/handler dropdown state
+  const [reporterSearch, setReporterSearch] = useState('');
+  const [isReporterDropdownOpen, setIsReporterDropdownOpen] = useState(false);
+  const reporterDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [handlerSearch, setHandlerSearch] = useState('');
+  const [isHandlerDropdownOpen, setIsHandlerDropdownOpen] = useState(false);
+  const handlerDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // Searchable location dropdown state
+  const [locationSearch, setLocationSearch] = useState('');
+  const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
+  const locationDropdownRef = useRef<HTMLDivElement | null>(null);
+
   // Form state
   const [formData, setFormData] = useState({
     id: 0,
@@ -503,6 +517,12 @@ export default function DamageReportsPage() {
       setModalCategorySearch('');
       setIsDeviceDropdownOpen(false);
       setIsCategoryDropdownOpen(false);
+      setReporterSearch('');
+      setIsReporterDropdownOpen(false);
+      setHandlerSearch('');
+      setIsHandlerDropdownOpen(false);
+      setLocationSearch('');
+      setIsLocationDropdownOpen(false);
     }
   }, [showModal]);
 
@@ -520,6 +540,18 @@ export default function DamageReportsPage() {
       // Handle overflow menu
       if (overflowMenuRef.current && !overflowMenuRef.current.contains(event.target as Node)) {
         setIsOverflowMenuOpen(false);
+      }
+      // Handle reporter dropdown
+      if (reporterDropdownRef.current && !reporterDropdownRef.current.contains(event.target as Node)) {
+        setIsReporterDropdownOpen(false);
+      }
+      // Handle handler dropdown
+      if (handlerDropdownRef.current && !handlerDropdownRef.current.contains(event.target as Node)) {
+        setIsHandlerDropdownOpen(false);
+      }
+      // Handle location dropdown
+      if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target as Node)) {
+        setIsLocationDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -723,6 +755,7 @@ export default function DamageReportsPage() {
     loadDeviceCategories();
     loadStaff();
     loadDepartments();
+    loadLocations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -841,6 +874,17 @@ export default function DamageReportsPage() {
       }
     } catch (error) {
       console.error('Error loading departments:', error);
+    }
+  };
+
+  const loadLocations = async () => {
+    try {
+      const response = await api.get('/locations');
+      if (response.data.status) {
+        setLocations(response.data.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading locations:', error);
     }
   };
 
@@ -1236,10 +1280,6 @@ export default function DamageReportsPage() {
     // Validation
     if (formData.deviceSelection === 'device' && !formData.deviceId) {
       toast.error('Vui lòng chọn thiết bị');
-      return;
-    }
-    if (formData.deviceSelection === 'other' && !formData.damageLocation?.trim()) {
-      toast.error('Vui lòng nhập vị trí công việc');
       return;
     }
     if (formData.deviceSelection === 'maintenance') {
@@ -3278,30 +3318,187 @@ export default function DamageReportsPage() {
                         </div>
                       ) : (
                         <div className="col-12 mb-1">
-                          <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Vị trí/Mô tả chung <span className="text-danger">*</span></label>
-                          <input type="text" className="form-control form-control-sm shadow-none" value={formData.damageLocation || ''} onChange={(e) => setFormData({ ...formData, damageLocation: e.target.value })} disabled={!!formData.maintenanceBatchId} placeholder="Ví dụ: Tường hành lang, Hệ thống điện..." style={{ minHeight: '28px', fontSize: '0.75rem', backgroundColor: formData.maintenanceBatchId ? '#f8f9fa' : 'white' }} />
+                          <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Vị trí (khu vực/phòng ban)</label>
+                          <div ref={locationDropdownRef} style={{ position: 'relative' }}>
+                            <div
+                              className="form-select form-select-sm shadow-none d-flex align-items-center justify-content-between"
+                              style={{ minHeight: '28px', fontSize: '0.75rem', cursor: !!formData.maintenanceBatchId ? 'not-allowed' : 'pointer', userSelect: 'none', backgroundColor: formData.maintenanceBatchId ? '#f8f9fa' : 'white' }}
+                              onClick={() => {
+                                if (!!formData.maintenanceBatchId) return;
+                                setIsLocationDropdownOpen(v => !v); 
+                                setLocationSearch('');
+                              }}
+                            >
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: formData.damageLocation ? '#212529' : '#6c757d' }}>
+                                {formData.damageLocation || '-- Chọn vị trí --'}
+                              </span>
+                            </div>
+                            {isLocationDropdownOpen && (
+                              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1050, background: '#fff', border: '1px solid #ced4da', borderRadius: '6px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', overflow: 'hidden' }}>
+                                <div style={{ padding: '6px' }}>
+                                  <input
+                                    autoFocus
+                                    type="text"
+                                    className="form-control form-control-sm shadow-none"
+                                    placeholder="Tìm vị trí hoặc nhập mới..."
+                                    value={locationSearch}
+                                    onChange={e => setLocationSearch(e.target.value)}
+                                    onClick={e => e.stopPropagation()}
+                                    style={{ fontSize: '0.75rem', height: '28px' }}
+                                  />
+                                </div>
+                                <ul style={{ listStyle: 'none', margin: 0, padding: '2px 0', maxHeight: '180px', overflowY: 'auto' }}>
+                                  <li
+                                    style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', color: '#6c757d', background: !formData.damageLocation ? '#e9f0ff' : 'transparent' }}
+                                    onMouseDown={() => { setFormData({ ...formData, damageLocation: '' }); setIsLocationDropdownOpen(false); }}
+                                  >-- Bỏ chọn --</li>
+                                  {locationSearch.trim() && !locations.some(l => {
+                                    const locName = l.parentName ? `${l.parentName} > ${l.name}` : l.name;
+                                    return locName.toLowerCase() === locationSearch.trim().toLowerCase();
+                                  }) && (
+                                    <li
+                                      style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', color: '#0d6efd', fontWeight: 600 }}
+                                      onMouseDown={() => { setFormData({ ...formData, damageLocation: locationSearch.trim() }); setIsLocationDropdownOpen(false); }}
+                                    >
+                                      + Sử dụng: "{locationSearch.trim()}"
+                                    </li>
+                                  )}
+                                  {locations.filter(l => {
+                                    if (!locationSearch.trim()) return true;
+                                    const locName = l.parentName ? `${l.parentName} > ${l.name}` : l.name;
+                                    return locName.toLowerCase().includes(locationSearch.trim().toLowerCase());
+                                  }).map(l => {
+                                    const locName = l.parentName ? `${l.parentName} > ${l.name}` : l.name;
+                                    const isSelected = formData.damageLocation === locName;
+                                    return (
+                                      <li
+                                        key={l.id}
+                                        style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', background: isSelected ? '#e9f0ff' : 'transparent', fontWeight: isSelected ? 600 : 400 }}
+                                        onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = '#f8f9fa'; }}
+                                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isSelected ? '#e9f0ff' : 'transparent'; }}
+                                        onMouseDown={() => { setFormData({ ...formData, damageLocation: locName }); setIsLocationDropdownOpen(false); }}
+                                      >{locName}</li>
+                                    );
+                                  })}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
 
+                      {/* Người báo cáo - Searchable dropdown */}
                       <div className="col-6 mb-1">
                         <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Người báo cáo <span className="text-danger">*</span></label>
-                        <select className="form-select form-select-sm shadow-none" value={formData.reporterId} onChange={(e) => setFormData({ ...formData, reporterId: Number(e.target.value) })} disabled={currentUserStaffId !== null || !!formData.maintenanceBatchId} style={{ minHeight: '28px', fontSize: '0.75rem', backgroundColor: (currentUserStaffId !== null || !!formData.maintenanceBatchId) ? '#f8f9fa' : 'white' }}>
-                          <option value={0}>-- Người báo --</option>
-                          {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        </select>
+                        {(currentUserStaffId !== null || !!formData.maintenanceBatchId) ? (
+                          <select className="form-select form-select-sm shadow-none" value={formData.reporterId} disabled style={{ minHeight: '28px', fontSize: '0.75rem', backgroundColor: '#f8f9fa' }}>
+                            <option value={0}>-- Người báo --</option>
+                            {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        ) : (
+                          <div ref={reporterDropdownRef} style={{ position: 'relative' }}>
+                            <div
+                              className="form-select form-select-sm shadow-none d-flex align-items-center justify-content-between"
+                              style={{ minHeight: '28px', fontSize: '0.75rem', cursor: 'pointer', userSelect: 'none' }}
+                              onClick={() => { setIsReporterDropdownOpen(v => !v); setReporterSearch(''); }}
+                            >
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {formData.reporterId ? (staff.find(s => s.id === formData.reporterId)?.name || '-- Người báo --') : '-- Người báo --'}
+                              </span>
+                            </div>
+                            {isReporterDropdownOpen && (
+                              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1050, background: '#fff', border: '1px solid #ced4da', borderRadius: '6px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', overflow: 'hidden' }}>
+                                <div style={{ padding: '6px' }}>
+                                  <input
+                                    autoFocus
+                                    type="text"
+                                    className="form-control form-control-sm shadow-none"
+                                    placeholder="Tìm tên..."
+                                    value={reporterSearch}
+                                    onChange={e => setReporterSearch(e.target.value)}
+                                    onClick={e => e.stopPropagation()}
+                                    style={{ fontSize: '0.75rem', height: '28px' }}
+                                  />
+                                </div>
+                                <ul style={{ listStyle: 'none', margin: 0, padding: '2px 0', maxHeight: '180px', overflowY: 'auto' }}>
+                                  <li
+                                    style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', color: '#6c757d', background: formData.reporterId === 0 ? '#e9f0ff' : 'transparent' }}
+                                    onMouseDown={() => { setFormData({ ...formData, reporterId: 0 }); setIsReporterDropdownOpen(false); }}
+                                  >-- Người báo --</li>
+                                  {staff.filter(s => !reporterSearch.trim() || s.name.toLowerCase().includes(reporterSearch.trim().toLowerCase())).map(s => (
+                                    <li
+                                      key={s.id}
+                                      style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', background: formData.reporterId === s.id ? '#e9f0ff' : 'transparent', fontWeight: formData.reporterId === s.id ? 600 : 400 }}
+                                      onMouseEnter={e => { if (formData.reporterId !== s.id) (e.currentTarget as HTMLElement).style.background = '#f8f9fa'; }}
+                                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = formData.reporterId === s.id ? '#e9f0ff' : 'transparent'; }}
+                                      onMouseDown={() => { setFormData({ ...formData, reporterId: s.id }); setIsReporterDropdownOpen(false); }}
+                                    >{s.name}</li>
+                                  ))}
+                                  {staff.filter(s => !reporterSearch.trim() || s.name.toLowerCase().includes(reporterSearch.trim().toLowerCase())).length === 0 && (
+                                    <li style={{ padding: '5px 10px', fontSize: '0.75rem', color: '#adb5bd' }}>Không tìm thấy</li>
+                                  )}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
+
+                      {/* Người xử lý - Searchable dropdown */}
                       <div className="col-6 mb-1">
                         <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Người xử lý <span className="text-danger">*</span></label>
-                        <select 
-                          className="form-select form-select-sm shadow-none" 
-                          value={formData.handlerId || 0} 
-                          onChange={(e) => setFormData({ ...formData, handlerId: Number(e.target.value) || undefined })} 
-                          disabled={isEdit && !userPermissions.canEdit && (currentUserStaffId === null || (formData.handlerId !== currentUserStaffId && formData.reporterId !== currentUserStaffId))}
-                          style={{ minHeight: '28px', fontSize: '0.75rem' }}
-                        >
-                          <option value={0}>-- Phân công --</option>
-                          {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        </select>
+                        {(isEdit && !userPermissions.canEdit && (currentUserStaffId === null || (formData.handlerId !== currentUserStaffId && formData.reporterId !== currentUserStaffId))) ? (
+                          <select className="form-select form-select-sm shadow-none" value={formData.handlerId || 0} disabled style={{ minHeight: '28px', fontSize: '0.75rem' }}>
+                            <option value={0}>-- Phân công --</option>
+                            {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        ) : (
+                          <div ref={handlerDropdownRef} style={{ position: 'relative' }}>
+                            <div
+                              className="form-select form-select-sm shadow-none d-flex align-items-center justify-content-between"
+                              style={{ minHeight: '28px', fontSize: '0.75rem', cursor: 'pointer', userSelect: 'none' }}
+                              onClick={() => { setIsHandlerDropdownOpen(v => !v); setHandlerSearch(''); }}
+                            >
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {formData.handlerId ? (staff.find(s => s.id === formData.handlerId)?.name || '-- Phân công --') : '-- Phân công --'}
+                              </span>
+                            </div>
+                            {isHandlerDropdownOpen && (
+                              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1050, background: '#fff', border: '1px solid #ced4da', borderRadius: '6px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', overflow: 'hidden' }}>
+                                <div style={{ padding: '6px' }}>
+                                  <input
+                                    autoFocus
+                                    type="text"
+                                    className="form-control form-control-sm shadow-none"
+                                    placeholder="Tìm tên..."
+                                    value={handlerSearch}
+                                    onChange={e => setHandlerSearch(e.target.value)}
+                                    onClick={e => e.stopPropagation()}
+                                    style={{ fontSize: '0.75rem', height: '28px' }}
+                                  />
+                                </div>
+                                <ul style={{ listStyle: 'none', margin: 0, padding: '2px 0', maxHeight: '180px', overflowY: 'auto' }}>
+                                  <li
+                                    style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', color: '#6c757d', background: !formData.handlerId ? '#e9f0ff' : 'transparent' }}
+                                    onMouseDown={() => { setFormData({ ...formData, handlerId: undefined }); setIsHandlerDropdownOpen(false); }}
+                                  >-- Phân công --</li>
+                                  {staff.filter(s => !handlerSearch.trim() || s.name.toLowerCase().includes(handlerSearch.trim().toLowerCase())).map(s => (
+                                    <li
+                                      key={s.id}
+                                      style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', background: formData.handlerId === s.id ? '#e9f0ff' : 'transparent', fontWeight: formData.handlerId === s.id ? 600 : 400 }}
+                                      onMouseEnter={e => { if (formData.handlerId !== s.id) (e.currentTarget as HTMLElement).style.background = '#f8f9fa'; }}
+                                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = formData.handlerId === s.id ? '#e9f0ff' : 'transparent'; }}
+                                      onMouseDown={() => { setFormData({ ...formData, handlerId: s.id }); setIsHandlerDropdownOpen(false); }}
+                                    >{s.name}</li>
+                                  ))}
+                                  {staff.filter(s => !handlerSearch.trim() || s.name.toLowerCase().includes(handlerSearch.trim().toLowerCase())).length === 0 && (
+                                    <li style={{ padding: '5px 10px', fontSize: '0.75rem', color: '#adb5bd' }}>Không tìm thấy</li>
+                                  )}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

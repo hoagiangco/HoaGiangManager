@@ -23,6 +23,7 @@ export default function DashboardLayout({
 
   // Menu items based on role
   const isAdmin = user?.roles?.includes('Admin') || user?.roles?.includes('SuperAdmin');
+  const isSuperAdmin = user?.roles?.includes('SuperAdmin');
   const isSupervisor = user?.roles?.includes('Supervisor') || isAdmin;
 
   // Poll pending reports globally (10s)
@@ -135,11 +136,14 @@ export default function DashboardLayout({
       {
         title: 'Hoạt động',
         items: [
-          { href: '/dashboard/work-plan', label: 'Kế hoạch công việc', icon: 'fas fa-calendar-check' },
+          ...(isSuperAdmin ? [
+            { href: '/dashboard/weekly-schedule', label: 'Lịch tuần', icon: 'fas fa-calendar-week' },
+            { href: '/dashboard/work-plan', label: 'Kế hoạch công việc', icon: 'fas fa-calendar-check' },
+            { href: '/dashboard/events', label: 'Sự kiện', icon: 'fas fa-calendar' },
+            { href: '/dashboard/event-types', label: 'Loại sự kiện', icon: 'fas fa-tags' }
+          ] : []),
           { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' },
-          { href: '/dashboard/maintenance', label: 'Bảo trì', icon: 'fas fa-wrench' },
-          { href: '/dashboard/events', label: 'Sự kiện', icon: 'fas fa-calendar' },
-          { href: '/dashboard/event-types', label: 'Loại sự kiện', icon: 'fas fa-tags' }
+          { href: '/dashboard/maintenance', label: 'Bảo trì', icon: 'fas fa-wrench' }
         ]
       },
       {
@@ -170,7 +174,6 @@ export default function DashboardLayout({
       {
         title: 'Hoạt động',
         items: [
-          { href: '/dashboard/work-plan', label: 'Kế hoạch công việc', icon: 'fas fa-calendar-check' },
           { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' },
           { href: '/dashboard/maintenance', label: 'Bảo trì', icon: 'fas fa-wrench' }
         ]
@@ -188,7 +191,6 @@ export default function DashboardLayout({
       {
         title: 'Hoạt động',
         items: [
-          { href: '/dashboard/work-plan', label: 'Kế hoạch công việc', icon: 'fas fa-calendar-check' },
           { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' },
           { href: '/dashboard/maintenance', label: 'Bảo trì', icon: 'fas fa-wrench' }
         ]

@@ -10,7 +10,7 @@ import { toast } from 'react-toastify';
 import { EventStatus, EventType, EventVM, DamageReportVM, DeviceVM, StaffVM } from '@/types';
 import { formatDateDisplay, formatDateInput } from '@/lib/utils/dateFormat';
 import DateInput from '@/components/DateInput';
-import AdminRoute from '@/components/AdminRoute';
+import SuperAdminRoute from '@/components/SuperAdminRoute';
 
 type EventFormState = {
   id?: number;
@@ -1140,9 +1140,9 @@ function EventsPageContent() {
 
 export default function EventsPage() {
   return (
-    <AdminRoute>
+    <SuperAdminRoute>
       <EventsPageContent />
-    </AdminRoute>
+    </SuperAdminRoute>
   );
 }
 
