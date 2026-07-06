@@ -5,11 +5,14 @@ import { TimelineEntry } from '@/types';
 
 // Helper to parse timeline
 export const parseTimeline = (value: string | undefined | null): TimelineEntry[] => {
-  if (!value) return [];
+  if (!value || value === '[]') return [];
   try {
     const parsed = JSON.parse(value);
-    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].hasOwnProperty('timestamp')) {
-      return parsed;
+    if (Array.isArray(parsed)) {
+      if (parsed.length === 0) return [];
+      if (parsed.length > 0 && parsed[0].hasOwnProperty('timestamp')) {
+        return parsed;
+      }
     }
   } catch (e) {}
   return [{
@@ -130,7 +133,7 @@ const HandlerNotesEditor: React.FC<HandlerNotesEditorProps> = ({
     if (!window.confirm('Bạn có chắc chắn muốn xóa ghi chú này?')) return;
     const updatedTimeline = timeline.filter(entry => entry.id !== entryId);
     try {
-      await onChange(JSON.stringify(updatedTimeline));
+      await onChange(updatedTimeline.length > 0 ? JSON.stringify(updatedTimeline) : '');
     } catch (error) {
       // Error handled by parent
     }

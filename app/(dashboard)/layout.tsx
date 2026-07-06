@@ -128,36 +128,36 @@ export default function DashboardLayout({
         items: [
           { href: '/dashboard/devices', label: 'Thiết bị', icon: 'fas fa-laptop' },
           { href: '/dashboard/device-categories', label: 'Danh mục thiết bị', icon: 'fas fa-box' },
-          { href: '/dashboard/locations', label: 'Vị trí / Khu vực', icon: 'fas fa-map-marker-alt' },
-          { href: '/dashboard/departments', label: 'Phòng ban', icon: 'fas fa-building' },
-          { href: '/dashboard/suppliers', label: 'Nhà cung cấp', icon: 'fas fa-handshake' }
+          { href: '/dashboard/locations', label: 'Vị trí / Khu vực', icon: 'fas fa-map-marker-alt' }
         ]
       },
       {
-        title: 'Hoạt động',
+        title: 'Công việc & Bảo trì',
         items: [
+          { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' },
+          { href: '/dashboard/maintenance', label: 'Bảo trì', icon: 'fas fa-wrench' },
           ...(isSuperAdmin ? [
-            { href: '/dashboard/weekly-schedule', label: 'Lịch tuần', icon: 'fas fa-calendar-week' },
             { href: '/dashboard/work-plan', label: 'Kế hoạch công việc', icon: 'fas fa-calendar-check' },
+            { href: '/dashboard/weekly-schedule', label: 'Lịch tuần', icon: 'fas fa-calendar-week' },
             { href: '/dashboard/events', label: 'Sự kiện', icon: 'fas fa-calendar' },
             { href: '/dashboard/event-types', label: 'Loại sự kiện', icon: 'fas fa-tags' }
-          ] : []),
-          { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' },
-          { href: '/dashboard/maintenance', label: 'Bảo trì', icon: 'fas fa-wrench' }
+          ] : [])
         ]
       },
       {
         title: 'Quản lý kho',
         items: [
           { href: '/dashboard/spare-parts', label: 'Vật tư dự phòng', icon: 'fas fa-boxes' },
-          { href: '/dashboard/spare-part-transactions', label: 'Nhập / Xuất kho', icon: 'fas fa-exchange-alt' }
+          { href: '/dashboard/spare-part-transactions', label: 'Nhập / Xuất kho', icon: 'fas fa-exchange-alt' },
+          { href: '/dashboard/suppliers', label: 'Nhà cung cấp', icon: 'fas fa-handshake' }
         ]
       },
       {
         title: 'Hệ thống',
         items: [
+          { href: '/dashboard/departments', label: 'Phòng ban', icon: 'fas fa-building' },
           { href: '/dashboard/staff', label: 'Nhân viên', icon: 'fas fa-users' },
-          { href: '/dashboard/admin', label: 'Tài khoản người dùng', icon: 'fas fa-cog' },
+          { href: '/dashboard/admin', label: 'Tài khoản người dùng', icon: 'fas fa-user-shield' },
           { href: '/dashboard/backup', label: 'Sao lưu/ Phục hồi', icon: 'fas fa-database' }
         ]
       }
@@ -172,7 +172,7 @@ export default function DashboardLayout({
         ]
       },
       {
-        title: 'Hoạt động',
+        title: 'Công việc & Bảo trì',
         items: [
           { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' },
           { href: '/dashboard/maintenance', label: 'Bảo trì', icon: 'fas fa-wrench' }
@@ -189,7 +189,7 @@ export default function DashboardLayout({
         ]
       },
       {
-        title: 'Hoạt động',
+        title: 'Công việc & Bảo trì',
         items: [
           { href: '/dashboard/damage-reports', label: 'Báo cáo công việc', icon: 'fas fa-exclamation-triangle' },
           { href: '/dashboard/maintenance', label: 'Bảo trì', icon: 'fas fa-wrench' }

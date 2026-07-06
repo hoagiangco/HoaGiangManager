@@ -439,7 +439,7 @@ export default function WeeklySchedulePage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [currentMonday, setCurrentMonday] = useState<Date>(() => getMondayOf(addDays(new Date(), 7)));
+  const [currentMonday, setCurrentMonday] = useState<Date>(() => getMondayOf(new Date()));
 
   const [departments, setDepartments] = useState<Department[]>([]);
   const [selectedDeptId, setSelectedDeptId] = useState<number>(0);

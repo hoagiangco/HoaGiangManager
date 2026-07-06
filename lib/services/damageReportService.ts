@@ -1305,11 +1305,27 @@ export class DamageReportService {
   }
 
   async updateHandlerNotes(id: number, handlerNotes: string, updatedBy: string): Promise<string> {
+    // --- Handle clear / delete-all case ---
+    // If the client sends empty string or '[]', it means all notes were deleted
+    const trimmed = (handlerNotes || '').trim();
+    if (trimmed === '' || trimmed === '[]') {
+      await pool.query(
+        `UPDATE "DamageReport" SET "HandlerNotes" = NULL, "UpdatedBy" = $1, "UpdatedAt" = CURRENT_TIMESTAMP WHERE "ID" = $2`,
+        [updatedBy, id]
+      );
+      await pool.query(
+        `INSERT INTO "DamageReportHistory" ("DamageReportID", "FieldName", "OldValue", "NewValue", "ChangedBy")
+         VALUES ($1, 'HandlerNotes_Clear', 'Cleared', '', $2)`,
+        [id, updatedBy]
+      );
+      return '';
+    }
+
     // Check if the incoming string is already a full timeline JSON
     let isFullTimeline = false;
     try {
-      if (handlerNotes.trim().startsWith('[')) {
-        const parsed = JSON.parse(handlerNotes);
+      if (trimmed.startsWith('[')) {
+        const parsed = JSON.parse(trimmed);
         if (Array.isArray(parsed) && parsed.length > 0 && (parsed[0].hasOwnProperty('timestamp') || parsed[0].hasOwnProperty('content'))) {
           isFullTimeline = true;
         }
