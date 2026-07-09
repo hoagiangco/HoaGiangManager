@@ -318,7 +318,13 @@ export async function GET(request: NextRequest) {
         case 'reportdate': return formatDateDisplay(report.reportDate) || '';
         case 'reportername': return reporterName;
         case 'reporterdepartmentname': return report.reporterDepartmentName || deptMap.get(report.reportingDepartmentId) || 'N/A';
-        case 'handlername': return handlerName;
+        case 'handlername': {
+          let hName = handlerName;
+          if (Array.isArray(report.coHandlers) && report.coHandlers.length > 0) {
+            hName += `\n(Phối hợp: ${report.coHandlers.map((h: any) => h.name).join(', ')})`;
+          }
+          return hName;
+        }
         case 'handlingdate': return formatDateDisplay(report.handlingDate) || '';
         case 'completeddate': return formatDateDisplay(report.completedDate) || '';
         case 'deviceandlocation': return deviceName;

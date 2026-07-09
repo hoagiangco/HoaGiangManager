@@ -161,7 +161,8 @@ export interface DamageReport {
   damageLocation?: string;              // Vị trí/Mô tả hư hỏng khi không có device
   reporterId: number;                  // Nhân viên báo cáo
   reportingDepartmentId: number;      // Phòng ban báo cáo
-  handlerId?: number;                   // Nhân viên được phân công xử lý
+  handlerId?: number;                   // Nhân viên được phân công xử lý (Người phụ trách)
+  coHandlerIds?: number[];              // Danh sách nhân viên phối hợp xử lý
   assignedDate?: Date;                  // Ngày phân công
   reportDate: Date;                     // Ngày báo cáo
   handlingDate?: Date;                  // Ngày bắt đầu xử lý
@@ -180,6 +181,7 @@ export interface DamageReport {
   updatedBy?: string;                   // User cập nhật cuối
   createdAt?: Date;                     // Thời gian tạo
   updatedAt?: Date;                     // Thời gian cập nhật cuối
+  isDeleted?: boolean;                  // Đánh dấu đã xóa
 }
 
 export interface DamageReportVM extends DamageReport {
@@ -190,6 +192,7 @@ export interface DamageReportVM extends DamageReport {
   reporterDepartmentName?: string;
   handlerName?: string;
   handlerDepartmentName?: string;
+  coHandlers?: { id: number; name: string }[]; // Thông tin chi tiết của người phối hợp
   statusName?: string;
   priorityName?: string;
   daysSinceReport?: number;

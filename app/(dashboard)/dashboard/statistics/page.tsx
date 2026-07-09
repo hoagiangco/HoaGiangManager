@@ -252,6 +252,14 @@ export default function StatisticsPage() {
         return val;
       }
 
+        if (lowerId === 'handlername') {
+          let hName = row[colId] || '-';
+          if (Array.isArray(row.coHandlers) && row.coHandlers.length > 0) {
+            hName += `<br><i style="font-size: 0.85em; color: #64748b;">(Phối hợp: ${row.coHandlers.map((h: any) => h.name).join(', ')})</i>`;
+          }
+          return hName;
+        }
+
       return row[colId] || '-';
     };
 
@@ -925,12 +933,16 @@ export default function StatisticsPage() {
       if (row.handlerNotes && typeof row.handlerNotes === 'string' && row.handlerNotes.startsWith('[')) {
         try { const tl = JSON.parse(row.handlerNotes); if (Array.isArray(tl) && tl.length > 0) hn = tl[tl.length - 1].content || '-'; } catch {}
       } else if (row.handlerNotes) { hn = String(row.handlerNotes); }
+      let handlerDisplay = row.handlerName || 'Chưa phân công';
+      if (Array.isArray(row.coHandlers) && row.coHandlers.length > 0) {
+        handlerDisplay += `<br><i style="font-size: 0.85em; color: #64748b;">(Phối hợp: ${row.coHandlers.map((h: any) => h.name).join(', ')})</i>`;
+      }
       return `<tr>
         <td style="text-align:center">${i + 1}</td>
         <td style="text-align:center">${formatVietnameseDate(row.reportDate)}</td>
         <td>${devName}</td>
         <td>${(row.damageContent || '-').replace(/<[^>]*>?/gm, '')}</td>
-        <td>${row.handlerName || 'Chưa phân công'}</td>
+        <td>${handlerDisplay}</td>
         <td style="text-align:center">${row.statusName || '-'}</td>
         <td>${hn}</td>
       </tr>`;
@@ -1650,9 +1662,17 @@ export default function StatisticsPage() {
                                   '-'
                                 )}
                               </td>
-                              <td className="px-3 py-2 text-nowrap" style={{ color: '#475569', fontSize: '0.82rem' }}>
+                              <td className="px-3 py-2" style={{ color: '#475569', fontSize: '0.82rem' }}>
                                 {row.handlerName ? (
-                                  <span><i className="fas fa-user me-1 opacity-50" style={{ fontSize: '0.7rem' }}></i>{row.handlerName}</span>
+                                  <div className="d-flex flex-column">
+                                    <span><i className="fas fa-user me-1 opacity-50" style={{ fontSize: '0.7rem' }}></i>{row.handlerName}</span>
+                                    {Array.isArray(row.coHandlers) && row.coHandlers.length > 0 && (
+                                      <span className="text-muted fst-italic" style={{ fontSize: '0.72rem', lineHeight: '1.3' }}>
+                                        <i className="fas fa-users fa-xs me-1"></i>
+                                        {row.coHandlers.map((h: any) => h.name).join(', ')}
+                                      </span>
+                                    )}
+                                  </div>
                                 ) : (
                                   <span className="text-muted fst-italic" style={{ fontSize: '0.78rem' }}>Chưa phân công</span>
                                 )}
@@ -1912,6 +1932,16 @@ function PreviewTable({ data, loading, color, configCols, pagination, maintenanc
                       <span className={`fw-bold ${row[h] === 'Khẩn cấp' || row[h] === 'Cao' ? 'text-danger' : 'text-muted'}`}>
                         {String(row[h])}
                       </span>
+                    ) : h === 'handlerName' ? (
+                      <div className="d-flex flex-column">
+                        <span>{row[h] || <span className="text-muted fst-italic" style={{ fontSize: '0.78rem' }}>Chưa phân công</span>}</span>
+                        {Array.isArray(row.coHandlers) && row.coHandlers.length > 0 && (
+                          <span className="text-muted fst-italic" style={{ fontSize: '0.72rem', lineHeight: '1.3' }}>
+                            <i className="fas fa-users fa-xs me-1"></i>
+                            {row.coHandlers.map((h: any) => h.name).join(', ')}
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       formatValue(h, row[h], row)
                     )}
@@ -2191,9 +2221,17 @@ function DeptReportSection({ title, data, color, maintenanceBatches }: {
                         <td className="px-3 py-2 text-truncate" style={{ maxWidth: '280px', color: '#334155' }}>
                           {(row.damageContent || '-').replace(/<[^>]*>?/gm, '')}
                         </td>
-                        <td className="px-3 py-2 text-nowrap" style={{ color: '#475569', fontSize: '0.82rem' }}>
+                        <td className="px-3 py-2" style={{ color: '#475569', fontSize: '0.82rem' }}>
                           {row.handlerName ? (
-                            <span><i className="fas fa-user me-1 opacity-50" style={{ fontSize: '0.7rem' }}></i>{row.handlerName}</span>
+                            <div className="d-flex flex-column">
+                              <span><i className="fas fa-user me-1 opacity-50" style={{ fontSize: '0.7rem' }}></i>{row.handlerName}</span>
+                              {Array.isArray(row.coHandlers) && row.coHandlers.length > 0 && (
+                                <span className="text-muted fst-italic" style={{ fontSize: '0.72rem', lineHeight: '1.3' }}>
+                                  <i className="fas fa-users fa-xs me-1"></i>
+                                  {row.coHandlers.map((h: any) => h.name).join(', ')}
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-muted fst-italic" style={{ fontSize: '0.78rem' }}>Chưa phân công</span>
                           )}

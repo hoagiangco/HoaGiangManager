@@ -65,6 +65,11 @@ export async function GET(request: NextRequest) {
       filters.toDate = toDate;
     }
 
+    const isDeleted = searchParams.get('isDeleted');
+    if (isDeleted !== null) {
+      filters.isDeleted = isDeleted === 'true';
+    }
+
     const damageReportService = new DamageReportService();
     
     // Import helper

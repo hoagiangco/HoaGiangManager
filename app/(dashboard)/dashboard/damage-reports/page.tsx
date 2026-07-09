@@ -11,7 +11,7 @@ import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, Sta
 import { formatDateDisplay, formatDateInput, formatDateRange, formatDateFilename } from '@/lib/utils/dateFormat';
 import FileManager from '@/components/FileManager';
 import DateInput from '@/components/DateInput';
-import { getDamageReportPermissions, isAdmin } from '@/lib/auth/permissions';
+import { getDamageReportPermissions, isAdmin, isSuperAdmin } from '@/lib/auth/permissions';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
 import Loading from '@/components/Loading';
 import { isSupervisor } from '@/lib/auth/permissions';
@@ -320,6 +320,7 @@ export default function DamageReportsPage() {
   const [searchInputValue, setSearchInputValue] = useState(''); // Temporary value for search input
   const [myWorkFilter, setMyWorkFilter] = useState(false);
   const [myReportFilter, setMyReportFilter] = useState(false);
+  const [showDeletedFilter, setShowDeletedFilter] = useState(false);
   const [currentUserStaffId, setCurrentUserStaffId] = useState<number | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showDoneConfirm, setShowDoneConfirm] = useState(false);
@@ -417,6 +418,9 @@ export default function DamageReportsPage() {
   const [handlerSearch, setHandlerSearch] = useState('');
   const [isHandlerDropdownOpen, setIsHandlerDropdownOpen] = useState(false);
   const handlerDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [coHandlerSearch, setCoHandlerSearch] = useState('');
+  const [isCoHandlerDropdownOpen, setIsCoHandlerDropdownOpen] = useState(false);
+  const coHandlerDropdownRef = useRef<HTMLDivElement | null>(null);
 
   // Searchable location dropdown state
   const [locationSearch, setLocationSearch] = useState('');
@@ -432,6 +436,7 @@ export default function DamageReportsPage() {
     reporterId: 0,
     reportingDepartmentId: 0,
     handlerId: undefined as number | undefined,
+    coHandlerIds: [] as number[],
     assignedDate: '',
     reportDate: formatDateInput(new Date()),
     handlingDate: '',
@@ -548,6 +553,10 @@ export default function DamageReportsPage() {
       // Handle handler dropdown
       if (handlerDropdownRef.current && !handlerDropdownRef.current.contains(event.target as Node)) {
         setIsHandlerDropdownOpen(false);
+      }
+      // Handle co-handler dropdown
+      if (coHandlerDropdownRef.current && !coHandlerDropdownRef.current.contains(event.target as Node)) {
+        setIsCoHandlerDropdownOpen(false);
       }
       // Handle location dropdown
       if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target as Node)) {
@@ -720,8 +729,9 @@ export default function DamageReportsPage() {
     if (selectedPriority > 0) params.append('priority', selectedPriority.toString());
     if (selectedDevice > 0) params.append('deviceId', selectedDevice.toString());
     if (selectedDepartment > 0) params.append('departmentId', selectedDepartment.toString());
+    if (showDeletedFilter) params.append('isDeleted', 'true');
     return params.toString();
-  }, [selectedStatus, selectedPriority, selectedDevice, selectedDepartment]);
+  }, [selectedStatus, selectedPriority, selectedDevice, selectedDepartment, showDeletedFilter]);
 
   const { data: reportsResponse, isLoading: reportsLoading, mutate: mutateReports } = useSWR(
     `/damage-reports?${currentParams}`, 
@@ -1132,6 +1142,7 @@ export default function DamageReportsPage() {
       reporterId: currentUserStaffId || 0,
       reportingDepartmentId: currentStaff?.departmentId || 0,
       handlerId: undefined,
+      coHandlerIds: [],
       assignedDate: '',
       reportDate: today,
       handlingDate: '',
@@ -1208,6 +1219,7 @@ export default function DamageReportsPage() {
         reporterId: Number(selectedReport.reporterId) || 0,
         reportingDepartmentId: Number(selectedReport.reportingDepartmentId) || 0,
         handlerId: selectedReport.handlerId ? Number(selectedReport.handlerId) : undefined,
+        coHandlerIds: Array.isArray(selectedReport.coHandlerIds) ? selectedReport.coHandlerIds : [],
         assignedDate: formatDate(selectedReport.assignedDate),
         reportDate: formatDate(selectedReport.reportDate) || formatDateInput(new Date()),
         handlingDate: formatDate(selectedReport.handlingDate),
@@ -1260,13 +1272,13 @@ export default function DamageReportsPage() {
       return;
     }
 
-    if (!confirm('Bạn có chắc chắn muốn xóa các báo cáo đã chọn?')) {
+    if (!confirm(showDeletedFilter ? 'Bạn có chắc chắn muốn xóa vĩnh viễn các báo cáo đã chọn? Hành động này không thể hoàn tác!' : 'Bạn có chắc chắn muốn xóa các báo cáo đã chọn?')) {
       return;
     }
 
     try {
       for (const id of selectedIds) {
-        await api.delete(`/damage-reports/${id}`);
+        await api.delete(`/damage-reports/${id}${showDeletedFilter ? '?hard=true' : ''}`);
       }
       toast.success('Xóa thành công');
       setSelectedIds([]);
@@ -1328,6 +1340,7 @@ export default function DamageReportsPage() {
         reporterId: formData.reporterId,
         reportingDepartmentId: reporter?.departmentId || formData.reportingDepartmentId,
         handlerId: formData.handlerId || null,
+        coHandlerIds: formData.coHandlerIds || [],
         assignedDate: formData.assignedDate || null,
         reportDate: formData.reportDate,
         handlingDate: shouldOpenCompletion ? formData.reportDate : (formData.handlingDate || null),
@@ -1970,6 +1983,7 @@ export default function DamageReportsPage() {
                   setSelectedPriority(0);
                   setSelectedDepartment(0);
                   setSelectedDevice(0);
+                  setShowDeletedFilter(false);
                   if (!isSupervisor(currentUser?.roles)) {
                     setMyWorkFilter(true);
                     setMyReportFilter(false);
@@ -2025,6 +2039,16 @@ export default function DamageReportsPage() {
                     <i className="fas fa-file-alt" style={{ fontSize: '0.8rem' }}></i>
                   </button>
                 </>
+              )}
+              {isSuperAdmin(currentUser?.roles) && (
+                <button
+                  className={`btn btn-sm d-flex align-items-center justify-content-center ${showDeletedFilter ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                  onClick={() => setShowDeletedFilter(!showDeletedFilter)}
+                  title="Hiển thị báo cáo đã xóa"
+                  style={{ width: '36px', height: '36px', borderRadius: '8px', padding: 0 }}
+                >
+                  <i className="fas fa-archive" style={{ fontSize: '0.8rem' }}></i>
+                </button>
               )}
 
               <div className="ms-md-1 d-flex gap-1 align-items-center">
@@ -2484,7 +2508,17 @@ export default function DamageReportsPage() {
                           {/* Người xử lý */}
                           <td style={{ padding: '0.45rem 0.75rem', whiteSpace: 'nowrap' }}>
                             {report.handlerName
-                              ? <span style={{ color: '#2563eb', fontWeight: 500 }}>{report.handlerName}</span>
+                              ? (
+                                <div className="d-flex flex-column">
+                                  <span style={{ color: '#2563eb', fontWeight: 500 }}>{report.handlerName}</span>
+                                  {report.coHandlers && report.coHandlers.length > 0 && (
+                                    <span style={{ color: '#64748b', fontSize: '0.65rem', fontStyle: 'italic', marginTop: '2px', lineHeight: '1.2' }}>
+                                      <i className="fas fa-users fa-xs me-1"></i>
+                                      {report.coHandlers.map(h => h.name).join(', ')}
+                                    </span>
+                                  )}
+                                </div>
+                              )
                               : <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.75rem' }}>Chưa phân công</span>
                             }
                           </td>
@@ -2865,11 +2899,17 @@ export default function DamageReportsPage() {
                             </div>
                           </div>
                           <div className="col-6">
-                            <div className="p-2 border rounded" style={{ backgroundColor: '#ffffff', borderColor: '#f1f5f9' }}>
+                            <div className="p-2 border rounded h-100" style={{ backgroundColor: '#ffffff', borderColor: '#f1f5f9' }}>
                               <span className="text-muted fw-bold d-block" style={{ fontSize: '0.55rem', textTransform: 'uppercase' }}>Người xử lý</span>
                               <span className={`fw-700 d-block text-truncate ${report.handlerName ? 'text-primary' : 'text-muted italic'}`} style={{ fontSize: '0.8rem' }}>
                                 {report.handlerName || 'Chưa gán'}
                               </span>
+                              {report.coHandlers && report.coHandlers.length > 0 && (
+                                <span className="d-block text-muted fst-italic mt-1" style={{ fontSize: '0.65rem', lineHeight: '1.2' }}>
+                                  <i className="fas fa-users fa-xs me-1"></i>
+                                  {report.coHandlers.map(h => h.name).join(', ')}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -3446,8 +3486,8 @@ export default function DamageReportsPage() {
 
                       {/* Người xử lý - Searchable dropdown */}
                       <div className="col-6 mb-1">
-                        <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Người xử lý <span className="text-danger">*</span></label>
-                        {(isEdit && !userPermissions.canEdit && (currentUserStaffId === null || (formData.handlerId !== currentUserStaffId && formData.reporterId !== currentUserStaffId))) ? (
+                        <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Người phụ trách <span className="text-danger">*</span></label>
+                        {(isEdit && !userPermissions.canEdit && (currentUserStaffId === null || (formData.handlerId !== currentUserStaffId && formData.reporterId !== currentUserStaffId && !formData.coHandlerIds?.includes(currentUserStaffId)))) ? (
                           <select className="form-select form-select-sm shadow-none" value={formData.handlerId || 0} disabled style={{ minHeight: '28px', fontSize: '0.75rem' }}>
                             <option value={0}>-- Phân công --</option>
                             {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -3492,6 +3532,90 @@ export default function DamageReportsPage() {
                                     >{s.name}</li>
                                   ))}
                                   {staff.filter(s => !handlerSearch.trim() || s.name.toLowerCase().includes(handlerSearch.trim().toLowerCase())).length === 0 && (
+                                    <li style={{ padding: '5px 10px', fontSize: '0.75rem', color: '#adb5bd' }}>Không tìm thấy</li>
+                                  )}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Người phối hợp - Multi-select searchable dropdown */}
+                      <div className="col-12 mb-1">
+                        <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Người phối hợp</label>
+                        {(isEdit && !userPermissions.canEdit && (currentUserStaffId === null || (formData.handlerId !== currentUserStaffId && formData.reporterId !== currentUserStaffId && !formData.coHandlerIds?.includes(currentUserStaffId)))) ? (
+                          <div className="form-control form-control-sm shadow-none" style={{ minHeight: '28px', fontSize: '0.75rem', backgroundColor: '#e9ecef', color: '#6c757d' }}>
+                            {formData.coHandlerIds?.length ? formData.coHandlerIds.map(id => staff.find(s => s.id === id)?.name).filter(Boolean).join(', ') : 'Không có'}
+                          </div>
+                        ) : (
+                          <div ref={coHandlerDropdownRef} style={{ position: 'relative' }}>
+                            <div
+                              className="form-control form-control-sm shadow-none d-flex flex-wrap align-items-center gap-1"
+                              style={{ minHeight: '28px', fontSize: '0.75rem', cursor: 'pointer', padding: '2px 6px' }}
+                              onClick={() => { setIsCoHandlerDropdownOpen(v => !v); setCoHandlerSearch(''); }}
+                            >
+                              {(!formData.coHandlerIds || formData.coHandlerIds.length === 0) && (
+                                <span className="text-muted" style={{ padding: '3px 0' }}>-- Chọn người phối hợp --</span>
+                              )}
+                              {formData.coHandlerIds?.map(id => {
+                                const s = staff.find(s => s.id === id);
+                                if (!s) return null;
+                                return (
+                                  <span key={id} className="badge bg-secondary bg-opacity-10 text-dark border d-flex align-items-center gap-1" style={{ fontSize: '0.7rem' }}>
+                                    {s.name}
+                                    <i 
+                                      className="fas fa-times text-muted ms-1" 
+                                      style={{ cursor: 'pointer' }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setFormData(prev => ({ ...prev, coHandlerIds: prev.coHandlerIds.filter(cid => cid !== id) }));
+                                      }}
+                                    ></i>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                            {isCoHandlerDropdownOpen && (
+                              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1050, background: '#fff', border: '1px solid #ced4da', borderRadius: '6px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', overflow: 'hidden', marginTop: '2px' }}>
+                                <div style={{ padding: '6px' }}>
+                                  <input
+                                    autoFocus
+                                    type="text"
+                                    className="form-control form-control-sm shadow-none"
+                                    placeholder="Tìm tên..."
+                                    value={coHandlerSearch}
+                                    onChange={e => setCoHandlerSearch(e.target.value)}
+                                    onClick={e => e.stopPropagation()}
+                                    style={{ fontSize: '0.75rem', height: '28px' }}
+                                  />
+                                </div>
+                                <ul style={{ listStyle: 'none', margin: 0, padding: '2px 0', maxHeight: '150px', overflowY: 'auto' }}>
+                                  {staff.filter(s => !coHandlerSearch.trim() || s.name.toLowerCase().includes(coHandlerSearch.trim().toLowerCase())).map(s => {
+                                    const isSelected = formData.coHandlerIds?.includes(s.id);
+                                    return (
+                                      <li
+                                        key={s.id}
+                                        style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', background: isSelected ? '#e9f0ff' : 'transparent', fontWeight: isSelected ? 600 : 400 }}
+                                        onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = '#f8f9fa'; }}
+                                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isSelected ? '#e9f0ff' : 'transparent'; }}
+                                        onMouseDown={(e) => { 
+                                          e.preventDefault();
+                                          if (isSelected) {
+                                            setFormData(prev => ({ ...prev, coHandlerIds: prev.coHandlerIds.filter(id => id !== s.id) }));
+                                          } else {
+                                            setFormData(prev => ({ ...prev, coHandlerIds: [...(prev.coHandlerIds || []), s.id] }));
+                                          }
+                                        }}
+                                      >
+                                        <div className="d-flex align-items-center justify-content-between">
+                                          <span>{s.name}</span>
+                                          {isSelected && <i className="fas fa-check text-primary"></i>}
+                                        </div>
+                                      </li>
+                                    );
+                                  })}
+                                  {staff.filter(s => !coHandlerSearch.trim() || s.name.toLowerCase().includes(coHandlerSearch.trim().toLowerCase())).length === 0 && (
                                     <li style={{ padding: '5px 10px', fontSize: '0.75rem', color: '#adb5bd' }}>Không tìm thấy</li>
                                   )}
                                 </ul>

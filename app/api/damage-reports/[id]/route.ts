@@ -29,7 +29,7 @@ export async function GET(
       if (!isSupervisorUser) {
         const staffService = new (await import('@/lib/services/staffService')).StaffService();
         const staff = await staffService.getByUserId(user.userId);
-        if (!staff || (report.handlerId !== staff.id && report.reporterId !== staff.id)) {
+        if (!staff || (report.handlerId !== staff.id && report.reporterId !== staff.id && !report.coHandlerIds?.includes(staff.id))) {
           return NextResponse.json(
             { status: false, error: 'Forbidden: Bạn không có quyền xem báo cáo này' },
             { status: 403 }
@@ -87,7 +87,7 @@ export async function PUT(
       const staffService = new (await import('@/lib/services/staffService')).StaffService();
       const staff = await staffService.getByUserId(user.userId);
       
-      if (!staff || (existingReport.handlerId !== staff.id && existingReport.reporterId !== staff.id)) {
+      if (!staff || (existingReport.handlerId !== staff.id && existingReport.reporterId !== staff.id && !existingReport.coHandlerIds?.includes(staff.id))) {
         return NextResponse.json(
           { status: false, error: 'Forbidden: Bạn không có quyền chỉnh sửa báo cáo này' },
           { status: 403 }
@@ -129,8 +129,20 @@ export async function DELETE(
       );
     }
 
-    // Only Admin can delete damage reports
-    const { isAdmin } = await import('@/lib/auth/permissions');
+    const { searchParams } = new URL(request.url);
+    const isHardDelete = searchParams.get('hard') === 'true';
+
+    const { isAdmin, isSuperAdmin } = await import('@/lib/auth/permissions');
+    
+    // Check permission for hard delete
+    if (isHardDelete && !isSuperAdmin(user.roles)) {
+      return NextResponse.json(
+        { status: false, error: 'Forbidden: Chỉ SuperAdmin mới được xóa vĩnh viễn báo cáo' },
+        { status: 403 }
+      );
+    }
+
+    // Only Admin or SuperAdmin can soft delete damage reports
     if (!isAdmin(user.roles)) {
       return NextResponse.json(
         { status: false, error: 'Forbidden: Chỉ quản trị viên mới được xóa báo cáo' },
@@ -140,7 +152,13 @@ export async function DELETE(
 
     const id = parseInt(params.id);
     const damageReportService = new DamageReportService();
-    const result = await damageReportService.delete(id);
+    
+    let result = false;
+    if (isHardDelete) {
+      result = await damageReportService.delete(id);
+    } else {
+      result = await damageReportService.softDelete(id, user.userId);
+    }
 
     return NextResponse.json({
       status: result

@@ -283,7 +283,16 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
                             })()}
                           </div>
                           <div className="pt-1 mt-auto border-top d-flex justify-content-between align-items-center" style={{ fontSize: '0.7rem' }}>
-                             <span className="text-muted"><i className="fas fa-user-cog me-1"></i>{report.handlerName || '---'}</span>
+                             <span className="text-muted" title="Người phụ trách">
+                               <i className="fas fa-user-cog me-1"></i>
+                               {report.handlerName || '---'}
+                               {report.coHandlers && report.coHandlers.length > 0 && (
+                                 <span className="ms-1 fst-italic text-secondary" style={{ fontSize: '0.65rem' }}>
+                                   <i className="fas fa-users fa-xs me-1"></i>
+                                   {report.coHandlers.map(h => h.name).join(', ')}
+                                 </span>
+                               )}
+                             </span>
                              <span className="text-muted"><i className="fas fa-check-circle me-1"></i>{report.completedDate ? formatDateDisplay(report.completedDate) : '---'}</span>
                           </div>
                         </div>

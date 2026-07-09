@@ -64,6 +64,7 @@ export class DamageReportService {
     isAdmin?: boolean; // If false, only show reports created by current user
     fromDate?: string;
     toDate?: string;
+    isDeleted?: boolean;
   }): Promise<DamageReportVM[]> {
     let query = `
       SELECT 
@@ -73,6 +74,12 @@ export class DamageReportService {
         dr."ReporterID" as "reporterId",
         dr."ReportingDepartmentID" as "reportingDepartmentId",
         dr."HandlerID" as "handlerId",
+        dr."CoHandlerIDs" as "coHandlerIds",
+        (
+          SELECT json_agg(json_build_object('id', s."ID", 'name', s."Name"))
+          FROM "Staff" s
+          WHERE s."ID" = ANY(dr."CoHandlerIDs")
+        ) as "coHandlers",
         dr."AssignedDate" as "assignedDate",
         dr."ReportDate" as "reportDate",
         dr."HandlingDate" as "handlingDate",
@@ -91,6 +98,7 @@ export class DamageReportService {
         dr."UpdatedBy" as "updatedBy",
         dr."CreatedAt" as "createdAt",
         dr."UpdatedAt" as "updatedAt",
+        dr."IsDeleted" as "isDeleted",
         d."Name" as "deviceName",
         d."Serial" as "deviceSerial",
         CAST(d."Status"::text AS INTEGER) as "deviceStatus",
@@ -133,10 +141,20 @@ export class DamageReportService {
     const params: any[] = [];
     let paramIndex = 1;
 
+    // Filter by isDeleted
+    if (filters && filters.isDeleted !== undefined) {
+      query += ` AND (dr."IsDeleted" = $${paramIndex})`;
+      params.push(filters.isDeleted);
+      paramIndex++;
+    } else {
+      query += ` AND (dr."IsDeleted" = false OR dr."IsDeleted" IS NULL)`;
+    }
+
     // View permission: If user is not admin, show reports where they are handler OR reporter
     if (filters && !filters.isAdmin && filters.currentUserId) {
       query += ` AND (
         dr."HandlerID" IN (SELECT "ID" FROM "Staff" WHERE "UserId" = $${paramIndex}) OR
+        (SELECT "ID" FROM "Staff" WHERE "UserId" = $${paramIndex}) = ANY(dr."CoHandlerIDs") OR
         dr."ReporterID" IN (SELECT "ID" FROM "Staff" WHERE "UserId" = $${paramIndex})
       )`;
       params.push(filters.currentUserId);
@@ -176,7 +194,7 @@ export class DamageReportService {
       }
 
       if (filters.handlerId) {
-        query += ` AND dr."HandlerID" = $${paramIndex}`;
+        query += ` AND (dr."HandlerID" = $${paramIndex} OR $${paramIndex} = ANY(dr."CoHandlerIDs"))`;
         params.push(filters.handlerId);
         paramIndex++;
       }
@@ -265,6 +283,7 @@ export class DamageReportService {
     locationId?: number;
     search?: string;
     maintenanceBatchId?: string;
+    isDeleted?: boolean;
     sortField?: string;
     sortOrder?: 'asc' | 'desc';
     isAdmin?: boolean;
@@ -285,6 +304,7 @@ export class DamageReportService {
       locationId,
       search, 
       maintenanceBatchId,
+      isDeleted,
       sortField = 'reportDate', 
       sortOrder = 'desc',
       isAdmin = false,
@@ -297,11 +317,20 @@ export class DamageReportService {
     const params: any[] = [];
     let whereClause = 'WHERE 1=1';
 
+    // Filter by isDeleted
+    if (isDeleted !== undefined) {
+      params.push(isDeleted);
+      whereClause += ` AND (dr."IsDeleted" = $${params.length})`;
+    } else {
+      whereClause += ` AND (dr."IsDeleted" = false OR dr."IsDeleted" IS NULL)`;
+    }
+
     // View permission: If user is not admin, show reports where they are handler OR reporter
     if (!isAdmin && currentUserId) {
       params.push(currentUserId);
       whereClause += ` AND (
         dr."HandlerID" IN (SELECT "ID" FROM "Staff" WHERE "UserId" = $${params.length}) OR
+        (SELECT "ID" FROM "Staff" WHERE "UserId" = $${params.length}) = ANY(dr."CoHandlerIDs") OR
         dr."ReporterID" IN (SELECT "ID" FROM "Staff" WHERE "UserId" = $${params.length})
       )`;
     }
@@ -335,7 +364,7 @@ export class DamageReportService {
 
     if (handlerId) {
       params.push(handlerId);
-      whereClause += ` AND dr."HandlerID" = $${params.length}`;
+      whereClause += ` AND (dr."HandlerID" = $${params.length} OR $${params.length} = ANY(dr."CoHandlerIDs"))`;
     }
 
     if (departmentId) {
@@ -430,6 +459,12 @@ export class DamageReportService {
           dr."ReporterID" as "reporterId",
           dr."ReportingDepartmentID" as "reportingDepartmentId",
           dr."HandlerID" as "handlerId",
+          dr."CoHandlerIDs" as "coHandlerIds",
+          (
+            SELECT json_agg(json_build_object('id', s."ID", 'name', s."Name"))
+            FROM "Staff" s
+            WHERE s."ID" = ANY(dr."CoHandlerIDs")
+          ) as "coHandlers",
           dr."AssignedDate" as "assignedDate",
           dr."ReportDate" as "reportDate",
           dr."HandlingDate" as "handlingDate",
@@ -448,6 +483,7 @@ export class DamageReportService {
           dr."UpdatedBy" as "updatedBy",
           dr."CreatedAt" as "createdAt",
           dr."UpdatedAt" as "updatedAt",
+          dr."IsDeleted" as "isDeleted",
           d."Name" as "deviceName",
           d."Serial" as "deviceSerial",
           CAST(d."Status"::text AS INTEGER) as "deviceStatus",
@@ -528,6 +564,7 @@ export class DamageReportService {
       daysSinceReport,
       daysInProgress,
       isOverdue,
+      isDeleted: Boolean(row.isDeleted),
       displayLocation: row.deviceName || row.maintenanceBatchTitle || row.damageLocation || 'Không xác định',
       deviceLocationName: row.deviceLocationName || null,
       sourcePlanId: row.sourcePlanId ? Number(row.sourcePlanId) : null,
@@ -545,6 +582,12 @@ export class DamageReportService {
         dr."ReporterID" as "reporterId",
         dr."ReportingDepartmentID" as "reportingDepartmentId",
         dr."HandlerID" as "handlerId",
+        dr."CoHandlerIDs" as "coHandlerIds",
+        (
+          SELECT json_agg(json_build_object('id', s."ID", 'name', s."Name"))
+          FROM "Staff" s
+          WHERE s."ID" = ANY(dr."CoHandlerIDs")
+        ) as "coHandlers",
         dr."AssignedDate" as "assignedDate",
         dr."ReportDate" as "reportDate",
         dr."HandlingDate" as "handlingDate",
@@ -563,6 +606,7 @@ export class DamageReportService {
         dr."UpdatedBy" as "updatedBy",
         dr."CreatedAt" as "createdAt",
         dr."UpdatedAt" as "updatedAt",
+        dr."IsDeleted" as "isDeleted",
         d."Name" as "deviceName",
         d."Serial" as "deviceSerial",
         CAST(d."Status"::text AS INTEGER) as "deviceStatus",
@@ -643,6 +687,7 @@ export class DamageReportService {
       daysSinceReport,
       daysInProgress,
       isOverdue,
+      isDeleted: Boolean(row.isDeleted),
       displayLocation: row.deviceName || row.maintenanceBatchTitle || row.damageLocation || 'Không xác định',
       sourcePlanId: row.sourcePlanId ? Number(row.sourcePlanId) : null,
       sourcePlanDate: row.sourcePlanDate || null,
@@ -659,11 +704,11 @@ export class DamageReportService {
     const result = await pool.query(
       `INSERT INTO "DamageReport" (
         "DeviceID", "DamageLocation", "ReporterID", "ReportingDepartmentID",
-        "HandlerID", "AssignedDate", "ReportDate", "HandlingDate", "CompletedDate",
+        "HandlerID", "CoHandlerIDs", "AssignedDate", "ReportDate", "HandlingDate", "CompletedDate",
         "EstimatedCompletionDate", "DamageContent", "Images", "AfterImages", "Status", "Priority",
         "Notes", "HandlerNotes", "RejectionReason", "MaintenanceBatchId", "CreatedBy", "UpdatedBy"
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
       RETURNING "ID"`,
       [
         report.deviceId || null,
@@ -671,6 +716,7 @@ export class DamageReportService {
         report.reporterId,
         report.reportingDepartmentId,
         report.handlerId || null,
+        report.coHandlerIds || [],
         report.assignedDate || null,
         report.reportDate || getVNNow(),
         report.handlingDate || null,
@@ -877,29 +923,31 @@ export class DamageReportService {
         "ReporterID" = $3,
         "ReportingDepartmentID" = $4,
         "HandlerID" = $5,
-        "AssignedDate" = $6,
-        "ReportDate" = $7,
-        "HandlingDate" = $8,
-        "CompletedDate" = $9,
-        "EstimatedCompletionDate" = $10,
-        "DamageContent" = $11,
-        "Images" = $12,
-        "AfterImages" = $13,
-        "Status" = $14,
-        "Priority" = $15,
-        "Notes" = $16,
-        "HandlerNotes" = $17,
-        "RejectionReason" = $18,
-        "MaintenanceBatchId" = $19,
-        "UpdatedBy" = $20,
+        "CoHandlerIDs" = $6,
+        "AssignedDate" = $7,
+        "ReportDate" = $8,
+        "HandlingDate" = $9,
+        "CompletedDate" = $10,
+        "EstimatedCompletionDate" = $11,
+        "DamageContent" = $12,
+        "Images" = $13,
+        "AfterImages" = $14,
+        "Status" = $15,
+        "Priority" = $16,
+        "Notes" = $17,
+        "HandlerNotes" = $18,
+        "RejectionReason" = $19,
+        "MaintenanceBatchId" = $20,
+        "UpdatedBy" = $21,
         "UpdatedAt" = CURRENT_TIMESTAMP
-      WHERE "ID" = $21`,
+      WHERE "ID" = $22`,
       [
         report.deviceId || null,
         report.damageLocation || null,
         report.reporterId,
         report.reportingDepartmentId,
         report.handlerId || null,
+        report.coHandlerIds || [],
         report.assignedDate || null,
         report.reportDate,
         finalHandlingDate || null,
@@ -1066,6 +1114,17 @@ export class DamageReportService {
       }
 
       await client.query('COMMIT');
+
+      // Sync maintenance events if linked to a batch
+      try {
+        await this.syncMaintenanceBatchEvents(id, status, updatedBy, {
+          handlerId: row.handler_id,
+          handlingDate: handlingDate,
+          damageContent: damageContent
+        });
+      } catch (err) {
+        console.error('Failed to sync maintenance events on updateStatus:', err);
+      }
 
       // Send notifications AFTER commit
       if (currentStatusStr !== status.toString()) {
@@ -1425,6 +1484,12 @@ export class DamageReportService {
 
   async delete(id: number): Promise<boolean> {
     await pool.query('DELETE FROM "DamageReport" WHERE "ID" = $1', [id]);
+    // Also delete associated maintenance batches or checkins if needed, or rely on cascade
+    return true;
+  }
+
+  async softDelete(id: number, userId: string): Promise<boolean> {
+    await pool.query('UPDATE "DamageReport" SET "IsDeleted" = true, "UpdatedBy" = $2, "UpdatedAt" = NOW() WHERE "ID" = $1', [id, userId]);
     return true;
   }
 
@@ -1792,7 +1857,14 @@ export class DamageReportService {
          handler."Name" as "handlerName",
          handler_dept."Name" as "handlerDepartmentName",
          loc."Name" as "deviceLocationName",
-         cat."Name" as "deviceCategoryName"
+         cat."Name" as "deviceCategoryName",
+         dr."CoHandlerIDs" as "coHandlerIds",
+         (
+           SELECT json_agg(json_build_object('id', ch_s."ID", 'name', ch_s."Name", 'departmentName', ch_d."Name"))
+           FROM unnest(dr."CoHandlerIDs") AS ch(id)
+           JOIN "Staff" ch_s ON ch_s."ID" = ch.id
+           LEFT JOIN "Department" ch_d ON ch_s."DepartmentID" = ch_d."ID"
+         ) as "coHandlers"
        FROM "DamageReport" dr
        LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
        LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
@@ -1851,7 +1923,14 @@ export class DamageReportService {
          loc."Name" as "deviceLocationName",
          cat."Name" as "deviceCategoryName",
          dwl."Notes" as "workNotes",
-         s."Name" as "checkinStaffName"
+         s."Name" as "checkinStaffName",
+         dr."CoHandlerIDs" as "coHandlerIds",
+         (
+           SELECT json_agg(json_build_object('id', ch_s."ID", 'name', ch_s."Name", 'departmentName', ch_d."Name"))
+           FROM unnest(dr."CoHandlerIDs") AS ch(id)
+           JOIN "Staff" ch_s ON ch_s."ID" = ch.id
+           LEFT JOIN "Department" ch_d ON ch_s."DepartmentID" = ch_d."ID"
+         ) as "coHandlers"
        FROM "DamageReport" dr
        LEFT JOIN "DailyWorkLog" dwl ON dwl."DamageReportID" = dr."ID" AND dwl."WorkDate" = $${activeDateIdx}::date
        LEFT JOIN "Staff" s ON dwl."StaffID" = s."ID"
@@ -1888,7 +1967,14 @@ export class DamageReportService {
          handler."Name" as "handlerName",
          handler_dept."Name" as "handlerDepartmentName",
          loc."Name" as "deviceLocationName",
-         cat."Name" as "deviceCategoryName"
+         cat."Name" as "deviceCategoryName",
+         dr."CoHandlerIDs" as "coHandlerIds",
+         (
+           SELECT json_agg(json_build_object('id', ch_s."ID", 'name', ch_s."Name", 'departmentName', ch_d."Name"))
+           FROM unnest(dr."CoHandlerIDs") AS ch(id)
+           JOIN "Staff" ch_s ON ch_s."ID" = ch.id
+           LEFT JOIN "Department" ch_d ON ch_s."DepartmentID" = ch_d."ID"
+         ) as "coHandlers"
        FROM "DamageReport" dr
        LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
        LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
@@ -1921,7 +2007,14 @@ export class DamageReportService {
          handler."Name" as "handlerName",
          handler_dept."Name" as "handlerDepartmentName",
          loc."Name" as "deviceLocationName",
-         cat."Name" as "deviceCategoryName"
+         cat."Name" as "deviceCategoryName",
+         dr."CoHandlerIDs" as "coHandlerIds",
+         (
+           SELECT json_agg(json_build_object('id', ch_s."ID", 'name', ch_s."Name", 'departmentName', ch_d."Name"))
+           FROM unnest(dr."CoHandlerIDs") AS ch(id)
+           JOIN "Staff" ch_s ON ch_s."ID" = ch.id
+           LEFT JOIN "Department" ch_d ON ch_s."DepartmentID" = ch_d."ID"
+         ) as "coHandlers"
        FROM "DamageReport" dr
        LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
        LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
@@ -1961,7 +2054,14 @@ export class DamageReportService {
          handler."Name" as "handlerName",
          handler_dept."Name" as "handlerDepartmentName",
          loc."Name" as "deviceLocationName",
-         cat."Name" as "deviceCategoryName"
+         cat."Name" as "deviceCategoryName",
+         dr."CoHandlerIDs" as "coHandlerIds",
+         (
+           SELECT json_agg(json_build_object('id', ch_s."ID", 'name', ch_s."Name", 'departmentName', ch_d."Name"))
+           FROM unnest(dr."CoHandlerIDs") AS ch(id)
+           JOIN "Staff" ch_s ON ch_s."ID" = ch.id
+           LEFT JOIN "Department" ch_d ON ch_s."DepartmentID" = ch_d."ID"
+         ) as "coHandlers"
        FROM "DamageReport" dr
        LEFT JOIN "Device" d ON dr."DeviceID" = d."ID"
        LEFT JOIN "Staff" reporter ON dr."ReporterID" = reporter."ID"
@@ -2005,6 +2105,8 @@ export class DamageReportService {
       handlerDepartmentName: r.handlerDepartmentName,
       deviceLocationName: r.deviceLocationName,
       deviceCategoryName: r.deviceCategoryName,
+      coHandlerIds: r.coHandlerIds || [],
+      coHandlers: r.coHandlers || [],
       workNotes: r.workNotes,
       checkinStaffName: r.checkinStaffName,
       statusName: this.getStatusName(r.status),
