@@ -65,14 +65,9 @@ export const calculateNextDueDate = (
       // Find the first valid weekday in the current week that is strictly > current
       // (or == current only if it falls exactly on that weekday, we still want next occurrence)
       for (const day of sortedDays) {
-        if (day > currentDayOfWeek) {
+        if (day >= currentDayOfWeek) {
           return getWeekdayInSameWeek(current, day);
         }
-      }
-      // If current day itself is a valid day (day === currentDayOfWeek),
-      // return current as the first occurrence (schedule starts today).
-      if (sortedDays.includes(currentDayOfWeek)) {
-        return new Date(current);
       }
       // No valid day remaining this week — jump to first valid day next interval
       const firstValidDay = sortedDays[0];

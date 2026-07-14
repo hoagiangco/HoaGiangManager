@@ -1299,7 +1299,7 @@ function MaintenancePageContent() {
                JSON.stringify(oldScheduleConfig?.specificDaysOfWeek) !== JSON.stringify(editSpecificDaysOfWeek))
             : oldScheduleConfig?.scheduleType === 'specific_dates';
             
-          const effectiveStartFrom = editScheduleType === 'specific_dates' ? formatDateInput(new Date()) : editBatchStartFrom;
+          const effectiveStartFrom = editBatchStartFrom;
           const intervalChanged = plan.intervalValue !== editIntervalValue || plan.intervalUnit !== editIntervalUnit;
           const startFromChanged = formatDateInput(plan.startFrom || '') !== effectiveStartFrom;
           
@@ -2447,7 +2447,7 @@ function MaintenancePageContent() {
       return;
     }
 
-    const effectiveStartFrom = formData.scheduleType === 'specific_dates' ? formatDateInput(new Date()) : formData.startFrom;
+    const effectiveStartFrom = formData.startFrom;
 
     // Check selection type
     if (formData.selectionType === 'category' && formData.categoryId <= 0) {
@@ -3026,7 +3026,10 @@ function MaintenancePageContent() {
                         name="scheduleType"
                         id="scheduleSpecificDates"
                         checked={formData.scheduleType === 'specific_dates'}
-                        onChange={() => setFormData({ ...formData, scheduleType: 'specific_dates' })}
+                        onChange={() => {
+                          const newUnit = formData.intervalUnit === 'day' ? 'month' : formData.intervalUnit;
+                          setFormData({ ...formData, scheduleType: 'specific_dates', intervalUnit: newUnit });
+                        }}
                       />
                       <label className="btn btn-outline-warning fw-semibold text-dark" htmlFor="scheduleSpecificDates">
                         Lịch cố định
@@ -3210,16 +3213,14 @@ function MaintenancePageContent() {
 
                 {/* Dates & Assignment */}
                 <div className="row mb-3">
-                  {formData.scheduleType === 'interval' && (
-                    <div className="col-md-4">
-                      <label className="form-label">Ngày bắt đầu <span className="text-danger">*</span></label>
-                      <DateInput
-                        value={formData.startFrom}
-                        onChange={(value) => setFormData({ ...formData, startFrom: value })}
-                        required
-                      />
-                    </div>
-                  )}
+                  <div className="col-md-4">
+                    <label className="form-label">Ngày bắt đầu <span className="text-danger">*</span></label>
+                    <DateInput
+                      value={formData.startFrom}
+                      onChange={(value) => setFormData({ ...formData, startFrom: value })}
+                      required
+                    />
+                  </div>
                   <div className={formData.scheduleType === 'interval' ? "col-md-4" : "col-md-6"}>
                     <label className="form-label">Ngày kết thúc (tùy chọn)</label>
                     <DateInput
@@ -5095,7 +5096,10 @@ function MaintenancePageContent() {
                           name="editScheduleType"
                           id="editScheduleSpecificDates"
                           checked={editScheduleType === 'specific_dates'}
-                          onChange={() => setEditScheduleType('specific_dates')}
+                          onChange={() => {
+                            setEditScheduleType('specific_dates');
+                            if (editIntervalUnit === 'day') setEditIntervalUnit('month');
+                          }}
                         />
                         <label className="btn btn-outline-primary" htmlFor="editScheduleSpecificDates">
                           Lịch cố định
