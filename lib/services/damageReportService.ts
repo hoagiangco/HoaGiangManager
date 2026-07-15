@@ -1805,7 +1805,7 @@ export class DamageReportService {
     const to = new Date(y, m - 1, d, 23, 59, 59, 999);
     const workDateStr = dateStr; // Already 'YYYY-MM-DD'
 
-    let filterClause = '';
+    let filterClause = ' AND (dr."IsDeleted" = false OR dr."IsDeleted" IS NULL)';
     const queryParams: any[] = [];
     let paramIdx = 1;
 

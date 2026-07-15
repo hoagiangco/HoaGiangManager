@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
     // 1. Damage Reports Summary
     const reportsParams: any[] = [];
-    let reportsFilter = '';
+    let reportsFilter = ' AND ("IsDeleted" = false OR "IsDeleted" IS NULL)';
     
     if (fromDate && toDate) {
       reportsParams.push(fromDate, toDate);
