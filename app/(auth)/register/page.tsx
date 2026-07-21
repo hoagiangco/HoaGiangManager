@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { safeLocalStorage } from '@/lib/utils/localStorage';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
 
@@ -31,8 +32,8 @@ export default function RegisterPage() {
       });
 
       if (response.data.status) {
-        localStorage.setItem('token', response.data.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.data.user));
+        safeLocalStorage.setItem('token', response.data.data.token);
+        safeLocalStorage.setItem('user', JSON.stringify(response.data.data.user));
         toast.success('Đăng ký thành công!');
         router.push('/dashboard');
       } else {

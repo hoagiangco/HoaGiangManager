@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
+import { safeLocalStorage } from '@/lib/utils/localStorage';
 import imageCompression from 'browser-image-compression';
 import { formatDateDisplay } from '@/lib/utils/dateFormat';
 
@@ -104,7 +105,7 @@ export default function FileManager({
     }
 
     try {
-      const storedUser = window.localStorage.getItem('user');
+      const storedUser = safeLocalStorage.getItem('user');
       if (!storedUser) {
         setCanManage(false);
         return;

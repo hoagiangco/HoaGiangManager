@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '@/types';
+import { safeLocalStorage } from '../utils/localStorage';
 
 interface AuthContextType {
   user: User | null;
@@ -21,15 +22,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const userStr = localStorage.getItem('user');
+      const userStr = safeLocalStorage.getItem('user');
       if (userStr) {
         try {
           const parsedUser = JSON.parse(userStr);
           setUser(parsedUser);
         } catch (error) {
           console.error('Error parsing user:', error);
-          localStorage.removeItem('user');
-          localStorage.removeItem('token');
+          safeLocalStorage.removeItem('user');
+          safeLocalStorage.removeItem('token');
         }
       }
       setLoading(false);
@@ -49,10 +50,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateUser = (newUser: User | null) => {
     setUser(newUser);
     if (newUser) {
-      localStorage.setItem('user', JSON.stringify(newUser));
+      safeLocalStorage.setItem('user', JSON.stringify(newUser));
     } else {
-      localStorage.removeItem('user');
-      localStorage.removeItem('token');
+      safeLocalStorage.removeItem('user');
+      safeLocalStorage.removeItem('token');
     }
   };
 

@@ -147,7 +147,7 @@ function MaintenancePageContent() {
   const [filterStaffId, setFilterStaffId] = useState<number | 'all'>('all');
   const [filterTitleInput, setFilterTitleInput] = useState('');
   const [filterTitle, setFilterTitle] = useState('');
-  const filterTitleTimer = useRef<NodeJS.Timeout | null>(null);
+  const filterTitleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleFilterTitleChange = (value: string) => {
     setFilterTitleInput(value);
     if (filterTitleTimer.current) clearTimeout(filterTitleTimer.current);
@@ -322,7 +322,7 @@ function MaintenancePageContent() {
       
       // Lấy thông tin phòng ban của nhân viên (ưu tiên cache SWR, fallback API)
       let departmentId = 0;
-      const staffListToSearch = staffData?.status ? staffData.data : [];
+      const staffListToSearch = staffData?.status ? (staffData.data || []) : [];
       const staff = staffListToSearch.find((s: any) => s.id === effectiveStaffId);
       if (staff && staff.departmentId) {
         departmentId = staff.departmentId;
@@ -462,7 +462,7 @@ function MaintenancePageContent() {
 
   // Inline feedback for schedule picker
   const [scheduleFeedback, setScheduleFeedback] = useState<{ message: string; type: 'info' | 'success' | 'warning' } | null>(null);
-  const scheduleFeedbackTimer = useRef<NodeJS.Timeout | null>(null);
+  const scheduleFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showScheduleFeedback = (message: string, type: 'info' | 'success' | 'warning') => {
     if (scheduleFeedbackTimer.current) clearTimeout(scheduleFeedbackTimer.current);
     setScheduleFeedback({ message, type });
@@ -492,12 +492,12 @@ function MaintenancePageContent() {
 
   // Staff data logic to resolve current user's Staff ID and feed the UI dropdown
   const { data: staffData } = useSWR('/staff?departmentId=0', fetcher);
-  const staffListForCreate = React.useMemo(() => staffData?.status ? staffData.data : [], [staffData]);
+  const staffListForCreate = React.useMemo(() => staffData?.status ? (staffData.data || []) : [], [staffData]);
   const [currentUserStaffId, setCurrentUserStaffId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!currentUser || !staffData?.status || !staffData.data) return;
-    const staffArray = staffData.data;
+    const staffArray = staffData.data || [];
     
     // Get all possible IDs for the current user
     const possibleUserIds: string[] = [];
@@ -543,7 +543,7 @@ function MaintenancePageContent() {
   const { data: catData } = useSWR(activeTab === 'create' ? '/device-categories' : null, fetcher);
   const { data: eventTypeData } = useSWR('/event-types', fetcher);
   const { data: deptData } = useSWR('/departments', fetcher);
-  const departments = React.useMemo(() => deptData?.status ? deptData.data : [], [deptData]);
+  const departments = React.useMemo(() => deptData?.status ? (deptData.data || []) : [], [deptData]);
 
   useEffect(() => {
     if (catData?.status) setCategories(catData.data || []);

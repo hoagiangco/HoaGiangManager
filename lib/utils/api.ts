@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { safeLocalStorage } from './localStorage';
 
 const api = axios.create({
   baseURL: '/api',
@@ -10,7 +11,7 @@ const api = axios.create({
 // Add token to requests
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('token');
+    const token = safeLocalStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -30,8 +31,8 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        safeLocalStorage.removeItem('token');
+        safeLocalStorage.removeItem('user');
         window.location.href = '/login';
       }
     }

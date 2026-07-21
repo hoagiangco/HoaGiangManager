@@ -26,7 +26,7 @@ function ResetPasswordForm() {
   }, [token, email, router]);
 
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let timer: ReturnType<typeof setTimeout>;
     if (success && countdown > 0) {
       timer = setTimeout(() => {
         setCountdown(prev => prev - 1);

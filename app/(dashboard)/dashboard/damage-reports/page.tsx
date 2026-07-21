@@ -11,10 +11,10 @@ import { DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceVM, Sta
 import { formatDateDisplay, formatDateInput, formatDateRange, formatDateFilename } from '@/lib/utils/dateFormat';
 import FileManager from '@/components/FileManager';
 import DateInput from '@/components/DateInput';
-import { getDamageReportPermissions, isAdmin, isSuperAdmin } from '@/lib/auth/permissions';
+import { getDamageReportPermissions, isAdmin, isSuperAdmin, isSupervisor } from '@/lib/auth/permissions';
+import { safeLocalStorage } from '@/lib/utils/localStorage';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
 import Loading from '@/components/Loading';
-import { isSupervisor } from '@/lib/auth/permissions';
 import HandlerNotesEditor, { parseTimeline, getLatestNoteContent } from '@/components/HandlerNotesEditor';
 
 // Handler Notes Editor component removed and moved to components/HandlerNotesEditor.tsx
@@ -692,7 +692,7 @@ export default function DamageReportsPage() {
     const init = () => {
       try {
         if (typeof window !== 'undefined') {
-          const userStr = localStorage.getItem('user');
+          const userStr = safeLocalStorage.getItem('user');
           if (userStr) {
             const user = JSON.parse(userStr);
             setCurrentUser(user);

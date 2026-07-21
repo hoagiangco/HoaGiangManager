@@ -3,6 +3,8 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+
+import { safeLocalStorage } from '@/lib/utils/localStorage';
 import useSWR from 'swr';
 import { fetcher } from '@/lib/utils/swr-fetcher';
 import api from '@/lib/utils/api';
@@ -629,13 +631,13 @@ export default function StatisticsPage() {
   // Persistence Helpers
   const saveCols = (key: string, cols: ColMeta[]) => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem(key, JSON.stringify(cols));
+      safeLocalStorage.setItem(key, JSON.stringify(cols));
     }
   };
 
   const loadCols = (key: string): ColMeta[] | null => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(key);
+      const saved = safeLocalStorage.getItem(key);
       return saved ? JSON.parse(saved) : null;
     }
     return null;

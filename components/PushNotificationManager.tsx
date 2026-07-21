@@ -13,14 +13,19 @@ import { vi } from 'date-fns/locale';
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BOs8iawbH0xpwPaFUnjPE5FqE65j8MEUrNXc5cKP7yWZEVWdL2K-c5irBdmXLe-shiUnh962nEHjJZWiqebocCY';
 
 function urlBase64ToUint8Array(base64String: string) {
-    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i);
+    try {
+        const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+        const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        const rawData = (typeof window !== 'undefined' ? window.atob : atob)(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
+    } catch (e) {
+        console.error('[Push] urlBase64ToUint8Array error:', e);
+        return new Uint8Array(0);
     }
-    return outputArray;
 }
 
 interface NotificationItem {

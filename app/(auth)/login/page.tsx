@@ -8,6 +8,8 @@ import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
 import { useAuth } from '@/lib/contexts/AuthContext';
 
+import { safeLocalStorage } from '@/lib/utils/localStorage';
+
 export default function LoginPage() {
   const router = useRouter();
   const { updateUser } = useAuth();
@@ -36,7 +38,7 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let timer: ReturnType<typeof setTimeout>;
     if (view === 'forgot-success' && countdown > 0) {
       timer = setTimeout(() => {
         setCountdown(prev => prev - 1);
@@ -62,7 +64,7 @@ export default function LoginPage() {
       if (response.data.status) {
         // Only clear error on successful login
         setError(null);
-        localStorage.setItem('token', response.data.data.token);
+        safeLocalStorage.setItem('token', response.data.data.token);
         updateUser(response.data.data.user);
         toast.success('Đăng nhập thành công!');
         router.push('/dashboard');

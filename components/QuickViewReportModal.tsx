@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { DamageReportVM, DamageReportStatus, DamageReportPriority, TimelineEntry } from '@/types';
 import { formatDateDisplay } from '@/lib/utils/dateFormat';
 import api from '@/lib/utils/api';
+import { safeLocalStorage } from '@/lib/utils/localStorage';
 import { toast } from 'react-toastify';
 import FileManager from '@/components/FileManager';
 import { isAdmin } from '@/lib/auth/permissions';
@@ -35,7 +36,7 @@ const QuickViewReportModal: React.FC<QuickViewReportModalProps> = ({
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const userStr = localStorage.getItem('user');
+      const userStr = safeLocalStorage.getItem('user');
       if (userStr) {
         setCurrentUser(JSON.parse(userStr));
       }

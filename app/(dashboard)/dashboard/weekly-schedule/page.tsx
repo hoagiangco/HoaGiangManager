@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { safeLocalStorage } from '@/lib/utils/localStorage';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
 import { format, addDays, addWeeks, subWeeks } from 'date-fns';
@@ -133,7 +134,7 @@ function CellEditor({ staffId, staffName, dayIndex, cell, pendingTasks, onSave }
 
   useEffect(() => {
     if (open) {
-      const saved = localStorage.getItem('ws_custom_quick');
+      const saved = safeLocalStorage.getItem('ws_custom_quick');
       if (saved) {
         try { setCustomQuickOpts(JSON.parse(saved)); } catch {}
       } else {
@@ -204,7 +205,7 @@ function CellEditor({ staffId, staffName, dayIndex, cell, pendingTasks, onSave }
     if (val && val.trim()) {
       const next = [...customQuickOpts, val.trim()];
       setCustomQuickOpts(next);
-      localStorage.setItem('ws_custom_quick', JSON.stringify(next));
+      safeLocalStorage.setItem('ws_custom_quick', JSON.stringify(next));
     }
   };
 
@@ -213,7 +214,7 @@ function CellEditor({ staffId, staffName, dayIndex, cell, pendingTasks, onSave }
     if (window.confirm(`Xóa gợi ý "${val}"?`)) {
       const next = customQuickOpts.filter(q => q !== val);
       setCustomQuickOpts(next);
-      localStorage.setItem('ws_custom_quick', JSON.stringify(next));
+      safeLocalStorage.setItem('ws_custom_quick', JSON.stringify(next));
     }
   };
 

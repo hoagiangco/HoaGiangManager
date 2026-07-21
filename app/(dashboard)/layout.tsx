@@ -8,6 +8,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import api from '@/lib/utils/api';
 import useSWR from 'swr';
 import { fetcher } from '@/lib/utils/swr-fetcher';
+import { safeLocalStorage } from '@/lib/utils/localStorage';
 
 export default function DashboardLayout({
   children,
@@ -36,9 +37,9 @@ export default function DashboardLayout({
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('token');
-      const userStr = localStorage.getItem('user');
-      const savedCollapsed = localStorage.getItem('sidebarCollapsed');
+      const token = safeLocalStorage.getItem('token');
+      const userStr = safeLocalStorage.getItem('user');
+      const savedCollapsed = safeLocalStorage.getItem('sidebarCollapsed');
       
       if (!token || !userStr) {
         router.push('/login');
@@ -95,8 +96,8 @@ export default function DashboardLayout({
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    safeLocalStorage.removeItem('token');
+    safeLocalStorage.removeItem('user');
     router.push('/login');
   };
 
@@ -106,7 +107,7 @@ export default function DashboardLayout({
     } else {
       const newState = !sidebarCollapsed;
       setSidebarCollapsed(newState);
-      localStorage.setItem('sidebarCollapsed', String(newState));
+      safeLocalStorage.setItem('sidebarCollapsed', String(newState));
     }
   };
 

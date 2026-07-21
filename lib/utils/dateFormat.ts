@@ -5,8 +5,13 @@ import { format } from 'date-fns';
  * This works regardless of the server's local timezone.
  */
 export const getVNNow = (): Date => {
-  const now = new Date();
-  return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  try {
+    const now = new Date();
+    return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  } catch {
+    // Fallback: return local time if timezone not supported
+    return new Date();
+  }
 };
 
 /**
