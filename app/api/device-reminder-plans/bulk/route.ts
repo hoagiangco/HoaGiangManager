@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
     // Calculate nextDueDate: If using specific dates, calculate based on it. Otherwise startFrom.
     const scheduleConfig = planMetadata?.scheduleConfig as ScheduleConfig | null;
     const nextDueDate = scheduleConfig?.scheduleType === 'specific_dates' 
-        ? calculateNextDueDate(startFromDate, intervalValue, intervalUnit as any, scheduleConfig, true)
+        ? calculateNextDueDate(startFromDate, intervalValue, intervalUnit as any, scheduleConfig, true, startFromDate)
         : new Date(startFromDate);
 
     // Create reminder plans for each device

@@ -41,6 +41,7 @@ async function checkMaintenanceReminders() {
         p."IntervalValue" as "intervalValue",
         p."IntervalUnit" as "intervalUnit",
         p."NextDueDate" as "nextDueDate",
+        p."StartFrom" as "startFrom",
         p."EndAt" as "endAt",
         p."Metadata" as metadata,
         p."CreatedBy" as "createdBy"
@@ -87,6 +88,7 @@ async function checkMaintenanceReminders() {
         }
 
         const nextDueDate = new Date(row.nextDueDate);
+        const startFrom = row.startFrom ? new Date(row.startFrom) : null;
         const endAt = row.endAt ? new Date(row.endAt) : null;
 
         // Check if plan has ended
@@ -207,7 +209,8 @@ async function checkMaintenanceReminders() {
           row.intervalValue,
           row.intervalUnit,
           scheduleConfig,
-          false
+          false,
+          startFrom
         );
 
         // Check if new nextDueDate exceeds endAt

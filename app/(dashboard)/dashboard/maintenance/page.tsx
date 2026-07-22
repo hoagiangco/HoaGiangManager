@@ -1314,13 +1314,11 @@ function MaintenancePageContent() {
           }
           
           if ((intervalChanged || startFromChanged || scheduleConfigChanged) && effectiveStartFrom) {
-            // Nếu đổi chu kỳ, ngày bắt đầu hoặc loại lịch, tính lại nextDueDate từ startFrom mới 
-            // hoặc hoàn thành gần nhất (ưu tiên startFrom mới cho kế hoạch chưa chạy)
-            const baseDate = (plan.lastCompletedEvent?.reportDate || plan.lastCompletedEvent?.endDate)
-              ? new Date(plan.lastCompletedEvent.reportDate || plan.lastCompletedEvent.endDate!) 
-              : new Date(effectiveStartFrom);
-            
-            newNextDueDate = calculateNextDueDate(baseDate, editIntervalValue, editIntervalUnit, scheduleConfig, true);
+            // Tính toán lịch tiếp theo dựa trên ngày hiện tại và neo vào startFrom
+            // Tuyệt đối không dùng ngày hoàn thành báo cáo để tính lịch (theo nguyên tắc không phụ thuộc báo cáo)
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            newNextDueDate = calculateNextDueDate(today, editIntervalValue, editIntervalUnit, scheduleConfig, false, new Date(effectiveStartFrom));
           }
 
           const metadata = {

@@ -13,7 +13,8 @@ export const calculateNextDueDate = (
   intervalValue: number,
   intervalUnit: IntervalUnit,
   scheduleConfig?: ScheduleConfig | null,
-  isFirstCalculation: boolean = false
+  isFirstCalculation: boolean = false,
+  startFrom?: Date | null
 ): Date => {
   let current = new Date(currentDueDate);
   current.setHours(0, 0, 0, 0);
@@ -30,14 +31,35 @@ export const calculateNextDueDate = (
 
   // Default to standard interval logic if no specific dates config
   if (!scheduleConfig || scheduleConfig.scheduleType !== 'specific_dates') {
-    const nextDate = new Date(current);
-    if (!isFirstCalculation) {
-      switch (intervalUnit) {
-        case 'day': nextDate.setDate(nextDate.getDate() + intervalValue); break;
-        case 'week': nextDate.setDate(nextDate.getDate() + intervalValue * 7); break;
-        case 'month': nextDate.setMonth(nextDate.getMonth() + intervalValue); break;
-        case 'year': nextDate.setFullYear(nextDate.getFullYear() + intervalValue); break;
+    if (isFirstCalculation) {
+      return new Date(current);
+    }
+
+    if (startFrom) {
+      const anchor = new Date(startFrom);
+      anchor.setHours(0, 0, 0, 0);
+      let nextDate = new Date(anchor);
+      
+      let iterations = 0;
+      while (nextDate <= current && iterations < 10000) {
+        switch (intervalUnit) {
+          case 'day': nextDate.setDate(nextDate.getDate() + intervalValue); break;
+          case 'week': nextDate.setDate(nextDate.getDate() + intervalValue * 7); break;
+          case 'month': nextDate.setMonth(nextDate.getMonth() + intervalValue); break;
+          case 'year': nextDate.setFullYear(nextDate.getFullYear() + intervalValue); break;
+        }
+        iterations++;
       }
+      return nextDate;
+    }
+
+    // Fallback if no startFrom is provided
+    const nextDate = new Date(current);
+    switch (intervalUnit) {
+      case 'day': nextDate.setDate(nextDate.getDate() + intervalValue); break;
+      case 'week': nextDate.setDate(nextDate.getDate() + intervalValue * 7); break;
+      case 'month': nextDate.setMonth(nextDate.getMonth() + intervalValue); break;
+      case 'year': nextDate.setFullYear(nextDate.getFullYear() + intervalValue); break;
     }
     return nextDate;
   }

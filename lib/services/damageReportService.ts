@@ -1675,48 +1675,70 @@ export class DamageReportService {
       await Promise.all(eventPromises);
     }
 
-    // 7. If status is Completed, bump nextDueDate for ALL plans in this batch
+    // 7. If status is Completed:
+    // - Gửi thông báo hoàn thành
+    // - Bump NextDueDate nếu cron chưa kịp bump (NextDueDate <= hôm nay)
+    //   Anchor vào StartFrom để tránh trôi lịch. Nếu cron đã bump rồi (NextDueDate > hôm nay), bỏ qua.
     if (s === DamageReportStatus.Completed) {
-      console.log(`Bumping nextDueDate for batch ${batchId} due to report ${reportId} completion`);
-      
-      const { calculateNextDueDate } = require('../utils/maintenanceScheduler');
+      // Bump NextDueDate cho tất cả plans trong batch NẾU chưa được bump hôm nay
+      try {
+        const { calculateNextDueDate } = require('../utils/maintenanceScheduler');
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-      const planUpdatePromises = plans.map((plan: any) => {
-        if (!plan.intervalValue || !plan.intervalUnit) {
-          console.log(`Skipping plan ${plan.id} - no interval defined`);
-          return Promise.resolve();
+        // Lấy StartFrom cho mỗi plan
+        const planIdsForBump = plans.map((p: any) => p.id);
+        if (planIdsForBump.length > 0) {
+          const plansWithStartFrom = await pool.query(
+            `SELECT "ID", "StartFrom", "NextDueDate", "IntervalValue", "IntervalUnit", "Metadata"
+             FROM "DeviceReminderPlan"
+             WHERE "ID" = ANY($1::int[]) AND "IsActive" = true`,
+            [planIdsForBump]
+          );
+
+          for (const plan of plansWithStartFrom.rows) {
+            const planNextDue = plan.NextDueDate ? new Date(plan.NextDueDate) : null;
+            if (!planNextDue) continue;
+            planNextDue.setHours(0, 0, 0, 0);
+
+            // Chỉ bump nếu NextDueDate vẫn còn là hôm nay hoặc trước đó
+            // Nếu NextDueDate đã ở tương lai (cron đã bump trước), bỏ qua để tránh double-bump
+            if (planNextDue > today) {
+              console.log(`Plan ${plan.ID}: NextDueDate đã được bump (${planNextDue.toISOString().split('T')[0]}), bỏ qua`);
+              continue;
+            }
+
+            if (!plan.IntervalValue || !plan.IntervalUnit) continue;
+
+            let metadata: any = {};
+            try {
+              metadata = typeof plan.Metadata === 'string' ? JSON.parse(plan.Metadata) : (plan.Metadata || {});
+            } catch (e) {}
+
+            const startFrom = plan.StartFrom ? new Date(plan.StartFrom) : null;
+
+            // Tính lịch tiếp theo từ ngày hiện tại, anchor theo startFrom
+            const newNextDueDate = calculateNextDueDate(
+              today,
+              plan.IntervalValue,
+              plan.IntervalUnit,
+              metadata?.scheduleConfig || null,
+              false,
+              startFrom
+            );
+
+            await pool.query(
+              `UPDATE "DeviceReminderPlan"
+               SET "NextDueDate" = $1, "LastTriggeredAt" = $2, "UpdatedAt" = CURRENT_TIMESTAMP
+               WHERE "ID" = $3`,
+              [newNextDueDate, today, plan.ID]
+            );
+            console.log(`Plan ${plan.ID}: Đã bump NextDueDate từ ${planNextDue.toISOString().split('T')[0]} → ${newNextDueDate.toISOString().split('T')[0]}`);
+          }
         }
-
-        // Use the plan's existing nextDueDate as the base, or fallback to today if missing
-        const baseDate = plan.nextDueDate ? new Date(plan.nextDueDate) : new Date(now);
-        baseDate.setHours(0, 0, 0, 0);
-        
-        let scheduleConfig = null;
-        if (plan.metadata) {
-          try {
-            const meta = typeof plan.metadata === 'string' ? JSON.parse(plan.metadata) : plan.metadata;
-            scheduleConfig = meta.scheduleConfig || null;
-          } catch(e) {}
-        }
-
-        const correctNextDueDate = calculateNextDueDate(
-          baseDate,
-          plan.intervalValue,
-          plan.intervalUnit,
-          scheduleConfig,
-          false
-        );
-
-        return pool.query(
-          `UPDATE "DeviceReminderPlan" 
-           SET "NextDueDate" = $1, "LastTriggeredAt" = $2, "UpdatedAt" = CURRENT_TIMESTAMP, "UpdatedBy" = $3
-           WHERE "ID" = $4`,
-          [correctNextDueDate, now, userId, plan.id]
-        );
-      });
-
-      await Promise.all(planUpdatePromises);
-      console.log(`Successfully bumped ${plans.length} plans for batch ${batchId}`);
+      } catch (err) {
+        console.error('Error bumping NextDueDate on completion:', err);
+      }
 
       // Notify about maintenance completion
       try {
