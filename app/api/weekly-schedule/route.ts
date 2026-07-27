@@ -15,8 +15,14 @@ export async function GET(req: NextRequest) {
 
     const monday = WeeklyScheduleService.getMondayOf(weekStart);
     const data = await svc.getWeeklySchedule(monday, departmentId);
-    const weeklyNote = await svc.getWeeklyNote(monday);
-    return NextResponse.json({ status: true, data, weeklyNote, weekStart: monday });
+    const weeklyMeta = await svc.getWeeklyMeta(monday);
+    return NextResponse.json({
+      status: true,
+      data,
+      weeklyNote: weeklyMeta.note,
+      weeklyMeta,
+      weekStart: monday
+    });
   } catch (error: any) {
     return NextResponse.json({ status: false, error: error.message }, { status: 500 });
   }
@@ -25,7 +31,7 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
-    const { cells, weeklyNote, createdBy, weekStart } = body;
+    const { cells, weeklyNote, approvedImageUrl, approvedBy, createdBy, weekStart } = body;
 
     if (cells && Array.isArray(cells) && cells.length > 0) {
       await svc.upsertBatch(cells, createdBy);
@@ -33,6 +39,10 @@ export async function PUT(req: NextRequest) {
     
     if (weeklyNote !== undefined && weekStart) {
       await svc.setWeeklyNote(weekStart, weeklyNote);
+    }
+
+    if (approvedImageUrl !== undefined && weekStart) {
+      await svc.setApprovedImage(weekStart, approvedImageUrl, approvedBy || createdBy);
     }
 
     return NextResponse.json({ status: true });

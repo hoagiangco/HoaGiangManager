@@ -456,6 +456,12 @@ export default function WeeklySchedulePage() {
   // Local edit state
   const [editState, setEditState] = useState<Record<string, ScheduleCell>>({});
   const [weeklyNote, setWeeklyNote] = useState('');
+  const [approvedImageUrl, setApprovedImageUrl] = useState<string | null>(null);
+  const [approvedAt, setApprovedAt] = useState<string | null>(null);
+  const [approvedBy, setApprovedBy] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+
   const pendingSaves = useRef<Record<string, ScheduleCell>>({});
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noteSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -489,6 +495,15 @@ export default function WeeklySchedulePage() {
       );
       if (res.data.status) {
         setWeeklyNote(res.data.weeklyNote || '');
+        if (res.data.weeklyMeta) {
+          setApprovedImageUrl(res.data.weeklyMeta.approvedImageUrl || null);
+          setApprovedAt(res.data.weeklyMeta.approvedAt || null);
+          setApprovedBy(res.data.weeklyMeta.approvedBy || null);
+        } else {
+          setApprovedImageUrl(null);
+          setApprovedAt(null);
+          setApprovedBy(null);
+        }
         const newGroups: DeptGroup[] = res.data.data;
         setGroups(newGroups);
         const initial: Record<string, ScheduleCell> = {};
@@ -563,6 +578,67 @@ export default function WeeklySchedulePage() {
     const val = e.target.value;
     setWeeklyNote(val);
     scheduleNoteSave(val);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Vui lòng chọn file hình ảnh (PNG, JPG, JPEG, v.v.)');
+      return;
+    }
+
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const uploadRes = await api.post('/files/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      const url = uploadRes.data.url || uploadRes.data.path;
+      if (!url) {
+        throw new Error(uploadRes.data.error || 'Upload không thành công');
+      }
+
+      const uName = (user as any)?.fullName || user?.userName || user?.email || 'SuperAdmin';
+      await api.put('/weekly-schedule', {
+        weekStart: weekStartStr,
+        approvedImageUrl: url,
+        approvedBy: uName,
+      });
+
+      setApprovedImageUrl(url);
+      setApprovedAt(new Date().toISOString());
+      setApprovedBy(uName);
+      toast.success('Đã tải lên ảnh lịch đã duyệt thành công!');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.message || 'Lỗi khi tải ảnh lịch');
+    } finally {
+      setUploadingImage(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveApprovedImage = async () => {
+    if (!confirm('Bạn có chắc chắn muốn xóa ảnh lịch đã duyệt của tuần này?')) return;
+    setUploadingImage(true);
+    try {
+      await api.put('/weekly-schedule', {
+        weekStart: weekStartStr,
+        approvedImageUrl: null,
+      });
+      setApprovedImageUrl(null);
+      setApprovedAt(null);
+      setApprovedBy(null);
+      toast.success('Đã xóa ảnh lịch đã duyệt');
+    } catch {
+      toast.error('Không thể xóa ảnh lịch đã duyệt');
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleCellSave = useCallback((staffId: number, dayOfWeek: number, content: string, note: string) => {
@@ -1038,6 +1114,128 @@ export default function WeeklySchedulePage() {
           </div>
         )}
 
+        {/* Approved Schedule Image Section */}
+        {!loading && (
+          <div style={{
+            margin: '16px 16px 0', background: '#fff', borderRadius: 12, padding: '16px 20px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: approvedImageUrl ? 12 : 0 }}>
+              <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <i className="fas fa-file-signature" style={{ color: '#10b981', fontSize: '1.1rem' }} />
+                Ảnh Lịch Đã Duyệt Chính Thức
+                {approvedImageUrl ? (
+                  <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: 12, background: '#d1fae5', color: '#047857', fontWeight: 600 }}>
+                    <i className="fas fa-check-circle" style={{ marginRight: 4 }} /> Đã có bản duyệt
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: 12, background: '#f3f4f6', color: '#6b7280' }}>
+                    Chưa có ảnh duyệt
+                  </span>
+                )}
+              </h4>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label style={{
+                  cursor: uploadingImage ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '7px 14px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600,
+                  background: '#1a56db', color: '#fff', border: 'none', opacity: uploadingImage ? 0.7 : 1,
+                  transition: 'all 0.2s'
+                }}>
+                  <i className={uploadingImage ? "fas fa-spinner fa-spin" : "fas fa-upload"} />
+                  {uploadingImage ? 'Đang xử lý...' : approvedImageUrl ? 'Thay ảnh khác' : 'Tải ảnh lịch đã duyệt'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    disabled={uploadingImage}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+
+                {approvedImageUrl && (
+                  <button
+                    onClick={handleRemoveApprovedImage}
+                    disabled={uploadingImage}
+                    style={{
+                      padding: '7px 12px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600,
+                      background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', cursor: 'pointer',
+                      display: 'inline-flex', alignItems: 'center', gap: 4
+                    }}
+                  >
+                    <i className="fas fa-trash-alt" /> Xóa
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {approvedImageUrl && (
+              <div style={{ background: '#f8fafc', borderRadius: 10, padding: 12, border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <div
+                  onClick={() => setPreviewModalOpen(true)}
+                  style={{
+                    position: 'relative', width: 120, height: 80, borderRadius: 8, overflow: 'hidden',
+                    border: '2px solid #cbd5e1', cursor: 'pointer', flexShrink: 0, boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                  }}
+                >
+                  <img src={approvedImageUrl} alt="Ảnh lịch đã duyệt" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <div style={{
+                    position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1rem', opacity: 0,
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                  onMouseLeave={e => (e.currentTarget.style.opacity = '0')}
+                  >
+                    <i className="fas fa-search-plus" />
+                  </div>
+                </div>
+
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <p style={{ margin: '0 0 4px 0', fontWeight: 600, fontSize: '0.875rem', color: '#1e293b' }}>
+                    Bản chụp/scan lịch tuần chính thức
+                  </p>
+                  <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                    {approvedAt && (
+                      <span><i className="far fa-clock" style={{ marginRight: 4 }} />Thời gian: {format(new Date(approvedAt), 'HH:mm dd/MM/yyyy')}</span>
+                    )}
+                    {approvedBy && (
+                      <span><i className="far fa-user" style={{ marginRight: 4 }} />Người cập nhật: {approvedBy}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => setPreviewModalOpen(true)}
+                    style={{
+                      padding: '6px 14px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600,
+                      background: '#eff6ff', color: '#1a56db', border: '1px solid #bfdbfe', cursor: 'pointer',
+                      display: 'inline-flex', alignItems: 'center', gap: 6
+                    }}
+                  >
+                    <i className="fas fa-expand" /> Xem ảnh lớn
+                  </button>
+                  <a
+                    href={approvedImageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download
+                    style={{
+                      padding: '6px 14px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 600,
+                      background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', textDecoration: 'none',
+                      display: 'inline-flex', alignItems: 'center', gap: 6
+                    }}
+                  >
+                    <i className="fas fa-download" /> Tải về
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Legend */}
         {!loading && groups.length > 0 && (
           <div style={{
@@ -1053,6 +1251,43 @@ export default function WeeklySchedulePage() {
           </div>
         )}
       </div>
+
+      {/* Image Preview Modal */}
+      {previewModalOpen && approvedImageUrl && (
+        <PopupPortal>
+          <div
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 999999,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20
+            }}
+            onClick={() => setPreviewModalOpen(false)}
+          >
+            <div style={{ position: 'relative', maxWidth: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+              <button
+                onClick={() => setPreviewModalOpen(false)}
+                style={{
+                  position: 'absolute', top: -40, right: 0, background: 'transparent', border: 'none',
+                  color: '#fff', fontSize: '1.8rem', cursor: 'pointer'
+                }}
+                title="Đóng"
+              >
+                <i className="fas fa-times" />
+              </button>
+              <img
+                src={approvedImageUrl}
+                alt="Ảnh lịch tuần đã duyệt"
+                style={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}
+              />
+              <div style={{ color: '#fff', marginTop: 12, fontSize: '0.85rem', display: 'flex', gap: 16 }}>
+                <span>Lịch tuần từ {formatFull(currentMonday)} đến {formatFull(sunday)}</span>
+                <a href={approvedImageUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'underline' }}>
+                  Mở trong tab mới
+                </a>
+              </div>
+            </div>
+          </div>
+        </PopupPortal>
+      )}
 
       {/* Staff Selector Modal */}
       <StaffSelectorModal

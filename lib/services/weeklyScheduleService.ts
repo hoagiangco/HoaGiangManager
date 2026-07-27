@@ -25,6 +25,13 @@ export interface WeeklyScheduleDeptGroup {
   staff: WeeklyScheduleStaffRow[];
 }
 
+export interface WeeklyScheduleMeta {
+  note: string;
+  approvedImageUrl?: string | null;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+}
+
 export class WeeklyScheduleService {
   async ensureSchema(): Promise<void> {
     if (schemaReady) return;
@@ -64,13 +71,23 @@ export class WeeklyScheduleService {
         )
       `);
 
-      // Table to store the weekly global note
+      // Table to store the weekly global note & metadata
       await client.query(`
         CREATE TABLE IF NOT EXISTS "WeeklyScheduleNote" (
-          "WeekStartDate" DATE NOT NULL PRIMARY KEY,
-          "Note"          TEXT,
-          "UpdatedAt"     TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          "WeekStartDate"    DATE NOT NULL PRIMARY KEY,
+          "Note"             TEXT,
+          "ApprovedImageUrl" TEXT,
+          "ApprovedAt"       TIMESTAMP WITH TIME ZONE,
+          "ApprovedBy"       TEXT,
+          "UpdatedAt"        TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         )
+      `);
+
+      await client.query(`
+        ALTER TABLE "WeeklyScheduleNote" 
+          ADD COLUMN IF NOT EXISTS "ApprovedImageUrl" TEXT,
+          ADD COLUMN IF NOT EXISTS "ApprovedAt" TIMESTAMP WITH TIME ZONE,
+          ADD COLUMN IF NOT EXISTS "ApprovedBy" TEXT
       `);
 
       await client.query('COMMIT');
@@ -142,18 +159,29 @@ export class WeeklyScheduleService {
     }
   }
 
-  // ─── Weekly Note Management ────────────────────────────────────────────────
+  // ─── Weekly Note & Metadata Management ────────────────────────────────────
 
   async getWeeklyNote(weekStartDate: string): Promise<string> {
+    const meta = await this.getWeeklyMeta(weekStartDate);
+    return meta.note;
+  }
+
+  async getWeeklyMeta(weekStartDate: string): Promise<WeeklyScheduleMeta> {
     await this.ensureSchema();
     const result = await pool.query(
-      `SELECT "Note" FROM "WeeklyScheduleNote" WHERE "WeekStartDate" = $1`,
+      `SELECT "Note", "ApprovedImageUrl", "ApprovedAt", "ApprovedBy" FROM "WeeklyScheduleNote" WHERE "WeekStartDate" = $1`,
       [weekStartDate]
     );
     if (result.rows.length > 0) {
-      return result.rows[0].Note || '';
+      const row = result.rows[0];
+      return {
+        note: row.Note || '',
+        approvedImageUrl: row.ApprovedImageUrl || null,
+        approvedAt: row.ApprovedAt ? new Date(row.ApprovedAt).toISOString() : null,
+        approvedBy: row.ApprovedBy || null,
+      };
     }
-    return '';
+    return { note: '', approvedImageUrl: null, approvedAt: null, approvedBy: null };
   }
 
   async setWeeklyNote(weekStartDate: string, note: string): Promise<void> {
@@ -163,6 +191,25 @@ export class WeeklyScheduleService {
        VALUES ($1, $2, NOW())
        ON CONFLICT ("WeekStartDate") DO UPDATE SET "Note" = EXCLUDED."Note", "UpdatedAt" = NOW()`,
       [weekStartDate, note]
+    );
+  }
+
+  async setApprovedImage(weekStartDate: string, approvedImageUrl: string | null, approvedBy?: string | null): Promise<void> {
+    await this.ensureSchema();
+    await pool.query(
+      `INSERT INTO "WeeklyScheduleNote" ("WeekStartDate", "ApprovedImageUrl", "ApprovedAt", "ApprovedBy", "UpdatedAt")
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT ("WeekStartDate") DO UPDATE SET
+         "ApprovedImageUrl" = EXCLUDED."ApprovedImageUrl",
+         "ApprovedAt" = EXCLUDED."ApprovedAt",
+         "ApprovedBy" = EXCLUDED."ApprovedBy",
+         "UpdatedAt" = NOW()`,
+      [
+        weekStartDate,
+        approvedImageUrl || null,
+        approvedImageUrl ? new Date() : null,
+        approvedImageUrl ? (approvedBy || null) : null,
+      ]
     );
   }
 
