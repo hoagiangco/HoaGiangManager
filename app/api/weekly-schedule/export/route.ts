@@ -61,8 +61,8 @@ export async function GET(req: NextRequest) {
         .day-cell { text-align: center; white-space: pre-wrap; min-width: 70px; line-height: 1.4; height: 60px; vertical-align: middle; }
         .footer-note { font-weight: bold; margin-top: 15px; font-size: 12px; white-space: pre-wrap; }
         .footer-signatures { display: flex; justify-content: space-between; margin-top: 30px; font-weight: bold; font-size: 12px; page-break-inside: avoid; }
-        .footer-signatures div { width: 30%; text-align: center; }
-        .signature-space { height: 65px; display: flex; align-items: center; justify-content: center; margin-top: 4px; }
+        .footer-signatures > div { width: 30%; text-align: center; }
+        .signature-space { width: 100%; height: 65px; display: flex; align-items: center; justify-content: center; margin-top: 4px; }
         .signature-img { max-height: 60px; max-width: 160px; object-fit: contain; }
         @media print {
           body { font-size: 10px; }
@@ -139,6 +139,7 @@ export async function GET(req: NextRequest) {
         <div class="signature-space">
           ${creatorSignatureUrl ? `<img src="${creatorSignatureUrl}" class="signature-img" alt="Chữ ký người lập" />` : ''}
         </div>
+        ${creatorName ? `<div>${creatorName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>` : ''}
       </div>
     </div>
   </div>
