@@ -139,7 +139,6 @@ export async function GET(req: NextRequest) {
         <div class="signature-space">
           ${creatorSignatureUrl ? `<img src="${creatorSignatureUrl}" class="signature-img" alt="Chữ ký người lập" />` : ''}
         </div>
-        ${creatorName ? `<div style="font-weight: bold; margin-top: 4px;">${creatorName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>` : ''}
       </div>
     </div>
   </div>
