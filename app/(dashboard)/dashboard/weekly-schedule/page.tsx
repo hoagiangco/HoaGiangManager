@@ -459,6 +459,10 @@ export default function WeeklySchedulePage() {
   const [approvedImageUrl, setApprovedImageUrl] = useState<string | null>(null);
   const [approvedAt, setApprovedAt] = useState<string | null>(null);
   const [approvedBy, setApprovedBy] = useState<string | null>(null);
+  const [creatorSignatureUrl, setCreatorSignatureUrl] = useState<string | null>(null);
+  const [creatorName, setCreatorName] = useState<string | null>(null);
+  const [creatorSignedAt, setCreatorSignedAt] = useState<string | null>(null);
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
 
@@ -499,10 +503,16 @@ export default function WeeklySchedulePage() {
           setApprovedImageUrl(res.data.weeklyMeta.approvedImageUrl || null);
           setApprovedAt(res.data.weeklyMeta.approvedAt || null);
           setApprovedBy(res.data.weeklyMeta.approvedBy || null);
+          setCreatorSignatureUrl(res.data.weeklyMeta.creatorSignatureUrl || null);
+          setCreatorName(res.data.weeklyMeta.creatorName || null);
+          setCreatorSignedAt(res.data.weeklyMeta.creatorSignedAt || null);
         } else {
           setApprovedImageUrl(null);
           setApprovedAt(null);
           setApprovedBy(null);
+          setCreatorSignatureUrl(null);
+          setCreatorName(null);
+          setCreatorSignedAt(null);
         }
         const newGroups: DeptGroup[] = res.data.data;
         setGroups(newGroups);
@@ -638,6 +648,23 @@ export default function WeeklySchedulePage() {
       toast.error('Không thể xóa ảnh lịch đã duyệt');
     } finally {
       setUploadingImage(false);
+    }
+  };
+
+  const handleRemoveCreatorSignature = async () => {
+    if (!confirm('Bạn có chắc chắn muốn xóa chữ ký người lập của tuần này?')) return;
+    try {
+      await api.put('/weekly-schedule', {
+        weekStart: weekStartStr,
+        creatorSignatureUrl: null,
+        creatorName: null,
+      });
+      setCreatorSignatureUrl(null);
+      setCreatorName(null);
+      setCreatorSignedAt(null);
+      toast.success('Đã xóa chữ ký người lập');
+    } catch {
+      toast.error('Không thể xóa chữ ký người lập');
     }
   };
 
@@ -1236,6 +1263,79 @@ export default function WeeklySchedulePage() {
           </div>
         )}
 
+        {/* Creator Signature Section */}
+        {!loading && (
+          <div style={{
+            margin: '16px 16px 0', background: '#fff', borderRadius: 12, padding: '16px 20px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+              <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <i className="fas fa-signature" style={{ color: '#8b5cf6', fontSize: '1.1rem' }} />
+                Chữ Ký Người Lập (Vị trí Người Lập khi in lịch)
+                {creatorSignatureUrl ? (
+                  <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: 12, background: '#f3e8ff', color: '#7e22ce', fontWeight: 600 }}>
+                    <i className="fas fa-check-circle" style={{ marginRight: 4 }} /> Đã ký
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: 12, background: '#f3f4f6', color: '#6b7280' }}>
+                    Chưa ký
+                  </span>
+                )}
+              </h4>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  onClick={() => setSignatureModalOpen(true)}
+                  style={{
+                    padding: '7px 14px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600,
+                    background: '#8b5cf6', color: '#fff', border: 'none', cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: 6, transition: 'all 0.2s'
+                  }}
+                >
+                  <i className="fas fa-pen-nib" />
+                  {creatorSignatureUrl ? 'Thay đổi chữ ký' : 'Thêm / Ký tên người lập'}
+                </button>
+
+                {creatorSignatureUrl && (
+                  <button
+                    onClick={handleRemoveCreatorSignature}
+                    style={{
+                      padding: '7px 12px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600,
+                      background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', cursor: 'pointer',
+                      display: 'inline-flex', alignItems: 'center', gap: 4
+                    }}
+                  >
+                    <i className="fas fa-trash-alt" /> Xóa chữ ký
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {creatorSignatureUrl && (
+              <div style={{ marginTop: 12, background: '#fcfaff', borderRadius: 10, padding: 12, border: '1px solid #f3e8ff', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{
+                  position: 'relative', height: 60, minWidth: 120, padding: '4px 12px', borderRadius: 8,
+                  background: '#fff', border: '1px solid #e9d5ff', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  <img src={creatorSignatureUrl} alt="Chữ ký người lập" style={{ maxHeight: 50, maxWidth: 140, objectFit: 'contain' }} />
+                </div>
+
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <p style={{ margin: '0 0 4px 0', fontWeight: 600, fontSize: '0.875rem', color: '#1e293b' }}>
+                    Người lập: <span style={{ color: '#7e22ce' }}>{creatorName || 'Chưa đặt tên'}</span>
+                  </p>
+                  {creatorSignedAt && (
+                    <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                      <i className="far fa-clock" style={{ marginRight: 4 }} />Thời gian ký: {format(new Date(creatorSignedAt), 'HH:mm dd/MM/yyyy')}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Legend */}
         {!loading && groups.length > 0 && (
           <div style={{
@@ -1299,6 +1399,421 @@ export default function WeeklySchedulePage() {
         onSave={handleSaveStaff}
         saving={staffSaving}
       />
+
+      {/* Creator Signature Modal */}
+      <CreatorSignatureModal
+        open={signatureModalOpen}
+        onClose={() => setSignatureModalOpen(false)}
+        weekStart={weekStartStr}
+        currentSignatureUrl={creatorSignatureUrl}
+        currentCreatorName={creatorName}
+        defaultUserName={(user as any)?.fullName || user?.userName || user?.email || ''}
+        onSaved={(url, name) => {
+          setCreatorSignatureUrl(url);
+          setCreatorName(name);
+          setCreatorSignedAt(new Date().toISOString());
+        }}
+      />
     </>
+  );
+}
+
+// ─── Creator Signature Modal ───────────────────────────────────────────────
+interface CreatorSignatureModalProps {
+  open: boolean;
+  onClose: () => void;
+  weekStart: string;
+  currentSignatureUrl: string | null;
+  currentCreatorName: string | null;
+  defaultUserName: string;
+  onSaved: (url: string | null, name: string | null) => void;
+}
+
+function CreatorSignatureModal({
+  open,
+  onClose,
+  weekStart,
+  currentSignatureUrl,
+  currentCreatorName,
+  defaultUserName,
+  onSaved,
+}: CreatorSignatureModalProps) {
+  const [tab, setTab] = useState<'draw' | 'upload'>('draw');
+  const [creatorName, setCreatorName] = useState('');
+  const [penColor, setPenColor] = useState('#0f172a');
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasDrawn, setHasDrawn] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setCreatorName(currentCreatorName || defaultUserName || '');
+      setTab('draw');
+      setHasDrawn(false);
+      setSelectedFile(null);
+      setUploadPreview(null);
+      setPenColor('#0f172a');
+    }
+  }, [open, currentCreatorName, defaultUserName]);
+
+  useEffect(() => {
+    if (!open || tab !== 'draw') return;
+    const timer = setTimeout(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, rect.width, rect.height);
+      ctx.strokeStyle = penColor;
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [open, tab, penColor]);
+
+  if (!open) return null;
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, rect.width, rect.height);
+    ctx.strokeStyle = penColor;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    setHasDrawn(false);
+  };
+
+  const getCanvasPos = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    if ('touches' in e && e.touches.length > 0) {
+      const touch = e.touches[0];
+      return {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top,
+      };
+    }
+    const mouseEvent = e as React.MouseEvent<HTMLCanvasElement>;
+    return {
+      x: mouseEvent.clientX - rect.left,
+      y: mouseEvent.clientY - rect.top,
+    };
+  };
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const pos = getCanvasPos(e);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+    setIsDrawing(true);
+    setHasDrawn(true);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const pos = getCanvasPos(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Vui lòng chọn file hình ảnh (PNG, JPG...)');
+      return;
+    }
+    setSelectedFile(file);
+    const url = URL.createObjectURL(file);
+    setUploadPreview(url);
+  };
+
+  const handleSave = async () => {
+    if (!creatorName.trim()) {
+      toast.error('Vui lòng nhập tên người lập');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      let finalSignatureUrl: string | null = currentSignatureUrl;
+
+      if (tab === 'draw') {
+        const canvas = canvasRef.current;
+        if (!canvas || !hasDrawn) {
+          if (!currentSignatureUrl) {
+            toast.error('Vui lòng vẽ chữ ký hoặc tải ảnh chữ ký lên');
+            setSaving(false);
+            return;
+          }
+        } else {
+          const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
+          if (blob) {
+            const formData = new FormData();
+            formData.append('file', new File([blob], `signature_${Date.now()}.png`, { type: 'image/png' }));
+            const uploadRes = await api.post('/files/upload', formData, {
+              headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            finalSignatureUrl = uploadRes.data.url || uploadRes.data.path || canvas.toDataURL('image/png');
+          } else {
+            finalSignatureUrl = canvas.toDataURL('image/png');
+          }
+        }
+      } else if (tab === 'upload') {
+        if (selectedFile) {
+          const formData = new FormData();
+          formData.append('file', selectedFile);
+          const uploadRes = await api.post('/files/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          finalSignatureUrl = uploadRes.data.url || uploadRes.data.path;
+        } else if (!currentSignatureUrl) {
+          toast.error('Vui lòng chọn file ảnh chữ ký');
+          setSaving(false);
+          return;
+        }
+      }
+
+      await api.put('/weekly-schedule', {
+        weekStart,
+        creatorSignatureUrl: finalSignatureUrl,
+        creatorName: creatorName.trim(),
+      });
+
+      toast.success('Đã lưu chữ ký người lập!');
+      onSaved(finalSignatureUrl, creatorName.trim());
+      onClose();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.message || 'Lỗi khi lưu chữ ký');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <PopupPortal>
+      <div
+        style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 999999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16
+        }}
+        onClick={onClose}
+      >
+        <div
+          style={{
+            background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480,
+            padding: 24, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
+            display: 'flex', flexDirection: 'column', gap: 16
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="fas fa-signature" style={{ color: '#8b5cf6' }} />
+              Chữ Ký Người Lập Lịch Tuần
+            </h3>
+            <button
+              onClick={onClose}
+              style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: '#64748b', cursor: 'pointer' }}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Name input */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+              Họ và tên Người lập: <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <input
+              type="text"
+              value={creatorName}
+              onChange={e => setCreatorName(e.target.value)}
+              placeholder="Nhập họ và tên..."
+              style={{
+                width: '100%', padding: '9px 12px', border: '2px solid #e5e7eb', borderRadius: 8,
+                fontSize: '0.9rem', outline: 'none'
+              }}
+              onFocus={e => (e.target.style.borderColor = '#8b5cf6')}
+              onBlur={e => (e.target.style.borderColor = '#e5e7eb')}
+            />
+          </div>
+
+          {/* Tab buttons */}
+          <div style={{ display: 'flex', background: '#f1f5f9', padding: 4, borderRadius: 10, gap: 4 }}>
+            <button
+              type="button"
+              style={{
+                flex: 1, padding: '7px 0', border: 'none', borderRadius: 8, fontSize: '0.85rem', fontWeight: 600,
+                cursor: 'pointer', background: tab === 'draw' ? '#fff' : 'transparent',
+                color: tab === 'draw' ? '#8b5cf6' : '#64748b',
+                boxShadow: tab === 'draw' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', transition: 'all 0.2s'
+              }}
+              onClick={() => setTab('draw')}
+            >
+              <i className="fas fa-pen-nib" style={{ marginRight: 6 }} /> Vẽ trực tiếp
+            </button>
+            <button
+              type="button"
+              style={{
+                flex: 1, padding: '7px 0', border: 'none', borderRadius: 8, fontSize: '0.85rem', fontWeight: 600,
+                cursor: 'pointer', background: tab === 'upload' ? '#fff' : 'transparent',
+                color: tab === 'upload' ? '#8b5cf6' : '#64748b',
+                boxShadow: tab === 'upload' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', transition: 'all 0.2s'
+              }}
+              onClick={() => setTab('upload')}
+            >
+              <i className="fas fa-file-image" style={{ marginRight: 6 }} /> Tải ảnh chữ ký
+            </button>
+          </div>
+
+          {/* Tab 1: Draw */}
+          {tab === 'draw' && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Dùng chuột hoặc cảm ứng để vẽ chữ ký:</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Màu bút:</span>
+                  {['#0f172a', '#1e3a8a', '#047857'].map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setPenColor(c)}
+                      style={{
+                        width: 18, height: 18, borderRadius: '50%', background: c, border: penColor === c ? '2px solid #8b5cf6' : '1px solid #ccc',
+                        cursor: 'pointer', transform: penColor === c ? 'scale(1.2)' : 'none'
+                      }}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    onClick={clearCanvas}
+                    style={{
+                      padding: '3px 8px', fontSize: '0.75rem', borderRadius: 6, background: '#fef2f2',
+                      color: '#ef4444', border: '1px solid #fecaca', cursor: 'pointer'
+                    }}
+                  >
+                    <i className="fas fa-eraser" style={{ marginRight: 4 }} /> Xóa
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ border: '2px dashed #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#fff', touchAction: 'none' }}>
+                <canvas
+                  ref={canvasRef}
+                  style={{ width: '100%', height: 160, display: 'block', cursor: 'crosshair' }}
+                  onMouseDown={startDrawing}
+                  onMouseMove={draw}
+                  onMouseUp={stopDrawing}
+                  onMouseLeave={stopDrawing}
+                  onTouchStart={startDrawing}
+                  onTouchMove={draw}
+                  onTouchEnd={stopDrawing}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Tab 2: Upload */}
+          {tab === 'upload' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <label style={{
+                border: '2px dashed #cbd5e1', borderRadius: 10, padding: 24, textAlign: 'center',
+                cursor: 'pointer', background: '#fafafa', transition: 'all 0.2s'
+              }}>
+                <i className="fas fa-cloud-upload-alt" style={{ fontSize: '2rem', color: '#8b5cf6', marginBottom: 8 }} />
+                <p style={{ margin: '0 0 4px 0', fontSize: '0.88rem', fontWeight: 600, color: '#334155' }}>
+                  Nhấp vào đây để chọn ảnh chữ ký
+                </p>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>PNG, JPG hoặc JPEG (khuyên dùng nền trong suốt)</p>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  style={{ display: 'none' }}
+                />
+              </label>
+
+              {uploadPreview && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#f8fafc', padding: 10, borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                  <img src={uploadPreview} alt="Xem trước chữ ký" style={{ maxHeight: 60, maxWidth: 120, objectFit: 'contain' }} />
+                  <span style={{ fontSize: '0.8rem', color: '#059669', fontWeight: 600 }}>Đã chọn ảnh thành công</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Current signature preview if exists */}
+          {currentSignatureUrl && !hasDrawn && !uploadPreview && (
+            <div style={{ fontSize: '0.78rem', color: '#64748b', background: '#f8fafc', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>Chữ ký hiện tại:</span>
+              <img src={currentSignatureUrl} alt="Chữ ký hiện tại" style={{ maxHeight: 40, maxWidth: 100, objectFit: 'contain' }} />
+            </div>
+          )}
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              style={{
+                padding: '9px 18px', borderRadius: 8, fontSize: '0.85rem', fontWeight: 600,
+                background: '#f1f5f9', color: '#475569', border: 'none', cursor: 'pointer'
+              }}
+            >
+              Hủy
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              style={{
+                padding: '9px 20px', borderRadius: 8, fontSize: '0.85rem', fontWeight: 600,
+                background: '#8b5cf6', color: '#fff', border: 'none', cursor: saving ? 'not-allowed' : 'pointer',
+                opacity: saving ? 0.7 : 1, display: 'inline-flex', alignItems: 'center', gap: 6
+              }}
+            >
+              {saving ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-save" />}
+              {saving ? 'Đang lưu...' : 'Lưu chữ ký'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </PopupPortal>
   );
 }

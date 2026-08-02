@@ -895,15 +895,15 @@ export default function StatisticsPage() {
         link.remove();
         window.URL.revokeObjectURL(url);
         
-        toast.update(toastId, { render: 'Xuất Excel thành công!', type: 'success', isLoading: false, autoClose: 3000 });
+        toast.update(toastId, { render: 'Xuất Excel thành công!', type: 'success', isLoading: false, autoClose: 2000 });
         return;
       }
 
       // Fallback logic
-      toast.update(toastId, { render: 'Lỗi xuất file!', type: 'error', isLoading: false, autoClose: 3000 });
+      toast.update(toastId, { render: 'Lỗi xuất file!', type: 'error', isLoading: false, autoClose: 2000 });
     } catch (error: any) {
       console.error(error);
-      toast.update(toastId, { render: 'Lỗi khi xuất file Excel!', type: 'error', isLoading: false, autoClose: 3000 });
+      toast.update(toastId, { render: 'Lỗi khi xuất file Excel!', type: 'error', isLoading: false, autoClose: 2000 });
     } finally {
       setIsExporting(false);
     }

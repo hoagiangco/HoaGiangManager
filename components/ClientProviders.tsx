@@ -10,7 +10,7 @@ export default function ClientProviders({ children }: { children: React.ReactNod
     <ErrorBoundary>
       <AuthProvider>
         {children}
-        <ToastContainer position="bottom-right" />
+        <ToastContainer position="bottom-right" autoClose={2000} />
       </AuthProvider>
     </ErrorBoundary>
   );

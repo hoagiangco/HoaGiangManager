@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
-    const { cells, weeklyNote, approvedImageUrl, approvedBy, createdBy, weekStart } = body;
+    const { cells, weeklyNote, approvedImageUrl, approvedBy, creatorSignatureUrl, creatorName, createdBy, weekStart } = body;
 
     if (cells && Array.isArray(cells) && cells.length > 0) {
       await svc.upsertBatch(cells, createdBy);
@@ -43,6 +43,10 @@ export async function PUT(req: NextRequest) {
 
     if (approvedImageUrl !== undefined && weekStart) {
       await svc.setApprovedImage(weekStart, approvedImageUrl, approvedBy || createdBy);
+    }
+
+    if ((creatorSignatureUrl !== undefined || creatorName !== undefined) && weekStart) {
+      await svc.setCreatorSignature(weekStart, creatorSignatureUrl, creatorName);
     }
 
     return NextResponse.json({ status: true });

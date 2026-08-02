@@ -30,6 +30,9 @@ export interface WeeklyScheduleMeta {
   approvedImageUrl?: string | null;
   approvedAt?: string | null;
   approvedBy?: string | null;
+  creatorSignatureUrl?: string | null;
+  creatorName?: string | null;
+  creatorSignedAt?: string | null;
 }
 
 export class WeeklyScheduleService {
@@ -74,12 +77,15 @@ export class WeeklyScheduleService {
       // Table to store the weekly global note & metadata
       await client.query(`
         CREATE TABLE IF NOT EXISTS "WeeklyScheduleNote" (
-          "WeekStartDate"    DATE NOT NULL PRIMARY KEY,
-          "Note"             TEXT,
-          "ApprovedImageUrl" TEXT,
-          "ApprovedAt"       TIMESTAMP WITH TIME ZONE,
-          "ApprovedBy"       TEXT,
-          "UpdatedAt"        TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          "WeekStartDate"        DATE NOT NULL PRIMARY KEY,
+          "Note"                 TEXT,
+          "ApprovedImageUrl"     TEXT,
+          "ApprovedAt"           TIMESTAMP WITH TIME ZONE,
+          "ApprovedBy"           TEXT,
+          "CreatorSignatureUrl"  TEXT,
+          "CreatorName"          TEXT,
+          "CreatorSignedAt"      TIMESTAMP WITH TIME ZONE,
+          "UpdatedAt"            TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         )
       `);
 
@@ -87,7 +93,10 @@ export class WeeklyScheduleService {
         ALTER TABLE "WeeklyScheduleNote" 
           ADD COLUMN IF NOT EXISTS "ApprovedImageUrl" TEXT,
           ADD COLUMN IF NOT EXISTS "ApprovedAt" TIMESTAMP WITH TIME ZONE,
-          ADD COLUMN IF NOT EXISTS "ApprovedBy" TEXT
+          ADD COLUMN IF NOT EXISTS "ApprovedBy" TEXT,
+          ADD COLUMN IF NOT EXISTS "CreatorSignatureUrl" TEXT,
+          ADD COLUMN IF NOT EXISTS "CreatorName" TEXT,
+          ADD COLUMN IF NOT EXISTS "CreatorSignedAt" TIMESTAMP WITH TIME ZONE
       `);
 
       await client.query('COMMIT');
@@ -169,7 +178,7 @@ export class WeeklyScheduleService {
   async getWeeklyMeta(weekStartDate: string): Promise<WeeklyScheduleMeta> {
     await this.ensureSchema();
     const result = await pool.query(
-      `SELECT "Note", "ApprovedImageUrl", "ApprovedAt", "ApprovedBy" FROM "WeeklyScheduleNote" WHERE "WeekStartDate" = $1`,
+      `SELECT "Note", "ApprovedImageUrl", "ApprovedAt", "ApprovedBy", "CreatorSignatureUrl", "CreatorName", "CreatorSignedAt" FROM "WeeklyScheduleNote" WHERE "WeekStartDate" = $1`,
       [weekStartDate]
     );
     if (result.rows.length > 0) {
@@ -179,9 +188,20 @@ export class WeeklyScheduleService {
         approvedImageUrl: row.ApprovedImageUrl || null,
         approvedAt: row.ApprovedAt ? new Date(row.ApprovedAt).toISOString() : null,
         approvedBy: row.ApprovedBy || null,
+        creatorSignatureUrl: row.CreatorSignatureUrl || null,
+        creatorName: row.CreatorName || null,
+        creatorSignedAt: row.CreatorSignedAt ? new Date(row.CreatorSignedAt).toISOString() : null,
       };
     }
-    return { note: '', approvedImageUrl: null, approvedAt: null, approvedBy: null };
+    return {
+      note: '',
+      approvedImageUrl: null,
+      approvedAt: null,
+      approvedBy: null,
+      creatorSignatureUrl: null,
+      creatorName: null,
+      creatorSignedAt: null
+    };
   }
 
   async setWeeklyNote(weekStartDate: string, note: string): Promise<void> {
@@ -209,6 +229,29 @@ export class WeeklyScheduleService {
         approvedImageUrl || null,
         approvedImageUrl ? new Date() : null,
         approvedImageUrl ? (approvedBy || null) : null,
+      ]
+    );
+  }
+
+  async setCreatorSignature(
+    weekStartDate: string,
+    creatorSignatureUrl: string | null,
+    creatorName?: string | null
+  ): Promise<void> {
+    await this.ensureSchema();
+    await pool.query(
+      `INSERT INTO "WeeklyScheduleNote" ("WeekStartDate", "CreatorSignatureUrl", "CreatorName", "CreatorSignedAt", "UpdatedAt")
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT ("WeekStartDate") DO UPDATE SET
+         "CreatorSignatureUrl" = EXCLUDED."CreatorSignatureUrl",
+         "CreatorName" = EXCLUDED."CreatorName",
+         "CreatorSignedAt" = EXCLUDED."CreatorSignedAt",
+         "UpdatedAt" = NOW()`,
+      [
+        weekStartDate,
+        creatorSignatureUrl || null,
+        creatorName || null,
+        creatorSignatureUrl ? new Date() : null,
       ]
     );
   }
