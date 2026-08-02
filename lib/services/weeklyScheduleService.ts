@@ -193,6 +193,30 @@ export class WeeklyScheduleService {
         creatorSignedAt: row.CreatorSignedAt ? new Date(row.CreatorSignedAt).toISOString() : null,
       };
     }
+
+    // If no row exists for the current week, inherit Note, CreatorSignatureUrl and CreatorName from the most recent week that has them
+    const recentResult = await pool.query(
+      `SELECT "Note", "CreatorSignatureUrl", "CreatorName" 
+       FROM "WeeklyScheduleNote" 
+       WHERE "WeekStartDate" < $1 
+         AND ("Note" IS NOT NULL AND "Note" != '' OR "CreatorSignatureUrl" IS NOT NULL)
+       ORDER BY "WeekStartDate" DESC LIMIT 1`,
+      [weekStartDate]
+    );
+
+    if (recentResult.rows.length > 0) {
+      const row = recentResult.rows[0];
+      return {
+        note: row.Note || '',
+        approvedImageUrl: null,
+        approvedAt: null,
+        approvedBy: null,
+        creatorSignatureUrl: row.CreatorSignatureUrl || null,
+        creatorName: row.CreatorName || null,
+        creatorSignedAt: null,
+      };
+    }
+
     return {
       note: '',
       approvedImageUrl: null,
