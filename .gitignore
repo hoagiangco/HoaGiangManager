@@ -70,3 +70,5 @@ next-env.d.ts
 # uploads
 /public/uploads/*
 
+# build artifacts
+deploy.zip
