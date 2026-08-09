@@ -18,13 +18,14 @@ interface FileItem {
 
 interface FileManagerProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose?: () => void;
   onSelectFile?: (fileUrl: string) => void;
   onSelectFiles?: (fileUrls: string[]) => void;
   accept?: string;
   mode?: 'image' | 'all';
   multiSelect?: boolean;
   canManageFiles?: boolean;
+  embedded?: boolean;
 }
 
 type ViewMode = 'list' | 'grid';
@@ -37,7 +38,8 @@ export default function FileManager({
   accept, 
   mode = 'all',
   multiSelect = false,
-  canManageFiles
+  canManageFiles,
+  embedded = false
 }: FileManagerProps) {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -49,6 +51,7 @@ export default function FileManager({
   const [newFileName, setNewFileName] = useState('');
   const [canManage, setCanManage] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(24); // Use 24 for grid (divisible by 2, 3, 4, 6)
   const [totalFiles, setTotalFiles] = useState(0);
@@ -192,10 +195,8 @@ export default function FileManager({
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const filesToUpload = Array.from(e.target.files || []);
-    
-    if (filesToUpload.length === 0) {
+  const uploadFiles = async (filesToUpload: File[]) => {
+    if (!filesToUpload || filesToUpload.length === 0) {
       return;
     }
 
@@ -257,7 +258,7 @@ export default function FileManager({
       if (successCount > 0) {
         toast.success(`Upload thành công ${successCount} file${successCount > 1 ? 's' : ''}`);
         // Add a small delay to ensure blob is available
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 800));
         try {
           loadFiles(1); // On upload, we usually want to see the newest file (on page 1)
         } catch (loadError) {
@@ -269,11 +270,6 @@ export default function FileManager({
       }
     } catch (error: any) {
       console.error('Upload error:', error);
-      console.error('Error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status
-      });
       toast.error('Lỗi khi upload file');
     } finally {
       setUploading(false);
@@ -284,6 +280,131 @@ export default function FileManager({
         cameraInputRef.current.value = '';
       }
     }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const filesToUpload = Array.from(e.target.files || []);
+    await uploadFiles(filesToUpload);
+  };
+
+  // Clipboard Paste handler (Ctrl + V / Cmd + V)
+  useEffect(() => {
+    if (!isOpen && !embedded) return;
+
+    const handleWindowPaste = async (e: ClipboardEvent) => {
+      if (uploading) return;
+      
+      const items = e.clipboardData?.items;
+      if (!items || items.length === 0) return;
+
+      const clipboardFiles: File[] = [];
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          const blob = item.getAsFile();
+          if (blob) {
+            const rawExt = item.type.split('/')[1] || 'png';
+            const ext = rawExt === 'jpeg' ? 'jpg' : rawExt.replace(/[^a-z0-9]/gi, '');
+            const fileName = `clipboard_${dateStr}_${timeStr}_${i + 1}.${ext}`;
+            const file = new File([blob], fileName, { type: item.type || 'image/png' });
+            clipboardFiles.push(file);
+          }
+        }
+      }
+
+      if (clipboardFiles.length > 0) {
+        e.preventDefault();
+        toast.info(`Đang xử lý dán ${clipboardFiles.length} ảnh từ Clipboard...`);
+        await uploadFiles(clipboardFiles);
+      }
+    };
+
+    window.addEventListener('paste', handleWindowPaste);
+    return () => {
+      window.removeEventListener('paste', handleWindowPaste);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, embedded, uploading]);
+
+  // Handle explicit Clipboard Paste button click
+  const handlePasteFromClipboard = async () => {
+    if (uploading) return;
+
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.read) {
+        toast.info('Trình duyệt không hỗ trợ đọc Clipboard trực tiếp. Vui lòng nhấn Ctrl + V (hoặc Cmd + V) để dán ảnh!');
+        return;
+      }
+
+      const clipboardItems = await navigator.clipboard.read();
+      const clipboardFiles: File[] = [];
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
+
+      let idx = 1;
+      for (const item of clipboardItems) {
+        for (const type of item.types) {
+          if (type.startsWith('image/')) {
+            const blob = await item.getType(type);
+            const rawExt = type.split('/')[1] || 'png';
+            const ext = rawExt === 'jpeg' ? 'jpg' : rawExt.replace(/[^a-z0-9]/gi, '');
+            const fileName = `clipboard_${dateStr}_${timeStr}_${idx++}.${ext}`;
+            const file = new File([blob], fileName, { type });
+            clipboardFiles.push(file);
+          }
+        }
+      }
+
+      if (clipboardFiles.length === 0) {
+        toast.warning('Không tìm thấy ảnh trong Clipboard. Vui lòng sao chép một ảnh và thử lại (hoặc nhấn Ctrl + V)!');
+        return;
+      }
+
+      toast.info(`Tìm thấy ${clipboardFiles.length} ảnh trong Clipboard. Đang tải lên...`);
+      await uploadFiles(clipboardFiles);
+    } catch (err: any) {
+      console.error('Clipboard API read error:', err);
+      toast.info('Vui lòng nhấn tổ hợp phím Ctrl + V (hoặc Cmd + V) để dán ảnh từ Clipboard!');
+    }
+  };
+
+  // Drag & Drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const droppedFiles = Array.from(e.dataTransfer.files || []);
+    if (droppedFiles.length > 0) {
+      await uploadFiles(droppedFiles);
+    }
+  };
+
+  const handleCopyLink = (fileUrl: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const fullUrl = fileUrl.startsWith('http') ? fileUrl : `${window.location.origin}${fileUrl}`;
+    navigator.clipboard.writeText(fullUrl).then(() => {
+      toast.success('Đã sao chép đường dẫn file!');
+    }).catch(() => {
+      toast.error('Không thể sao chép đường dẫn');
+    });
   };
 
   const deleteFileRequest = async (file: FileItem) => {
@@ -462,7 +583,9 @@ export default function FileManager({
         console.error('FileManager: No file selected');
       }
     }
-    onClose();
+    if (onClose) {
+      onClose();
+    }
   };
 
   const formatFileSize = (bytes: number) => {
@@ -497,16 +620,26 @@ export default function FileManager({
     return null;
   }
 
+  const Wrapper = embedded 
+    ? ({ children }: { children: React.ReactNode }) => (
+        <div className="card shadow-sm border-0 w-100 h-100 bg-white" style={{ minHeight: '600px' }}>
+          {children}
+        </div>
+      ) 
+    : ({ children }: { children: React.ReactNode }) => (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1100 }} tabIndex={-1}>
+          <div className={`modal-dialog ${isFullscreen ? 'modal-fullscreen' : 'modal-xl'} modal-dialog-scrollable`} style={{ zIndex: 1101 }}>
+            <div className="modal-content">
+              {children}
+            </div>
+          </div>
+        </div>
+      );
+
   return (
     <>
-    <div 
-      className="modal show d-block" 
-      style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1100 }} 
-      tabIndex={-1}
-    >
-      <div className={`modal-dialog ${isFullscreen ? 'modal-fullscreen' : 'modal-xl'} modal-dialog-scrollable`} style={{ zIndex: 1101 }}>
-        <div className="modal-content">
-          <div className="modal-header d-flex align-items-center justify-content-between py-2 px-3">
+      <Wrapper>
+        <div className={embedded ? "card-header d-flex align-items-center justify-content-between py-2 px-3 bg-white border-bottom" : "modal-header d-flex align-items-center justify-content-between py-2 px-3"}>
             <h5 className="modal-title mb-0 d-flex align-items-center">
               <i className="fas fa-folder-open me-2 text-primary"></i> 
               <span className="fs-6 fs-sm-5 fw-bold text-nowrap d-none d-xs-inline">File</span>
@@ -526,6 +659,17 @@ export default function FileManager({
               >
                 <i className="fas fa-sync-alt"></i> 
                 <span className="d-none d-sm-inline ms-1">Tải lại</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-warning btn-sm rounded-pill d-flex align-items-center px-2 py-1 shadow-sm text-dark fw-medium"
+                onClick={handlePasteFromClipboard}
+                disabled={uploading}
+                style={{ fontSize: '0.8rem' }}
+                title="Dán ảnh từ Clipboard (Ctrl + V)"
+              >
+                <i className="fas fa-paste"></i> 
+                <span className="d-none d-sm-inline ms-1">Dán Clipboard</span>
               </button>
               <button
                 type="button"
@@ -558,15 +702,48 @@ export default function FileManager({
               >
                 <i className={`fas ${isFullscreen ? 'fa-compress' : 'fa-expand'}`} style={{ fontSize: '0.75rem' }}></i>
               </button>
-              <button
-                type="button"
-                className="btn-close ms-1"
-                onClick={onClose}
-                aria-label="Close"
-              ></button>
+              {onClose && (
+                <button
+                  type="button"
+                  className="btn-close ms-1"
+                  onClick={onClose}
+                  aria-label="Close"
+                ></button>
+              )}
             </div>
           </div>
-          <div className="modal-body">
+          <div 
+            className="modal-body position-relative"
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            {/* Drag & Drop overlay */}
+            {isDragging && (
+              <div 
+                className="position-absolute top-0 start-0 w-100 h-100 bg-primary bg-opacity-10 border border-primary border-2 border-dashed rounded d-flex flex-column align-items-center justify-content-center text-primary" 
+                style={{ zIndex: 1000, backdropFilter: 'blur(2px)' }}
+              >
+                <i className="fas fa-cloud-upload-alt fa-3x mb-2 animate__animated animate__bounce"></i>
+                <h5 className="fw-bold mb-0">Thả file vào đây để tải lên</h5>
+              </div>
+            )}
+
+            {/* Paste Tip Banner */}
+            <div className="alert alert-light border py-1.5 px-3 mb-3 d-flex align-items-center justify-content-between text-muted small rounded-3 bg-opacity-50">
+              <div className="d-flex align-items-center gap-2">
+                <i className="fas fa-lightbulb text-warning fs-6"></i>
+                <span>Mẹo: Bạn có thể nhấn <strong>Ctrl + V</strong> (hoặc <strong>Cmd + V</strong>) ở bất kỳ đâu để dán và upload ảnh từ Clipboard.</span>
+              </div>
+              <button 
+                type="button" 
+                className="btn btn-sm btn-outline-warning text-dark py-0 px-2 rounded-pill ms-2 text-nowrap"
+                onClick={handlePasteFromClipboard}
+                style={{ fontSize: '0.75rem' }}
+              >
+                <i className="fas fa-paste me-1"></i> Dán ngay
+              </button>
+            </div>
             {/* Toolbar */}
             <div className="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
               <div className="d-flex gap-2 align-items-center">
@@ -760,35 +937,47 @@ export default function FileManager({
                         )}
 
                         {/* Left-aligned Hover controls */}
-                        {canManage && !isRenaming && (
+                        {!isRenaming && (
                           <div className="file-actions position-absolute top-0 start-0 d-flex flex-column gap-1 opacity-0" style={{ transition: 'all 0.25s ease', zIndex: 15, marginTop: isSelected ? '28px' : '4px', marginLeft: '4px' }}>
                             <button
                               className="btn btn-light shadow-sm rounded-circle d-flex align-items-center justify-content-center border"
                               style={{ width: '24px', height: '24px', padding: 0 }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (isDeleting) return;
-                                setRenamingFile(file.name);
-                                setNewFileName(file.name);
-                              }}
-                              title="Đổi tên"
-                              disabled={isDeleting}
+                              onClick={(e) => handleCopyLink(file.url, e)}
+                              title="Sao chép link"
                             >
-                              <i className="fas fa-edit text-primary" style={{ fontSize: '11px' }}></i>
+                              <i className="fas fa-link text-info" style={{ fontSize: '11px' }}></i>
                             </button>
-                            <button
-                              className="btn btn-light shadow-sm rounded-circle d-flex align-items-center justify-content-center border"
-                              style={{ width: '24px', height: '24px', padding: 0 }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (isDeleting) return;
-                                handleDeleteFile(file);
-                              }}
-                              title="Xóa"
-                              disabled={isDeleting}
-                            >
-                              <i className="fas fa-trash text-danger" style={{ fontSize: '11px' }}></i>
-                            </button>
+                            {canManage && (
+                              <>
+                                <button
+                                  className="btn btn-light shadow-sm rounded-circle d-flex align-items-center justify-content-center border"
+                                  style={{ width: '24px', height: '24px', padding: 0 }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (isDeleting) return;
+                                    setRenamingFile(file.name);
+                                    setNewFileName(file.name);
+                                  }}
+                                  title="Đổi tên"
+                                  disabled={isDeleting}
+                                >
+                                  <i className="fas fa-edit text-primary" style={{ fontSize: '11px' }}></i>
+                                </button>
+                                <button
+                                  className="btn btn-light shadow-sm rounded-circle d-flex align-items-center justify-content-center border"
+                                  style={{ width: '24px', height: '24px', padding: 0 }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (isDeleting) return;
+                                    handleDeleteFile(file);
+                                  }}
+                                  title="Xóa"
+                                  disabled={isDeleting}
+                                >
+                                  <i className="fas fa-trash text-danger" style={{ fontSize: '11px' }}></i>
+                                </button>
+                              </>
+                            )}
                           </div>
                         )}
                       </div>
@@ -902,35 +1091,44 @@ export default function FileManager({
                             {formatDateDisplay(file.modified)}
                           </td>
                           <td>
-                            {canManage && (
-                              <div className="btn-group btn-group-sm">
-                                <button
-                                  className="btn btn-outline-primary"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (isDeleting) return;
-                                    setRenamingFile(file.name);
-                                    setNewFileName(file.name);
-                                  }}
-                                  title="Đổi tên"
-                                  disabled={isDeleting}
-                                >
-                                  <i className="fas fa-edit"></i>
-                                </button>
-                                <button
-                                  className="btn btn-outline-danger"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (isDeleting) return;
-                                    handleDeleteFile(file);
-                                  }}
-                                  title="Xóa"
-                                  disabled={isDeleting}
-                                >
-                                  <i className="fas fa-trash"></i>
-                                </button>
-                              </div>
-                            )}
+                            <div className="btn-group btn-group-sm">
+                              <button
+                                className="btn btn-outline-info"
+                                onClick={(e) => handleCopyLink(file.url, e)}
+                                title="Sao chép đường dẫn"
+                              >
+                                <i className="fas fa-link"></i>
+                              </button>
+                              {canManage && (
+                                <>
+                                  <button
+                                    className="btn btn-outline-primary"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (isDeleting) return;
+                                      setRenamingFile(file.name);
+                                      setNewFileName(file.name);
+                                    }}
+                                    title="Đổi tên"
+                                    disabled={isDeleting}
+                                  >
+                                    <i className="fas fa-edit"></i>
+                                  </button>
+                                  <button
+                                    className="btn btn-outline-danger"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (isDeleting) return;
+                                      handleDeleteFile(file);
+                                    }}
+                                    title="Xóa"
+                                    disabled={isDeleting}
+                                  >
+                                    <i className="fas fa-trash"></i>
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1017,9 +1215,7 @@ export default function FileManager({
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
+      </Wrapper>
     <style jsx>{`
       .file-card {
         transition: transform 0.2s, box-shadow 0.2s;

@@ -159,6 +159,7 @@ export default function DashboardLayout({
           { href: '/dashboard/departments', label: 'Phòng ban', icon: 'fas fa-building' },
           { href: '/dashboard/staff', label: 'Nhân viên', icon: 'fas fa-users' },
           { href: '/dashboard/admin', label: 'Tài khoản người dùng', icon: 'fas fa-user-shield' },
+          { href: '/dashboard/media', label: 'Thư viện Media', icon: 'fas fa-photo-video' },
           { href: '/dashboard/backup', label: 'Sao lưu/ Phục hồi', icon: 'fas fa-database' }
         ]
       }

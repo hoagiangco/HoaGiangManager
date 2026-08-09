@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev -p 4000",
     "build": "next build",
+    "deploy:package": "node scripts/package-deploy.js",
     "start": "next start -p 4001",
     "lint": "next lint",
     "db:migrate": "node scripts/compile-migrations.js migrate",
