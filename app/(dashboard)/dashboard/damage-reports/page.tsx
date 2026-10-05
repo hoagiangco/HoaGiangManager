@@ -400,6 +400,7 @@ export default function DamageReportsPage() {
   const [modalDeviceCategoryId, setModalDeviceCategoryId] = useState<number>(0);
   const [modalDeviceSearch, setModalDeviceSearch] = useState('');
   const [isDeviceDropdownOpen, setIsDeviceDropdownOpen] = useState(false);
+  const [deviceActiveIndex, setDeviceActiveIndex] = useState(0);
   const deviceDropdownRef = useRef<HTMLDivElement | null>(null);
 
   // Modal category filter state
@@ -414,17 +415,21 @@ export default function DamageReportsPage() {
   // Searchable reporter/handler dropdown state
   const [reporterSearch, setReporterSearch] = useState('');
   const [isReporterDropdownOpen, setIsReporterDropdownOpen] = useState(false);
+  const [reporterActiveIndex, setReporterActiveIndex] = useState(0);
   const reporterDropdownRef = useRef<HTMLDivElement | null>(null);
   const [handlerSearch, setHandlerSearch] = useState('');
   const [isHandlerDropdownOpen, setIsHandlerDropdownOpen] = useState(false);
+  const [handlerActiveIndex, setHandlerActiveIndex] = useState(0);
   const handlerDropdownRef = useRef<HTMLDivElement | null>(null);
   const [coHandlerSearch, setCoHandlerSearch] = useState('');
   const [isCoHandlerDropdownOpen, setIsCoHandlerDropdownOpen] = useState(false);
+  const [coHandlerActiveIndex, setCoHandlerActiveIndex] = useState(0);
   const coHandlerDropdownRef = useRef<HTMLDivElement | null>(null);
 
   // Searchable location dropdown state
   const [locationSearch, setLocationSearch] = useState('');
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
+  const [locationActiveIndex, setLocationActiveIndex] = useState(0);
   const locationDropdownRef = useRef<HTMLDivElement | null>(null);
 
   // Form state
@@ -510,6 +515,76 @@ export default function DamageReportsPage() {
     });
   }, [devices, modalDeviceCategoryId, modalDeviceSearch, formData.deviceId]);
 
+  const filteredReporterStaff = useMemo(
+    () => staff.filter((s) => !reporterSearch.trim() || s.name.toLowerCase().includes(reporterSearch.trim().toLowerCase())),
+    [staff, reporterSearch]
+  );
+
+  const filteredHandlerStaff = useMemo(
+    () => staff.filter((s) => !handlerSearch.trim() || s.name.toLowerCase().includes(handlerSearch.trim().toLowerCase())),
+    [staff, handlerSearch]
+  );
+
+  const filteredCoHandlerStaff = useMemo(
+    () => staff.filter((s) => !coHandlerSearch.trim() || s.name.toLowerCase().includes(coHandlerSearch.trim().toLowerCase())),
+    [staff, coHandlerSearch]
+  );
+
+  const locationOptions = useMemo(() => {
+    const search = locationSearch.trim();
+    const matchingLocations = locations
+      .map((location) => location.parentName ? `${location.parentName} > ${location.name}` : location.name)
+      .filter((name) => !search || name.toLowerCase().includes(search.toLowerCase()));
+    const hasExactMatch = locations.some((location) => {
+      const name = location.parentName ? `${location.parentName} > ${location.name}` : location.name;
+      return name.toLowerCase() === search.toLowerCase();
+    });
+
+    return [
+      '',
+      ...(search && !hasExactMatch ? [search] : []),
+      ...matchingLocations,
+    ];
+  }, [locations, locationSearch]);
+
+  const handleAutocompleteKeyDown = (
+    event: React.KeyboardEvent<HTMLElement>,
+    isOpen: boolean,
+    setIsOpen: React.Dispatch<React.SetStateAction<boolean>>,
+    optionCount: number,
+    activeIndex: number,
+    setActiveIndex: React.Dispatch<React.SetStateAction<number>>,
+    selectOption: (index: number) => void,
+    closeOnSelect = true,
+  ) => {
+    if (event.key === 'Escape') {
+      if (isOpen) event.preventDefault();
+      setIsOpen(false);
+      return;
+    }
+
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!isOpen) {
+        setIsOpen(true);
+        setActiveIndex(event.key === 'ArrowDown' ? 0 : Math.max(optionCount - 1, 0));
+        return;
+      }
+      if (optionCount > 0) {
+        setActiveIndex((index) => event.key === 'ArrowDown'
+          ? (index + 1) % optionCount
+          : (index - 1 + optionCount) % optionCount);
+      }
+      return;
+    }
+
+    if ((event.key === 'Enter' || event.key === 'Tab') && isOpen && optionCount > 0) {
+      if (event.key === 'Enter') event.preventDefault();
+      selectOption(Math.min(activeIndex, optionCount - 1));
+      if (closeOnSelect || event.key === 'Tab') setIsOpen(false);
+    }
+  };
+
   const canFinishImmediately = useMemo(() => {
     if (isAdmin(currentUser?.roles)) return true;
     return formData.reporterId === formData.handlerId;
@@ -519,14 +594,21 @@ export default function DamageReportsPage() {
     if (showModal) {
       setModalDeviceCategoryId(0);
       setModalDeviceSearch('');
+      setDeviceActiveIndex(0);
       setModalCategorySearch('');
       setIsDeviceDropdownOpen(false);
       setIsCategoryDropdownOpen(false);
       setReporterSearch('');
+      setReporterActiveIndex(0);
       setIsReporterDropdownOpen(false);
       setHandlerSearch('');
+      setHandlerActiveIndex(0);
       setIsHandlerDropdownOpen(false);
+      setCoHandlerSearch('');
+      setCoHandlerActiveIndex(0);
+      setIsCoHandlerDropdownOpen(false);
       setLocationSearch('');
+      setLocationActiveIndex(0);
       setIsLocationDropdownOpen(false);
     }
   }, [showModal]);
@@ -3288,7 +3370,17 @@ export default function DamageReportsPage() {
                               <button
                                 type="button"
                                 className="form-control form-select form-select-sm text-start d-flex justify-content-between align-items-center shadow-none px-2 text-primary fw-bold"
-                                onClick={() => !formData.maintenanceBatchId && setIsDeviceDropdownOpen((prev) => !prev)}
+                                onClick={() => {
+                                  if (formData.maintenanceBatchId) return;
+                                  setIsDeviceDropdownOpen((prev) => !prev);
+                                  setDeviceActiveIndex(0);
+                                  setModalDeviceSearch('');
+                                }}
+                                onKeyDown={(event) => handleAutocompleteKeyDown(
+                                  event, isDeviceDropdownOpen, setIsDeviceDropdownOpen, filteredModalDevices.length + 1,
+                                  deviceActiveIndex, setDeviceActiveIndex,
+                                  (index) => setFormData((prev) => ({ ...prev, deviceId: index === 0 ? undefined : Number(filteredModalDevices[index - 1].id) })),
+                                )}
                                 disabled={!!formData.maintenanceBatchId}
                                 style={{ minHeight: '28px', fontSize: '0.75rem', backgroundColor: formData.maintenanceBatchId ? '#f8f9fa' : 'white' }}
                               >
@@ -3303,31 +3395,51 @@ export default function DamageReportsPage() {
                                   <div className="p-1 mb-1" style={{ backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
                                     <div className="input-group input-group-sm">
                                       <span className="input-group-text bg-white border-end-0 py-0"><i className="fas fa-search text-muted" style={{ fontSize: '0.65rem' }}></i></span>
-                                      <input autoFocus type="text" className="form-control form-control-sm border-start-0 shadow-none" style={{ fontSize: '0.75rem' }} placeholder="Tìm..." value={modalDeviceSearch} onChange={(e) => setModalDeviceSearch(e.target.value)} />
+                                      <input
+                                        autoFocus
+                                        type="text"
+                                        className="form-control form-control-sm border-start-0 shadow-none"
+                                        style={{ fontSize: '0.75rem' }}
+                                        placeholder="Tìm..."
+                                        value={modalDeviceSearch}
+                                        onChange={(event) => { setModalDeviceSearch(event.target.value); setDeviceActiveIndex(0); }}
+                                        onKeyDown={(event) => handleAutocompleteKeyDown(
+                                          event, isDeviceDropdownOpen, setIsDeviceDropdownOpen, filteredModalDevices.length + 1,
+                                          deviceActiveIndex, setDeviceActiveIndex,
+                                          (index) => setFormData((prev) => ({ ...prev, deviceId: index === 0 ? undefined : Number(filteredModalDevices[index - 1].id) })),
+                                        )}
+                                      />
                                     </div>
                                   </div>
                                   <div style={{ maxHeight: '200px', overflowY: 'auto', padding: '0 2px' }}>
-                                    <button type="button" className="dropdown-item py-1 fw-medium small text-primary" onClick={() => { setFormData({ ...formData, deviceId: undefined }); setIsDeviceDropdownOpen(false); }}>-- Bỏ chọn --</button>
+                                    <button
+                                      type="button"
+                                      className={`dropdown-item py-1 fw-medium small text-primary ${deviceActiveIndex === 0 ? 'active bg-primary text-white' : ''}`}
+                                      onMouseEnter={() => setDeviceActiveIndex(0)}
+                                      onClick={() => { setFormData({ ...formData, deviceId: undefined }); setIsDeviceDropdownOpen(false); }}
+                                    >-- Bỏ chọn --</button>
                                     {filteredModalDevices.length === 0 ? (
                                       <div className="p-2 text-center text-muted" style={{ fontSize: '0.7rem' }}>Không tìm thấy</div>
                                     ) : (
-                                      filteredModalDevices.map((d) => {
+                                      filteredModalDevices.map((d, index) => {
                                         const isActive = formData.deviceId !== undefined && Number(formData.deviceId) === Number(d.id);
+                                        const isKeyboardActive = deviceActiveIndex === index + 1;
                                         return (
                                           <button 
                                             type="button" 
                                             key={d.id} 
-                                            className={`dropdown-item py-1 px-2 border-bottom border-light-subtle ${isActive ? 'active bg-primary' : ''}`} 
+                                            className={`dropdown-item py-1 px-2 border-bottom border-light-subtle ${isActive || isKeyboardActive ? 'active bg-primary' : ''}`}
                                             onClick={() => { setFormData({ ...formData, deviceId: Number(d.id) }); setIsDeviceDropdownOpen(false); }}
-                                            style={isActive ? { backgroundColor: '#0d6efd', color: '#fff' } : {}}
+                                            onMouseEnter={() => setDeviceActiveIndex(index + 1)}
+                                            style={isActive || isKeyboardActive ? { backgroundColor: '#0d6efd', color: '#fff' } : {}}
                                           >
                                             <div className="d-flex align-items-center justify-content-between">
                                               <div className="text-truncate">
-                                                <div className="fw-bold" style={{ fontSize: '0.75rem', color: isActive ? '#fff' : '#2c3e50' }}>{d.name || `Thiết bị #${d.id}`}</div>
-                                                <div className={isActive ? 'text-white-50' : 'text-muted'} style={{ fontSize: '0.6rem' }}>{d.serial || 'N/A'}</div>
+                                                <div className="fw-bold" style={{ fontSize: '0.75rem', color: isActive || isKeyboardActive ? '#fff' : '#2c3e50' }}>{d.name || `Thiết bị #${d.id}`}</div>
+                                                <div className={isActive || isKeyboardActive ? 'text-white-50' : 'text-muted'} style={{ fontSize: '0.6rem' }}>{d.serial || 'N/A'}</div>
                                               </div>
                                               {d.locationName && (
-                                                <div className={`badge ${isActive ? 'bg-white text-primary' : 'bg-primary bg-opacity-10 text-primary'} ms-1 px-1`} style={{ fontSize: '0.55rem' }}>{d.parentLocationName ? `${d.parentLocationName} > ${d.locationName}` : d.locationName}</div>
+                                                  <div className={`badge ${isActive || isKeyboardActive ? 'bg-white text-primary' : 'bg-primary bg-opacity-10 text-primary'} ms-1 px-1`} style={{ fontSize: '0.55rem' }}>{d.parentLocationName ? `${d.parentLocationName} > ${d.locationName}` : d.locationName}</div>
                                               )}
                                             </div>
                                           </button>
@@ -3361,13 +3473,22 @@ export default function DamageReportsPage() {
                           <label className="form-label small fw-bold mb-0" style={{ fontSize: '0.65rem' }}>Vị trí (khu vực/phòng ban)</label>
                           <div ref={locationDropdownRef} style={{ position: 'relative' }}>
                             <div
+                              role="combobox"
+                              tabIndex={0}
+                              aria-expanded={isLocationDropdownOpen}
                               className="form-select form-select-sm shadow-none d-flex align-items-center justify-content-between"
                               style={{ minHeight: '28px', fontSize: '0.75rem', cursor: !!formData.maintenanceBatchId ? 'not-allowed' : 'pointer', userSelect: 'none', backgroundColor: formData.maintenanceBatchId ? '#f8f9fa' : 'white' }}
                               onClick={() => {
                                 if (!!formData.maintenanceBatchId) return;
-                                setIsLocationDropdownOpen(v => !v); 
+                                setIsLocationDropdownOpen(v => !v);
+                                setLocationActiveIndex(0);
                                 setLocationSearch('');
                               }}
+                              onKeyDown={(event) => handleAutocompleteKeyDown(
+                                event, isLocationDropdownOpen, setIsLocationDropdownOpen, locationOptions.length,
+                                locationActiveIndex, setLocationActiveIndex,
+                                (index) => setFormData((prev) => ({ ...prev, damageLocation: locationOptions[index] || '' })),
+                              )}
                             >
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: formData.damageLocation ? '#212529' : '#6c757d' }}>
                                 {formData.damageLocation || '-- Chọn vị trí --'}
@@ -3382,42 +3503,31 @@ export default function DamageReportsPage() {
                                     className="form-control form-control-sm shadow-none"
                                     placeholder="Tìm vị trí hoặc nhập mới..."
                                     value={locationSearch}
-                                    onChange={e => setLocationSearch(e.target.value)}
+                                    onChange={e => { setLocationSearch(e.target.value); setLocationActiveIndex(0); }}
                                     onClick={e => e.stopPropagation()}
+                                    onKeyDown={(event) => handleAutocompleteKeyDown(
+                                      event, isLocationDropdownOpen, setIsLocationDropdownOpen, locationOptions.length,
+                                      locationActiveIndex, setLocationActiveIndex,
+                                      (index) => setFormData((prev) => ({ ...prev, damageLocation: locationOptions[index] || '' })),
+                                    )}
                                     style={{ fontSize: '0.75rem', height: '28px' }}
                                   />
                                 </div>
                                 <ul style={{ listStyle: 'none', margin: 0, padding: '2px 0', maxHeight: '180px', overflowY: 'auto' }}>
-                                  <li
-                                    style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', color: '#6c757d', background: !formData.damageLocation ? '#e9f0ff' : 'transparent' }}
-                                    onMouseDown={() => { setFormData({ ...formData, damageLocation: '' }); setIsLocationDropdownOpen(false); }}
-                                  >-- Bỏ chọn --</li>
-                                  {locationSearch.trim() && !locations.some(l => {
-                                    const locName = l.parentName ? `${l.parentName} > ${l.name}` : l.name;
-                                    return locName.toLowerCase() === locationSearch.trim().toLowerCase();
-                                  }) && (
-                                    <li
-                                      style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', color: '#0d6efd', fontWeight: 600 }}
-                                      onMouseDown={() => { setFormData({ ...formData, damageLocation: locationSearch.trim() }); setIsLocationDropdownOpen(false); }}
-                                    >
-                                      + Sử dụng: "{locationSearch.trim()}"
-                                    </li>
-                                  )}
-                                  {locations.filter(l => {
-                                    if (!locationSearch.trim()) return true;
-                                    const locName = l.parentName ? `${l.parentName} > ${l.name}` : l.name;
-                                    return locName.toLowerCase().includes(locationSearch.trim().toLowerCase());
-                                  }).map(l => {
-                                    const locName = l.parentName ? `${l.parentName} > ${l.name}` : l.name;
-                                    const isSelected = formData.damageLocation === locName;
+                                  {locationOptions.map((locationName, index) => {
+                                    const isSelected = formData.damageLocation === locationName;
+                                    const isActive = index === locationActiveIndex;
+                                    const isCustom = index === 1 && !!locationSearch.trim() && !locations.some((location) => {
+                                      const name = location.parentName ? `${location.parentName} > ${location.name}` : location.name;
+                                      return name.toLowerCase() === locationSearch.trim().toLowerCase();
+                                    });
                                     return (
                                       <li
-                                        key={l.id}
-                                        style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', background: isSelected ? '#e9f0ff' : 'transparent', fontWeight: isSelected ? 600 : 400 }}
-                                        onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = '#f8f9fa'; }}
-                                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isSelected ? '#e9f0ff' : 'transparent'; }}
-                                        onMouseDown={() => { setFormData({ ...formData, damageLocation: locName }); setIsLocationDropdownOpen(false); }}
-                                      >{locName}</li>
+                                        key={`${locationName}-${index}`}
+                                        style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', color: isCustom ? '#0d6efd' : '#212529', background: isActive || isSelected ? '#e9f0ff' : 'transparent', fontWeight: isCustom || isSelected ? 600 : 400 }}
+                                        onMouseEnter={() => setLocationActiveIndex(index)}
+                                        onMouseDown={() => { setFormData((prev) => ({ ...prev, damageLocation: locationName })); setIsLocationDropdownOpen(false); }}
+                                      >{index === 0 ? '-- Bỏ chọn --' : isCustom ? `+ Sử dụng: "${locationName}"` : locationName}</li>
                                     );
                                   })}
                                 </ul>
@@ -3438,9 +3548,17 @@ export default function DamageReportsPage() {
                         ) : (
                           <div ref={reporterDropdownRef} style={{ position: 'relative' }}>
                             <div
+                              role="combobox"
+                              tabIndex={0}
+                              aria-expanded={isReporterDropdownOpen}
                               className="form-select form-select-sm shadow-none d-flex align-items-center justify-content-between"
                               style={{ minHeight: '28px', fontSize: '0.75rem', cursor: 'pointer', userSelect: 'none' }}
-                              onClick={() => { setIsReporterDropdownOpen(v => !v); setReporterSearch(''); }}
+                              onClick={() => { setIsReporterDropdownOpen(v => !v); setReporterSearch(''); setReporterActiveIndex(0); }}
+                              onKeyDown={(event) => handleAutocompleteKeyDown(
+                                event, isReporterDropdownOpen, setIsReporterDropdownOpen, filteredReporterStaff.length + 1,
+                                reporterActiveIndex, setReporterActiveIndex,
+                                (index) => setFormData((prev) => ({ ...prev, reporterId: index === 0 ? 0 : filteredReporterStaff[index - 1].id })),
+                              )}
                             >
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {formData.reporterId ? (staff.find(s => s.id === formData.reporterId)?.name || '-- Người báo --') : '-- Người báo --'}
@@ -3455,26 +3573,31 @@ export default function DamageReportsPage() {
                                     className="form-control form-control-sm shadow-none"
                                     placeholder="Tìm tên..."
                                     value={reporterSearch}
-                                    onChange={e => setReporterSearch(e.target.value)}
+                                    onChange={e => { setReporterSearch(e.target.value); setReporterActiveIndex(0); }}
                                     onClick={e => e.stopPropagation()}
+                                    onKeyDown={(event) => handleAutocompleteKeyDown(
+                                      event, isReporterDropdownOpen, setIsReporterDropdownOpen, filteredReporterStaff.length + 1,
+                                      reporterActiveIndex, setReporterActiveIndex,
+                                      (index) => setFormData((prev) => ({ ...prev, reporterId: index === 0 ? 0 : filteredReporterStaff[index - 1].id })),
+                                    )}
                                     style={{ fontSize: '0.75rem', height: '28px' }}
                                   />
                                 </div>
                                 <ul style={{ listStyle: 'none', margin: 0, padding: '2px 0', maxHeight: '180px', overflowY: 'auto' }}>
                                   <li
-                                    style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', color: '#6c757d', background: formData.reporterId === 0 ? '#e9f0ff' : 'transparent' }}
+                                    style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', color: '#6c757d', background: reporterActiveIndex === 0 || formData.reporterId === 0 ? '#e9f0ff' : 'transparent' }}
+                                    onMouseEnter={() => setReporterActiveIndex(0)}
                                     onMouseDown={() => { setFormData({ ...formData, reporterId: 0 }); setIsReporterDropdownOpen(false); }}
                                   >-- Người báo --</li>
-                                  {staff.filter(s => !reporterSearch.trim() || s.name.toLowerCase().includes(reporterSearch.trim().toLowerCase())).map(s => (
+                                  {filteredReporterStaff.map((s, index) => (
                                     <li
                                       key={s.id}
-                                      style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', background: formData.reporterId === s.id ? '#e9f0ff' : 'transparent', fontWeight: formData.reporterId === s.id ? 600 : 400 }}
-                                      onMouseEnter={e => { if (formData.reporterId !== s.id) (e.currentTarget as HTMLElement).style.background = '#f8f9fa'; }}
-                                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = formData.reporterId === s.id ? '#e9f0ff' : 'transparent'; }}
+                                      style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', background: reporterActiveIndex === index + 1 || formData.reporterId === s.id ? '#e9f0ff' : 'transparent', fontWeight: formData.reporterId === s.id ? 600 : 400 }}
+                                      onMouseEnter={() => setReporterActiveIndex(index + 1)}
                                       onMouseDown={() => { setFormData({ ...formData, reporterId: s.id }); setIsReporterDropdownOpen(false); }}
                                     >{s.name}</li>
                                   ))}
-                                  {staff.filter(s => !reporterSearch.trim() || s.name.toLowerCase().includes(reporterSearch.trim().toLowerCase())).length === 0 && (
+                                  {filteredReporterStaff.length === 0 && (
                                     <li style={{ padding: '5px 10px', fontSize: '0.75rem', color: '#adb5bd' }}>Không tìm thấy</li>
                                   )}
                                 </ul>
@@ -3495,9 +3618,17 @@ export default function DamageReportsPage() {
                         ) : (
                           <div ref={handlerDropdownRef} style={{ position: 'relative' }}>
                             <div
+                              role="combobox"
+                              tabIndex={0}
+                              aria-expanded={isHandlerDropdownOpen}
                               className="form-select form-select-sm shadow-none d-flex align-items-center justify-content-between"
                               style={{ minHeight: '28px', fontSize: '0.75rem', cursor: 'pointer', userSelect: 'none' }}
-                              onClick={() => { setIsHandlerDropdownOpen(v => !v); setHandlerSearch(''); }}
+                              onClick={() => { setIsHandlerDropdownOpen(v => !v); setHandlerSearch(''); setHandlerActiveIndex(0); }}
+                              onKeyDown={(event) => handleAutocompleteKeyDown(
+                                event, isHandlerDropdownOpen, setIsHandlerDropdownOpen, filteredHandlerStaff.length + 1,
+                                handlerActiveIndex, setHandlerActiveIndex,
+                                (index) => setFormData((prev) => ({ ...prev, handlerId: index === 0 ? undefined : filteredHandlerStaff[index - 1].id })),
+                              )}
                             >
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {formData.handlerId ? (staff.find(s => s.id === formData.handlerId)?.name || '-- Phân công --') : '-- Phân công --'}
@@ -3512,26 +3643,31 @@ export default function DamageReportsPage() {
                                     className="form-control form-control-sm shadow-none"
                                     placeholder="Tìm tên..."
                                     value={handlerSearch}
-                                    onChange={e => setHandlerSearch(e.target.value)}
+                                    onChange={e => { setHandlerSearch(e.target.value); setHandlerActiveIndex(0); }}
                                     onClick={e => e.stopPropagation()}
+                                    onKeyDown={(event) => handleAutocompleteKeyDown(
+                                      event, isHandlerDropdownOpen, setIsHandlerDropdownOpen, filteredHandlerStaff.length + 1,
+                                      handlerActiveIndex, setHandlerActiveIndex,
+                                      (index) => setFormData((prev) => ({ ...prev, handlerId: index === 0 ? undefined : filteredHandlerStaff[index - 1].id })),
+                                    )}
                                     style={{ fontSize: '0.75rem', height: '28px' }}
                                   />
                                 </div>
                                 <ul style={{ listStyle: 'none', margin: 0, padding: '2px 0', maxHeight: '180px', overflowY: 'auto' }}>
                                   <li
-                                    style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', color: '#6c757d', background: !formData.handlerId ? '#e9f0ff' : 'transparent' }}
+                                    style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', color: '#6c757d', background: handlerActiveIndex === 0 || !formData.handlerId ? '#e9f0ff' : 'transparent' }}
+                                    onMouseEnter={() => setHandlerActiveIndex(0)}
                                     onMouseDown={() => { setFormData({ ...formData, handlerId: undefined }); setIsHandlerDropdownOpen(false); }}
                                   >-- Phân công --</li>
-                                  {staff.filter(s => !handlerSearch.trim() || s.name.toLowerCase().includes(handlerSearch.trim().toLowerCase())).map(s => (
+                                  {filteredHandlerStaff.map((s, index) => (
                                     <li
                                       key={s.id}
-                                      style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', background: formData.handlerId === s.id ? '#e9f0ff' : 'transparent', fontWeight: formData.handlerId === s.id ? 600 : 400 }}
-                                      onMouseEnter={e => { if (formData.handlerId !== s.id) (e.currentTarget as HTMLElement).style.background = '#f8f9fa'; }}
-                                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = formData.handlerId === s.id ? '#e9f0ff' : 'transparent'; }}
+                                      style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', background: handlerActiveIndex === index + 1 || formData.handlerId === s.id ? '#e9f0ff' : 'transparent', fontWeight: formData.handlerId === s.id ? 600 : 400 }}
+                                      onMouseEnter={() => setHandlerActiveIndex(index + 1)}
                                       onMouseDown={() => { setFormData({ ...formData, handlerId: s.id }); setIsHandlerDropdownOpen(false); }}
                                     >{s.name}</li>
                                   ))}
-                                  {staff.filter(s => !handlerSearch.trim() || s.name.toLowerCase().includes(handlerSearch.trim().toLowerCase())).length === 0 && (
+                                  {filteredHandlerStaff.length === 0 && (
                                     <li style={{ padding: '5px 10px', fontSize: '0.75rem', color: '#adb5bd' }}>Không tìm thấy</li>
                                   )}
                                 </ul>
@@ -3551,9 +3687,27 @@ export default function DamageReportsPage() {
                         ) : (
                           <div ref={coHandlerDropdownRef} style={{ position: 'relative' }}>
                             <div
+                              role="combobox"
+                              tabIndex={0}
+                              aria-expanded={isCoHandlerDropdownOpen}
                               className="form-control form-control-sm shadow-none d-flex flex-wrap align-items-center gap-1"
                               style={{ minHeight: '28px', fontSize: '0.75rem', cursor: 'pointer', padding: '2px 6px' }}
-                              onClick={() => { setIsCoHandlerDropdownOpen(v => !v); setCoHandlerSearch(''); }}
+                              onClick={() => { setIsCoHandlerDropdownOpen(v => !v); setCoHandlerSearch(''); setCoHandlerActiveIndex(0); }}
+                              onKeyDown={(event) => handleAutocompleteKeyDown(
+                                event, isCoHandlerDropdownOpen, setIsCoHandlerDropdownOpen, filteredCoHandlerStaff.length,
+                                coHandlerActiveIndex, setCoHandlerActiveIndex,
+                                (index) => {
+                                  const selectedStaffId = filteredCoHandlerStaff[index]?.id;
+                                  if (!selectedStaffId) return;
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    coHandlerIds: prev.coHandlerIds.includes(selectedStaffId)
+                                      ? prev.coHandlerIds.filter((id) => id !== selectedStaffId)
+                                      : [...prev.coHandlerIds, selectedStaffId],
+                                  }));
+                                },
+                                false,
+                              )}
                             >
                               {(!formData.coHandlerIds || formData.coHandlerIds.length === 0) && (
                                 <span className="text-muted" style={{ padding: '3px 0' }}>-- Chọn người phối hợp --</span>
@@ -3585,20 +3739,34 @@ export default function DamageReportsPage() {
                                     className="form-control form-control-sm shadow-none"
                                     placeholder="Tìm tên..."
                                     value={coHandlerSearch}
-                                    onChange={e => setCoHandlerSearch(e.target.value)}
+                                    onChange={e => { setCoHandlerSearch(e.target.value); setCoHandlerActiveIndex(0); }}
                                     onClick={e => e.stopPropagation()}
+                                    onKeyDown={(event) => handleAutocompleteKeyDown(
+                                      event, isCoHandlerDropdownOpen, setIsCoHandlerDropdownOpen, filteredCoHandlerStaff.length,
+                                      coHandlerActiveIndex, setCoHandlerActiveIndex,
+                                      (index) => {
+                                        const selectedStaffId = filteredCoHandlerStaff[index]?.id;
+                                        if (!selectedStaffId) return;
+                                        setFormData((prev) => ({
+                                          ...prev,
+                                          coHandlerIds: prev.coHandlerIds.includes(selectedStaffId)
+                                            ? prev.coHandlerIds.filter((id) => id !== selectedStaffId)
+                                            : [...prev.coHandlerIds, selectedStaffId],
+                                        }));
+                                      },
+                                      false,
+                                    )}
                                     style={{ fontSize: '0.75rem', height: '28px' }}
                                   />
                                 </div>
                                 <ul style={{ listStyle: 'none', margin: 0, padding: '2px 0', maxHeight: '150px', overflowY: 'auto' }}>
-                                  {staff.filter(s => !coHandlerSearch.trim() || s.name.toLowerCase().includes(coHandlerSearch.trim().toLowerCase())).map(s => {
+                                  {filteredCoHandlerStaff.map((s, index) => {
                                     const isSelected = formData.coHandlerIds?.includes(s.id);
                                     return (
                                       <li
                                         key={s.id}
-                                        style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', background: isSelected ? '#e9f0ff' : 'transparent', fontWeight: isSelected ? 600 : 400 }}
-                                        onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = '#f8f9fa'; }}
-                                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isSelected ? '#e9f0ff' : 'transparent'; }}
+                                        style={{ padding: '5px 10px', fontSize: '0.75rem', cursor: 'pointer', background: coHandlerActiveIndex === index || isSelected ? '#e9f0ff' : 'transparent', fontWeight: isSelected ? 600 : 400 }}
+                                        onMouseEnter={() => setCoHandlerActiveIndex(index)}
                                         onMouseDown={(e) => { 
                                           e.preventDefault();
                                           if (isSelected) {
@@ -3615,7 +3783,7 @@ export default function DamageReportsPage() {
                                       </li>
                                     );
                                   })}
-                                  {staff.filter(s => !coHandlerSearch.trim() || s.name.toLowerCase().includes(coHandlerSearch.trim().toLowerCase())).length === 0 && (
+                                  {filteredCoHandlerStaff.length === 0 && (
                                     <li style={{ padding: '5px 10px', fontSize: '0.75rem', color: '#adb5bd' }}>Không tìm thấy</li>
                                   )}
                                 </ul>
