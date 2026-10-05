@@ -120,20 +120,21 @@ export class UserService {
     password: string;
     fullName?: string;
     roles?: string[];
+    mustChangePassword?: boolean;
   }): Promise<string> {
     const { v4: uuidv4 } = require('uuid');
     const userId = uuidv4();
     const normalizedEmail = userData.email.toUpperCase();
     const normalizedUserName = userData.email.toUpperCase();
-    const passwordHash = await bcrypt.hash(userData.password, 10);
+    const passwordHash = await bcrypt.hash(userData.password, 12);
 
     await pool.query(
       `INSERT INTO "AspNetUsers" (
         "Id", "UserName", "NormalizedUserName", "Email", "NormalizedEmail",
         "EmailConfirmed", "PasswordHash", "SecurityStamp", "ConcurrencyStamp",
-        "FullName", "CreatedDate"
+        "FullName", "CreatedDate", "MustChangePassword"
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         userId,
         userData.email,
@@ -145,7 +146,8 @@ export class UserService {
         uuidv4(),
         uuidv4(),
         userData.fullName || null,
-        getVNNow()
+        getVNNow(),
+        userData.mustChangePassword ?? false
       ]
     );
 
@@ -186,6 +188,7 @@ export class UserService {
     fullName?: string;
     password?: string;
     roles?: string[];
+    mustChangePassword?: boolean;
   }): Promise<void> {
     const updates: string[] = [];
     const params: any[] = [];
@@ -207,9 +210,13 @@ export class UserService {
     }
 
     if (userData.password) {
-      const passwordHash = await bcrypt.hash(userData.password, 10);
+      const passwordHash = await bcrypt.hash(userData.password, 12);
       updates.push(`"PasswordHash" = $${paramIndex}`);
       params.push(passwordHash);
+      paramIndex++;
+
+      updates.push(`"MustChangePassword" = $${paramIndex}`);
+      params.push(userData.mustChangePassword ?? false);
       paramIndex++;
     }
 

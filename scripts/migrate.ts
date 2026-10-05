@@ -41,11 +41,18 @@ async function migrate() {
         "LockoutEnd" TIMESTAMP,
         "LockoutEnabled" BOOLEAN DEFAULT FALSE,
         "AccessFailedCount" INTEGER DEFAULT 0,
+        "MustChangePassword" BOOLEAN NOT NULL DEFAULT FALSE,
         "FullName" VARCHAR(256),
         "CreatedDate" TIMESTAMP,
         UNIQUE("NormalizedUserName"),
         UNIQUE("NormalizedEmail")
       )
+    `);
+
+    // CREATE TABLE IF NOT EXISTS does not upgrade existing installations.
+    await client.query(`
+      ALTER TABLE "AspNetUsers"
+      ADD COLUMN IF NOT EXISTS "MustChangePassword" BOOLEAN NOT NULL DEFAULT FALSE
     `);
 
     // Create AspNetUserRoles table
@@ -339,4 +346,3 @@ migrate()
     console.error('Migration process failed:', error);
     process.exit(1);
   });
-

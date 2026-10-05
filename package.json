@@ -8,6 +8,8 @@
     "deploy:package": "node scripts/package-deploy.js",
     "start": "next start -p 4001",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit --incremental false",
+    "test": "tsx --test tests/*.test.ts",
     "db:migrate": "node scripts/compile-migrations.js migrate",
     "db:seed": "node scripts/compile-migrations.js seed",
     "db:seed-master": "npx tsx scripts/seed-master-data.ts",

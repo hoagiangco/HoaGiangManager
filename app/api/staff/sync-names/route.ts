@@ -1,25 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/auth/middleware';
+import { requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 import { StaffService } from '@/lib/services/staffService';
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, error } = await authenticate(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Only Admin can sync names
-    if (!user.roles || !user.roles.includes('Admin')) {
-      return NextResponse.json(
-        { status: false, error: 'Chỉ quản trị viên mới được thực hiện thao tác này' },
-        { status: 403 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.StaffManage);
+    if (!authorization.authorized) return authorization.response;
 
     const staffService = new StaffService();
     const result = await staffService.syncNamesWithUsers();
@@ -40,22 +27,8 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, error } = await authenticate(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Only Admin can check name mismatches
-    if (!user.roles || !user.roles.includes('Admin')) {
-      return NextResponse.json(
-        { status: false, error: 'Chỉ quản trị viên mới được thực hiện thao tác này' },
-        { status: 403 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.StaffManage);
+    if (!authorization.authorized) return authorization.response;
 
     const staffService = new StaffService();
     const mismatches = await staffService.getNameMismatches();

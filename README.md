@@ -46,11 +46,11 @@ npm run dev
 
 ### Admin
 - Email: `admin@quanlyvt.com`
-- Password: `Admin@123`
+- Password: giá trị tạm được cung cấp qua `SEED_ADMIN_PASSWORD`; bắt buộc đổi ở lần đăng nhập đầu tiên
 
 ### User
 - Email: `user@quanlyvt.com`
-- Password: `User@123`
+- Password: giá trị tạm được cung cấp qua `SEED_USER_PASSWORD`; bắt buộc đổi ở lần đăng nhập đầu tiên
 
 ## Cấu trúc dự án
 

@@ -2,10 +2,24 @@ import pool from '../lib/db/index';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
+import { validatePassword } from '../lib/auth/password';
 
 dotenv.config();
 
 async function seed() {
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD;
+  const userPassword = process.env.SEED_USER_PASSWORD;
+
+  if (!adminPassword || !userPassword) {
+    throw new Error('SEED_ADMIN_PASSWORD and SEED_USER_PASSWORD are required');
+  }
+
+  const adminPasswordError = validatePassword(adminPassword);
+  const userPasswordError = validatePassword(userPassword);
+  if (adminPasswordError || userPasswordError) {
+    throw new Error(`Seed passwords do not meet policy: ${adminPasswordError || userPasswordError}`);
+  }
+
   const client = await pool.connect();
   
   try {
@@ -29,7 +43,7 @@ async function seed() {
 
     // Create admin user
     const adminId = uuidv4();
-    const adminPasswordHash = await bcrypt.hash('Admin@123', 10);
+    const adminPasswordHash = await bcrypt.hash(adminPassword, 12);
     
     const adminExists = await client.query(
       'SELECT "Id" FROM "AspNetUsers" WHERE "Email" = $1',
@@ -41,9 +55,9 @@ async function seed() {
         INSERT INTO "AspNetUsers" (
           "Id", "UserName", "NormalizedUserName", "Email", "NormalizedEmail",
           "EmailConfirmed", "PasswordHash", "SecurityStamp", "ConcurrencyStamp",
-          "FullName", "CreatedDate"
+          "FullName", "CreatedDate", "MustChangePassword"
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       `, [
         adminId,
         'admin@quanlyvt.com',
@@ -55,7 +69,8 @@ async function seed() {
         uuidv4(),
         uuidv4(),
         'Quản trị viên',
-        new Date()
+        new Date(),
+        true
       ]);
 
       // Assign admin role
@@ -68,7 +83,7 @@ async function seed() {
 
     // Create user
     const userId = uuidv4();
-    const userPasswordHash = await bcrypt.hash('User@123', 10);
+    const userPasswordHash = await bcrypt.hash(userPassword, 12);
     
     const userExists = await client.query(
       'SELECT "Id" FROM "AspNetUsers" WHERE "Email" = $1',
@@ -80,9 +95,9 @@ async function seed() {
         INSERT INTO "AspNetUsers" (
           "Id", "UserName", "NormalizedUserName", "Email", "NormalizedEmail",
           "EmailConfirmed", "PasswordHash", "SecurityStamp", "ConcurrencyStamp",
-          "FullName", "CreatedDate"
+          "FullName", "CreatedDate", "MustChangePassword"
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       `, [
         userId,
         'user@quanlyvt.com',
@@ -94,7 +109,8 @@ async function seed() {
         uuidv4(),
         uuidv4(),
         'Người dùng thường',
-        new Date()
+        new Date(),
+        true
       ]);
 
       // Assign user role
@@ -108,8 +124,8 @@ async function seed() {
     await client.query('COMMIT');
     console.log('✅ Database seed completed successfully!');
     console.log('📝 Default accounts created:');
-    console.log('   Admin: admin@quanlyvt.com / Admin@123');
-    console.log('   User:  user@quanlyvt.com / User@123');
+    console.log('   Admin: admin@quanlyvt.com (temporary password supplied via environment)');
+    console.log('   User:  user@quanlyvt.com (temporary password supplied via environment)');
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('❌ Seed failed:', error);

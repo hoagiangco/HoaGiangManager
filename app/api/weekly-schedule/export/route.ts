@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WeeklyScheduleService } from '@/lib/services/weeklyScheduleService';
+import { requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 
 const svc = new WeeklyScheduleService();
 
@@ -19,6 +21,9 @@ function formatFullDate(dateStr: string, offsetDays: number): string {
 
 export async function GET(req: NextRequest) {
   try {
+    const authorization = await requirePermission(req, Permission.WeeklyScheduleManage);
+    if (!authorization.authorized) return authorization.response;
+
     const { searchParams } = new URL(req.url);
     const weekStart = searchParams.get('weekStart');
     const departmentIdsParam = searchParams.get('departmentIds');

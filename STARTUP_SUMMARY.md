@@ -15,12 +15,12 @@ Server đang chạy tại: **http://localhost:3000**
 
 ### Admin Account
 - **Email**: `admin@quanlyvt.com`
-- **Password**: `Admin@123`
+- **Password**: mật khẩu tạm do người vận hành cung cấp qua `SEED_ADMIN_PASSWORD`
 - **Quyền**: Toàn quyền quản trị
 
 ### User Account
 - **Email**: `user@quanlyvt.com`
-- **Password**: `User@123`
+- **Password**: mật khẩu tạm do người vận hành cung cấp qua `SEED_USER_PASSWORD`
 - **Quyền**: Người dùng thường
 
 ## 📝 Các bước đã thực hiện

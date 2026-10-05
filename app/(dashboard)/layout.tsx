@@ -48,6 +48,10 @@ export default function DashboardLayout({
 
       try {
         const userData = JSON.parse(userStr);
+        if (userData.mustChangePassword) {
+          router.replace('/change-password');
+          return;
+        }
         setUser(userData);
         if (savedCollapsed === 'true') {
           setSidebarCollapsed(true);

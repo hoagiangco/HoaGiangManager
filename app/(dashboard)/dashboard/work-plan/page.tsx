@@ -67,7 +67,7 @@ function WorkPlanPageContent() {
     if (!user) return;
     setLoading(true);
     try {
-      const staffRes = await api.get(`/staff/me?userId=${user.id}`).catch(() => ({ data: { status: false } }));
+      const staffRes = await api.get('/staff/me').catch(() => ({ data: { status: false } }));
       
       let targetStaffId = viewStaffId;
       if (staffRes.data.status) {
@@ -124,7 +124,7 @@ function WorkPlanPageContent() {
     if (!user) return;
     setOverdueLoading(true);
     try {
-      const staffRes = await api.get(`/staff/me?userId=${user.id}`).catch(() => ({ data: { status: false } }));
+      const staffRes = await api.get('/staff/me').catch(() => ({ data: { status: false } }));
       if (!staffRes.data.status && !isAdmin) return;
       const targetStaffId = isAdmin ? 0 : staffRes.data.data.id;
       const res = await api.get(`/work-plans?archive=true&staffId=${targetStaffId}`);

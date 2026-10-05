@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WeeklyScheduleService } from '@/lib/services/weeklyScheduleService';
+import { requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +10,9 @@ const svc = new WeeklyScheduleService();
 /** GET — return selected staff list */
 export async function GET(req: NextRequest) {
   try {
+    const authorization = await requirePermission(req, Permission.WeeklyScheduleManage);
+    if (!authorization.authorized) return authorization.response;
+
     const data = await svc.getSelectedStaff();
     return NextResponse.json({ status: true, data });
   } catch (error: any) {
@@ -18,6 +23,9 @@ export async function GET(req: NextRequest) {
 /** PUT — replace selected staff list */
 export async function PUT(req: NextRequest) {
   try {
+    const authorization = await requirePermission(req, Permission.WeeklyScheduleManage);
+    if (!authorization.authorized) return authorization.response;
+
     const body = await req.json();
     const { staffIds } = body;
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/auth/middleware';
+import { requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 import { DeviceReminderPlanService } from '@/lib/services/deviceReminderPlanService';
 
 export async function POST(
@@ -7,13 +8,9 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { user, error } = await authenticate(request);
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.MaintenanceManage);
+    if (!authorization.authorized) return authorization.response;
+    const { user } = authorization;
 
     const id = Number(params.id);
     if (!id || Number.isNaN(id)) {

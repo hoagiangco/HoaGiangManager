@@ -1,35 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/auth/middleware';
+import { requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
+import { validatePassword } from '@/lib/auth/password';
 import pool from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const { user, error } = await authenticate(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Check if user is admin or superadmin
-    const isAdminUser = user.roles && (user.roles.includes('Admin') || user.roles.includes('SuperAdmin'));
-    
-    // Check if user wants to change their own password (always allowed if logged in)
-    const isSelfEdit = user.userId === params.id;
-    
-    // Normal admins can change passwords for other users, but cannot change passwords for SuperAdmin
-    if (!isAdminUser && !isSelfEdit) {
-      return NextResponse.json(
-        { status: false, error: 'Chỉ admin mới có quyền đổi mật khẩu' },
-        { status: 403 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.UserManage);
+    if (!authorization.authorized) return authorization.response;
+    const { user } = authorization;
 
     const { newPassword } = await request.json();
 
@@ -40,9 +24,10 @@ export async function PUT(
       );
     }
 
-    if (newPassword.length < 6) {
+    const passwordError = validatePassword(String(newPassword));
+    if (passwordError) {
       return NextResponse.json(
-        { status: false, error: 'Mật khẩu phải có ít nhất 6 ký tự' },
+        { status: false, error: passwordError },
         { status: 400 }
       );
     }
@@ -68,7 +53,7 @@ export async function PUT(
 
     const targetRoles = userResult.rows[0].roles || [];
 
-    if (targetRoles.includes('SuperAdmin') && !isSelfEdit) {
+    if (targetRoles.includes('SuperAdmin') && user.userId !== userId) {
       return NextResponse.json(
         { status: false, error: 'Forbidden: Không được phép đổi mật khẩu SuperAdmin' },
         { status: 403 }
@@ -76,12 +61,17 @@ export async function PUT(
     }
 
     // Hash new password
-    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const passwordHash = await bcrypt.hash(newPassword, 12);
 
     // Update password
     await pool.query(
-      'UPDATE "AspNetUsers" SET "PasswordHash" = $1 WHERE "Id" = $2',
-      [passwordHash, userId]
+      `UPDATE "AspNetUsers"
+       SET "PasswordHash" = $1,
+           "MustChangePassword" = FALSE,
+           "AccessFailedCount" = 0,
+           "SecurityStamp" = $3
+       WHERE "Id" = $2`,
+      [passwordHash, userId, uuidv4()]
     );
 
     return NextResponse.json({

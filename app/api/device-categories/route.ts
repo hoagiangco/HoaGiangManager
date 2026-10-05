@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/auth/middleware';
+import { authenticate, requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 import { DeviceCategoryService } from '@/lib/services/deviceCategoryService';
 
 export async function GET(request: NextRequest) {
@@ -31,14 +32,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, error } = await authenticate(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.DeviceCategoryManage);
+    if (!authorization.authorized) return authorization.response;
 
     const categoryData = await request.json();
     const categoryService = new DeviceCategoryService();

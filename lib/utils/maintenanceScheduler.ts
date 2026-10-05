@@ -1,156 +1,110 @@
-import { addDays, addMonths, addYears, setDate } from 'date-fns';
-
-type IntervalUnit = 'day' | 'week' | 'month' | 'year';
-
+﻿export type IntervalUnit = 'day' | 'week' | 'month' | 'year';
 export interface ScheduleConfig {
   scheduleType: 'interval' | 'specific_dates';
-  specificDays?: number[]; // 1-31
-  specificDaysOfWeek?: number[]; // 0-6 (0 = Sunday, 1 = Monday, ...)
+  specificDays?: number[];
+  specificDaysOfWeek?: number[];
 }
+const DAY = 86400000;
 
-export const calculateNextDueDate = (
-  currentDueDate: Date,
-  intervalValue: number,
-  intervalUnit: IntervalUnit,
-  scheduleConfig?: ScheduleConfig | null,
-  isFirstCalculation: boolean = false,
-  startFrom?: Date | null
-): Date => {
-  let current = new Date(currentDueDate);
-  current.setHours(0, 0, 0, 0);
-
-  // If specific dates and first calculation, ensure we don't schedule in the past
-  // by using today as the minimum base date.
-  if (scheduleConfig?.scheduleType === 'specific_dates' && isFirstCalculation) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (current < today) {
-      current = today;
-    }
+/** Date arithmetic uses UTC midnight to represent a Vietnamese calendar day. */
+export function maintenanceDay(value: string | Date): string {
+  let day: string;
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}(?:$|T.*$)/.test(value) &&
+      !/[zZ]|[+-]\d{2}:?\d{2}$/.test(value.slice(10))) {
+    day = value.slice(0, 10);
+  } else {
+    const instant = new Date(value);
+    if (!Number.isFinite(instant.getTime())) throw new Error('Ngày bảo trì không hợp lệ');
+    day = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(instant);
   }
-
-  // Default to standard interval logic if no specific dates config
-  if (!scheduleConfig || scheduleConfig.scheduleType !== 'specific_dates') {
-    if (isFirstCalculation) {
-      return new Date(current);
-    }
-
-    if (startFrom) {
-      const anchor = new Date(startFrom);
-      anchor.setHours(0, 0, 0, 0);
-      let nextDate = new Date(anchor);
-      
-      let iterations = 0;
-      while (nextDate <= current && iterations < 10000) {
-        switch (intervalUnit) {
-          case 'day': nextDate.setDate(nextDate.getDate() + intervalValue); break;
-          case 'week': nextDate.setDate(nextDate.getDate() + intervalValue * 7); break;
-          case 'month': nextDate.setMonth(nextDate.getMonth() + intervalValue); break;
-          case 'year': nextDate.setFullYear(nextDate.getFullYear() + intervalValue); break;
-        }
-        iterations++;
-      }
-      return nextDate;
-    }
-
-    // Fallback if no startFrom is provided
-    const nextDate = new Date(current);
-    switch (intervalUnit) {
-      case 'day': nextDate.setDate(nextDate.getDate() + intervalValue); break;
-      case 'week': nextDate.setDate(nextDate.getDate() + intervalValue * 7); break;
-      case 'month': nextDate.setMonth(nextDate.getMonth() + intervalValue); break;
-      case 'year': nextDate.setFullYear(nextDate.getFullYear() + intervalValue); break;
-    }
-    return nextDate;
+  const parsed = new Date(`${day}T00:00:00.000Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== day) {
+    throw new Error('Ngày bảo trì không hợp lệ');
   }
-
-  // Logic for specific dates
-  if (intervalUnit === 'week') {
-    const validDays = scheduleConfig.specificDaysOfWeek;
-    if (!validDays || validDays.length === 0) return addDays(current, 7); // Fallback
-
-    const currentDayOfWeek = current.getDay();
-
-    // Sort days to ensure they are in order
-    const sortedDays = [...validDays].sort((a, b) => a - b);
-
-    // Helper: given a base date and a target day-of-week, return the date of that
-    // weekday within the same week (week starts on Sunday).
-    const getWeekdayInSameWeek = (base: Date, targetDay: number): Date => {
-      // Move back to Sunday (start of week)
-      const sundayOffset = -base.getDay();
-      const sunday = addDays(base, sundayOffset);
-      return addDays(sunday, targetDay);
-    };
-
-    if (isFirstCalculation) {
-      // Find the first valid weekday in the current week that is strictly > current
-      // (or == current only if it falls exactly on that weekday, we still want next occurrence)
-      for (const day of sortedDays) {
-        if (day >= currentDayOfWeek) {
-          return getWeekdayInSameWeek(current, day);
-        }
-      }
-      // No valid day remaining this week — jump to first valid day next interval
-      const firstValidDay = sortedDays[0];
-      const nextBase = addDays(current, intervalValue * 7);
-      return getWeekdayInSameWeek(nextBase, firstValidDay);
-    } else {
-      // Not first calculation: next occurrence must be strictly AFTER current.
-      // First check same week for any remaining valid days.
-      for (const day of sortedDays) {
-        if (day > currentDayOfWeek) {
-          return getWeekdayInSameWeek(current, day);
-        }
-      }
-      // No valid day left this week — advance by intervalValue weeks and take first valid day.
-      const firstValidDay = sortedDays[0];
-      const nextBase = addDays(current, intervalValue * 7);
-      return getWeekdayInSameWeek(nextBase, firstValidDay);
-    }
-  } 
-  
-  else if (intervalUnit === 'month' || intervalUnit === 'year') {
-    const validDates = scheduleConfig.specificDays;
-    if (!validDates || validDates.length === 0) {
-       // fallback
-       return intervalUnit === 'month' ? addMonths(current, intervalValue) : addYears(current, intervalValue);
-    }
-
-    const currentDateNum = current.getDate();
-    const sortedDates = [...validDates].sort((a, b) => a - b);
-    
-    // Helper to get max days in month to handle end of month correctly
-    const clampDate = (dateObj: Date, dayToSet: number) => {
-      const year = dateObj.getFullYear();
-      const month = dateObj.getMonth();
-      const maxDaysInMonth = new Date(year, month + 1, 0).getDate();
-      return setDate(dateObj, Math.min(dayToSet, maxDaysInMonth));
-    };
-
-    if (isFirstCalculation) {
-      // Find the first valid date in the current month >= today
-      for (const day of sortedDates) {
-        if (day >= currentDateNum) {
-           return clampDate(current, day);
-        }
-      }
-      // If none found in current month, jump to the next interval
-      let nextBase = intervalUnit === 'month' ? addMonths(current, intervalValue) : addYears(current, intervalValue);
-      return clampDate(nextBase, sortedDates[0]);
-    } else {
-      // Not first calculation: find next date > today in the same month
-      for (const day of sortedDates) {
-         if (day > currentDateNum) {
-            return clampDate(current, day);
-         }
-      }
-      // Jump to the next interval
-      let nextBase = intervalUnit === 'month' ? addMonths(current, intervalValue) : addYears(current, intervalValue);
-      return clampDate(nextBase, sortedDates[0]);
-    }
-  }
-
-  // Fallback for days unit with specific dates
-  return isFirstCalculation ? current : addDays(current, intervalValue);
+  return day;
+}
+export const maintenanceToday = () => maintenanceDay(new Date());
+const utc = (day: string) => new Date(`${day}T00:00:00.000Z`);
+const dayOf = (date: Date) => {
+  if (!Number.isFinite(date.getTime()) || date.getUTCFullYear() > 9999) throw new Error('Ngày bảo trì vượt phạm vi hỗ trợ');
+  return date.toISOString().slice(0, 10);
 };
+export function maintenanceDaysBetween(due: string | Date, today: string | Date = maintenanceToday()): number {
+  return (utc(maintenanceDay(due)).getTime() - utc(maintenanceDay(today)).getTime()) / DAY;
+}
+function monthDate(year: number, month: number, day: number): Date {
+  const base = new Date(Date.UTC(year, month, 1));
+  const last = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)).getUTCDate();
+  base.setUTCDate(Math.min(day, last));
+  return base;
+}
+function selectedDays(values: number[] | undefined, min: number, max: number): number[] {
+  if (!Array.isArray(values) || !values.length || values.some(v => !Number.isInteger(v) || v < min || v > max)) {
+    throw new Error('Ngày lặp bảo trì không hợp lệ');
+  }
+  return Array.from(new Set(values)).sort((a, b) => a - b);
+}
+/** Every occurrence derives from StartFrom, never completion. First calculation is inclusive.
+ * Week cycles start Sunday; annual schedules retain StartFrom's month.
+ */
+export function calculateNextDueDay(
+  cutoff: string | Date, interval: number, unit: IntervalUnit, config?: ScheduleConfig | null,
+  inclusive = false, startFrom?: string | Date | null,
+): string {
+  if (!Number.isSafeInteger(interval) || interval <= 0 || !['day', 'week', 'month', 'year'].includes(unit)) {
+    throw new Error('Chu kỳ bảo trì phải là số nguyên dương với đơn vị hợp lệ');
+  }
+  const current = utc(maintenanceDay(cutoff));
+  const anchor = utc(maintenanceDay(startFrom || cutoff));
+  const threshold = Math.max(current.getTime() + (inclusive ? 0 : DAY), anchor.getTime());
+  const target = new Date(threshold);
+  const specific = config?.scheduleType === 'specific_dates';
+  const weekdays = specific && unit === 'week' ? selectedDays(config.specificDaysOfWeek, 0, 6) : null;
+  const dates = specific && (unit === 'month' || unit === 'year') ? selectedDays(config.specificDays, 1, 31) : null;
+  if (!weekdays && !dates && (unit === 'day' || unit === 'week')) {
+    const step = interval * (unit === 'week' ? 7 : 1) * DAY;
+    return dayOf(new Date(anchor.getTime() + Math.max(0, Math.ceil((threshold - anchor.getTime()) / step)) * step));
+  }
+  const anchorMonth = anchor.getUTCFullYear() * 12 + anchor.getUTCMonth();
+  const targetMonth = target.getUTCFullYear() * 12 + target.getUTCMonth();
+  const monthStep = interval * (unit === 'year' ? 12 : 1);
+  const weekStart = anchor.getTime() - anchor.getUTCDay() * DAY;
+  let cycle = weekdays
+    ? Math.max(0, Math.floor((threshold - weekStart) / (interval * 7 * DAY)))
+    : Math.max(0, Math.floor((targetMonth - anchorMonth) / monthStep));
+  for (let attempt = 0; attempt < 2; attempt++, cycle++) {
+    const candidates = weekdays
+      ? weekdays.map(d => new Date(weekStart + (cycle * interval * 7 + d) * DAY))
+      : (dates || [anchor.getUTCDate()]).map(d =>
+          monthDate(anchor.getUTCFullYear(), anchor.getUTCMonth() + cycle * monthStep, d));
+    const match = candidates.find(date => date.getTime() >= threshold);
+    if (match) return dayOf(match);
+  }
+  throw new Error('Không tính được ngày bảo trì tiếp theo');
+}
+/** Compatibility wrapper. Returned dates are UTC midnight. */
+export const calculateNextDueDate = (
+  current: Date, interval: number, unit: IntervalUnit, config?: ScheduleConfig | null,
+  inclusive = false, startFrom?: Date | null,
+): Date => utc(calculateNextDueDay(current, interval, unit, config, inclusive, startFrom));
+export interface ScheduledPlan {
+  startFrom?: string | Date | null;
+  endAt?: string | Date | null;
+  nextDueDate?: string | Date | null;
+  intervalValue?: number | null;
+  intervalUnit?: string | null;
+  metadata?: { scheduleConfig?: ScheduleConfig | null } | null;
+}
+/** Independent of the entered completion date; repeated advancement on the same day is a no-op. */
+export function advanceScheduledDueDay(plan: ScheduledPlan, asOf = maintenanceToday()): string | null {
+  if (!plan.nextDueDate) return null;
+  const due = maintenanceDay(plan.nextDueDate);
+  const today = maintenanceDay(asOf);
+  const next = due > today || !plan.intervalValue || !plan.intervalUnit ? due : calculateNextDueDay(
+    today, plan.intervalValue, plan.intervalUnit as IntervalUnit, plan.metadata?.scheduleConfig,
+    false, plan.startFrom || due,
+  );
+  return plan.endAt && next > maintenanceDay(plan.endAt) ? null : next;
+}

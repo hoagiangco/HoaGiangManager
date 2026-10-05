@@ -14,7 +14,7 @@ import { DeviceCategory, EventType, DeviceVM, DamageReportVM } from '@/types';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
 import Loading from '@/components/Loading';
 import { getDamageReportPermissions, isAdmin, isSupervisor } from '@/lib/auth/permissions';
-import { calculateNextDueDate, ScheduleConfig } from '@/lib/utils/maintenanceScheduler';
+import { calculateNextDueDay, maintenanceToday, maintenanceDay, maintenanceDaysBetween, ScheduleConfig } from '@/lib/utils/maintenanceScheduler';
 
 import { useAuth } from '@/lib/contexts/AuthContext';
 
@@ -813,8 +813,7 @@ function MaintenancePageContent() {
 
   // Memo 1: HEAVY — nhóm plans + tính toán date/report. Chỉ chạy lại khi data thực sự thay đổi.
   const groupedPlansBase = React.useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = new Date(maintenanceToday());
 
     const groups: Record<string, {
       batchId: string;
@@ -849,7 +848,7 @@ function MaintenancePageContent() {
           inactiveCount: 0,
           maintenanceType: plan.metadata?.maintenanceType || null,
           maintenanceProvider: plan.metadata?.maintenanceProvider || null,
-          metadata: plan.metadata || null,
+          metadata: { ...plan.metadata, maintenancePlanId: plan.id },
           canModifyDevices: true,
           lastMaintenanceDate: null,
           nextMaintenanceDate: null,
@@ -874,7 +873,7 @@ function MaintenancePageContent() {
       const completedDates: Date[] = [];
       group.plans.forEach((plan) => {
         if (plan.lastCompletedEvent) {
-          const date = plan.lastCompletedEvent.reportDate || plan.lastCompletedEvent.endDate;
+          const date = plan.lastCompletedEvent.endDate || plan.lastCompletedEvent.reportDate;
           if (date instanceof Date && !isNaN(date.getTime())) {
             completedDates.push(date);
           } else if (typeof date === 'string') {
@@ -884,7 +883,7 @@ function MaintenancePageContent() {
         }
         const currentEvent = planEvents[plan.id];
         if (currentEvent && currentEvent.status === 'completed') {
-          const eventDateStr = currentEvent.eventDate || currentEvent.createdAt || currentEvent.endDate;
+          const eventDateStr = currentEvent.endDate || currentEvent.eventDate || currentEvent.createdAt;
           if (eventDateStr) {
             const parsedDate = new Date(eventDateStr);
             if (!isNaN(parsedDate.getTime())) completedDates.push(parsedDate);
@@ -917,8 +916,7 @@ function MaintenancePageContent() {
       } else {
         group.canModifyDevices = activePlans.every((plan) => {
           if (!plan.nextDueDate) return false;
-          const dueDate = new Date(plan.nextDueDate);
-          dueDate.setHours(0, 0, 0, 0);
+          const dueDate = new Date(maintenanceDay(plan.nextDueDate));
           return dueDate > today;
         });
       }
@@ -936,8 +934,7 @@ function MaintenancePageContent() {
       (group as any).plannedCount = plannedCount;
 
       if (group.nextMaintenanceDate && group.batchId !== 'no-batch') {
-        const nextDate = new Date(group.nextMaintenanceDate);
-        nextDate.setHours(0, 0, 0, 0);
+        const nextDate = new Date(maintenanceDay(group.nextMaintenanceDate));
         const relatedReports = maintenanceReports.filter(r =>
           r.maintenanceBatchId && group.batchId &&
           String(r.maintenanceBatchId).toLowerCase() === String(group.batchId).toLowerCase()
@@ -959,8 +956,7 @@ function MaintenancePageContent() {
 
   // Memo 2: LIGHT — chỉ filter + sort trên kết quả đã nhóm. Phụ thuộc filter state.
   const groupedPlans = React.useMemo(() => {
-    const todayDate = new Date();
-    todayDate.setHours(0, 0, 0, 0);
+    const todayDate = new Date(maintenanceToday());
 
     // Build staffId→departmentId lookup map once
     const staffDeptMap = new Map<number, number>();
@@ -1289,7 +1285,7 @@ function MaintenancePageContent() {
       for (const plan of plans) {
         try {
           // Tính toán nextDueDate mới
-          let newNextDueDate = plan.nextDueDate ? new Date(plan.nextDueDate) : null;
+          let newNextDueDate = plan.nextDueDate ? new Date(maintenanceDay(plan.nextDueDate)) : null;
           
           const oldScheduleConfig = plan.metadata?.scheduleConfig;
           const scheduleConfigChanged = editScheduleType !== 'interval' 
@@ -1316,9 +1312,7 @@ function MaintenancePageContent() {
           if ((intervalChanged || startFromChanged || scheduleConfigChanged) && effectiveStartFrom) {
             // Tính toán lịch tiếp theo dựa trên ngày hiện tại và neo vào startFrom
             // Tuyệt đối không dùng ngày hoàn thành báo cáo để tính lịch (theo nguyên tắc không phụ thuộc báo cáo)
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            newNextDueDate = calculateNextDueDate(today, editIntervalValue, editIntervalUnit, scheduleConfig, false, new Date(effectiveStartFrom));
+            newNextDueDate = new Date(calculateNextDueDay(maintenanceToday(), editIntervalValue, editIntervalUnit, scheduleConfig, true, effectiveStartFrom));
           }
 
           const metadata = {
@@ -1514,6 +1508,8 @@ function MaintenancePageContent() {
           if (!eventId) {
             const eventMetadata = {
               ...(plan.metadata || {}),
+              maintenancePlanId: plan.id,
+              scheduledDueDate: plan.nextDueDate ? maintenanceDay(plan.nextDueDate) : undefined,
               maintenanceBatchId: plan.metadata?.maintenanceBatchId || (selectedGroup.batchId !== 'no-batch' ? selectedGroup.batchId : null),
             };
 
@@ -1568,7 +1564,7 @@ function MaintenancePageContent() {
               startDate: batchStartDate,
               notes: batchStartNotes.trim() || '',
               staffId: batchStartStaffId || existingEvent.staffId || null,
-              metadata: plan.metadata || null,
+              metadata: { ...plan.metadata, maintenancePlanId: plan.id },
             });
 
             if (!response.data.status) {
@@ -1660,6 +1656,8 @@ function MaintenancePageContent() {
           if (!eventId) {
             const eventMetadata = {
               ...(plan.metadata || {}),
+              maintenancePlanId: plan.id,
+              scheduledDueDate: plan.nextDueDate ? maintenanceDay(plan.nextDueDate) : undefined,
               maintenanceBatchId: plan.metadata?.maintenanceBatchId || (selectedGroup.batchId !== 'no-batch' ? selectedGroup.batchId : null),
             };
 
@@ -1719,50 +1717,12 @@ function MaintenancePageContent() {
               endDate: batchCompleteDate,
               notes: batchCompleteNotes.trim() || '',
               staffId: batchCompleteStaffId || existingEvent.staffId || null,
-              metadata: plan.metadata || null,
+              metadata: { ...plan.metadata, maintenancePlanId: plan.id },
             });
 
             if (!response.data.status) {
               errorCount++;
               continue;
-            }
-          }
-
-          // Update plan's nextDueDate based on completion date
-          if (plan.intervalValue && plan.intervalUnit) {
-            const completionDate = new Date(batchCompleteDate);
-            completionDate.setHours(0, 0, 0, 0);
-
-            // Calculate next due date from completion date
-            const nextDueDate = new Date(completionDate);
-            if (plan.intervalUnit === 'day') {
-              nextDueDate.setDate(nextDueDate.getDate() + plan.intervalValue);
-            } else if (plan.intervalUnit === 'week') {
-              nextDueDate.setDate(nextDueDate.getDate() + plan.intervalValue * 7);
-            } else if (plan.intervalUnit === 'month') {
-              nextDueDate.setMonth(nextDueDate.getMonth() + plan.intervalValue);
-            } else if (plan.intervalUnit === 'year') {
-              nextDueDate.setFullYear(nextDueDate.getFullYear() + plan.intervalValue);
-            }
-
-            // Update plan's nextDueDate
-            try {
-              await api.put(`/device-reminder-plans/${plan.id}`, {
-                deviceId: plan.deviceId,
-                reminderType: plan.reminderType,
-                eventTypeId: plan.eventTypeId,
-                title: plan.title,
-                description: plan.description,
-                intervalValue: plan.intervalValue,
-                intervalUnit: plan.intervalUnit,
-                startFrom: plan.startFrom ? formatDateInput(plan.startFrom) : null,
-                endAt: plan.endAt ? formatDateInput(plan.endAt) : null,
-                nextDueDate: formatDateInput(nextDueDate),
-                isActive: plan.isActive,
-                metadata: plan.metadata,
-              });
-            } catch (error) {
-              console.error(`Error updating plan ${plan.id} nextDueDate:`, error);
             }
           }
 
@@ -1776,39 +1736,6 @@ function MaintenancePageContent() {
       if (successCount > 0) {
         toast.success(`Đã ghi nhận hoàn thành thành công ${successCount} kế hoạch`);
 
-        // Cập nhật nextDueDate trong state local ngay lập tức để ẩn nút "Đã xong"
-        if (selectedGroup) {
-          setAllPlans(prevPlans => {
-            return prevPlans.map(plan => {
-              // Tìm plan trong batch đã hoàn thành
-              const planInBatch = selectedGroup.plans.find(p => p.id === plan.id);
-              if (planInBatch && plan.isActive && plan.intervalValue && plan.intervalUnit) {
-                const completionDate = new Date(batchCompleteDate);
-                completionDate.setHours(0, 0, 0, 0);
-
-                // Tính toán nextDueDate mới
-                const nextDueDate = new Date(completionDate);
-                if (plan.intervalUnit === 'day') {
-                  nextDueDate.setDate(nextDueDate.getDate() + plan.intervalValue);
-                } else if (plan.intervalUnit === 'week') {
-                  nextDueDate.setDate(nextDueDate.getDate() + plan.intervalValue * 7);
-                } else if (plan.intervalUnit === 'month') {
-                  nextDueDate.setMonth(nextDueDate.getMonth() + plan.intervalValue);
-                } else if (plan.intervalUnit === 'year') {
-                  nextDueDate.setFullYear(nextDueDate.getFullYear() + plan.intervalValue);
-                }
-
-                return {
-                  ...plan,
-                  nextDueDate: nextDueDate,
-                };
-              }
-              return plan;
-            });
-          });
-        }
-
-        // Tự động tạo báo cáo (Trạng thái hoàn thành - 4)
         if (selectedGroup && selectedGroup.batchId !== 'no-batch' && batchAutoCreateReport) {
           const deviceListText = deviceNamesForReport.join('\n');
           await handleGenerateReport(
@@ -2131,7 +2058,9 @@ function MaintenancePageContent() {
           notes: startNotes.trim() || null,
           staffId: startStaffId || null,
           metadata: {
-            maintenanceBatchId: selectedEvent.maintenanceBatchId
+            maintenanceBatchId: selectedEvent.maintenanceBatchId,
+            maintenancePlanId: selectedPlan?.id,
+            scheduledDueDate: selectedPlan?.nextDueDate ? maintenanceDay(selectedPlan.nextDueDate) : undefined
           }
         });
       } else {
@@ -2146,7 +2075,9 @@ function MaintenancePageContent() {
           notes: startNotes.trim() || null,
           staffId: startStaffId || null,
           metadata: {
-            maintenanceBatchId: selectedEvent.maintenanceBatchId
+            maintenanceBatchId: selectedEvent.maintenanceBatchId,
+            maintenancePlanId: selectedPlan?.id,
+            scheduledDueDate: selectedPlan?.nextDueDate ? maintenanceDay(selectedPlan.nextDueDate) : undefined
           }
         });
       }
@@ -2222,7 +2153,7 @@ function MaintenancePageContent() {
           endDate: completeDate,
           staffId: completeStaffId || null,
           notes: completeNotes.trim() || null,
-          metadata: selectedPlan.metadata || {},
+          metadata: { ...selectedPlan.metadata, maintenancePlanId: selectedPlan.id, scheduledDueDate: selectedPlan.nextDueDate ? maintenanceDay(selectedPlan.nextDueDate) : undefined },
         };
 
         const createResponse = await api.post('/events', eventData);
@@ -2243,50 +2174,12 @@ function MaintenancePageContent() {
           endDate: completeDate,
           notes: completeNotes.trim() || null,
           staffId: completeStaffId || null,
-          metadata: selectedPlan ? selectedPlan.metadata : {},
+          metadata: selectedPlan ? { ...selectedPlan.metadata, maintenancePlanId: selectedPlan.id } : {},
         });
 
         if (!response.data.status) {
           toast.error(response.data.error || 'Lỗi khi cập nhật trạng thái');
           return;
-        }
-      }
-
-      // Update plan's nextDueDate if this is a new completion
-      if (selectedPlan && selectedPlan.intervalValue && selectedPlan.intervalUnit) {
-        const completionDate = new Date(completeDate);
-        completionDate.setHours(0, 0, 0, 0);
-
-        // Calculate next due date from completion date
-        const nextDueDate = new Date(completionDate);
-        if (selectedPlan.intervalUnit === 'day') {
-          nextDueDate.setDate(nextDueDate.getDate() + selectedPlan.intervalValue);
-        } else if (selectedPlan.intervalUnit === 'week') {
-          nextDueDate.setDate(nextDueDate.getDate() + selectedPlan.intervalValue * 7);
-        } else if (selectedPlan.intervalUnit === 'month') {
-          nextDueDate.setMonth(nextDueDate.getMonth() + selectedPlan.intervalValue);
-        } else if (selectedPlan.intervalUnit === 'year') {
-          nextDueDate.setFullYear(nextDueDate.getFullYear() + selectedPlan.intervalValue);
-        }
-
-        // Update plan's nextDueDate
-        try {
-          await api.put(`/device-reminder-plans/${selectedPlan.id}`, {
-            deviceId: selectedPlan.deviceId,
-            reminderType: selectedPlan.reminderType,
-            eventTypeId: selectedPlan.eventTypeId,
-            title: selectedPlan.title,
-            description: selectedPlan.description,
-            intervalValue: selectedPlan.intervalValue,
-            intervalUnit: selectedPlan.intervalUnit,
-            startFrom: selectedPlan.startFrom ? formatDateInput(selectedPlan.startFrom) : null,
-            endAt: selectedPlan.endAt ? formatDateInput(selectedPlan.endAt) : null,
-            nextDueDate: formatDateInput(nextDueDate),
-            isActive: selectedPlan.isActive,
-            metadata: selectedPlan.metadata,
-          });
-        } catch (error) {
-          console.error('Error updating plan nextDueDate:', error);
         }
       }
 
@@ -2569,15 +2462,13 @@ function MaintenancePageContent() {
       let stt = 1;
       
       groupedPlans.forEach(group => {
-        const today = new Date();
-        today.setHours(0,0,0,0);
+        const today = new Date(maintenanceToday());
         
         let statusStr = '';
         let remainingStr = '';
         
         if (group.nextMaintenanceDate) {
-          const nextDate = new Date(group.nextMaintenanceDate);
-          nextDate.setHours(0,0,0,0);
+          const nextDate = new Date(maintenanceDay(group.nextMaintenanceDate));
           const diffTime = nextDate.getTime() - today.getTime();
           const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
           
@@ -3549,12 +3440,10 @@ function MaintenancePageContent() {
                       };
 
                       // Tính toán màu sắc cho header dựa trên ngày đến hạn
-                      const today = new Date();
-                      today.setHours(0, 0, 0, 0);
+                      const today = new Date(maintenanceToday());
                       let headerBgClass = '';
                       if (group.nextMaintenanceDate) {
-                        const nextDate = new Date(group.nextMaintenanceDate);
-                        nextDate.setHours(0, 0, 0, 0);
+                        const nextDate = new Date(maintenanceDay(group.nextMaintenanceDate));
                         const daysUntilDue = Math.ceil((nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
                         if (daysUntilDue < 0) {
@@ -3612,10 +3501,8 @@ function MaintenancePageContent() {
                                         {group.nextMaintenanceDate && (() => {
                                           const nextDate = group.nextMaintenanceDate instanceof Date
                                             ? group.nextMaintenanceDate
-                                            : new Date(group.nextMaintenanceDate);
-                                          const today = new Date();
-                                          today.setHours(0, 0, 0, 0);
-                                          nextDate.setHours(0, 0, 0, 0);
+                                            : new Date(maintenanceDay(group.nextMaintenanceDate));
+                                          const today = new Date(maintenanceToday());
                                           const daysUntilDue = Math.ceil((nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
                                           
                                           const statusText = daysUntilDue > 0 ? `còn lại ${daysUntilDue} ngày` : daysUntilDue === 0 ? 'hôm nay' : `quá ${Math.abs(daysUntilDue)} ngày`;
@@ -3694,12 +3581,10 @@ function MaintenancePageContent() {
                                     {group.activeCount > 0 && (isUserAdmin || group.metadata?.assignedStaffId === currentUserStaffId) && (
                                       <>
                                         {(() => {
-                                          const today = new Date();
-                                          today.setHours(0, 0, 0, 0);
+                                          const today = new Date(maintenanceToday());
                                           const hasDuePlans = group.plans.some((plan) => {
                                             if (!plan.isActive || !plan.nextDueDate) return false;
-                                            const dueDate = new Date(plan.nextDueDate);
-                                            dueDate.setHours(0, 0, 0, 0);
+                                            const dueDate = new Date(maintenanceDay(plan.nextDueDate));
                                             return dueDate <= today;
                                           });
                                           let inProgressCount = 0;
@@ -4166,8 +4051,7 @@ function MaintenancePageContent() {
                                       if (event.status === 'completed') {
                                         // Chỉ áp dụng logic "Chờ đợt tiếp theo" cho lịch đang hoạt động
                                         if (isPlanActive) {
-                                          const today = new Date();
-                                          today.setHours(0, 0, 0, 0);
+                                          const today = new Date(maintenanceToday());
                                           const endDate = event.endDate ? new Date(event.endDate) : null;
                                           const eventDate = event.eventDate ? new Date(event.eventDate) : null;
                                           const completedDate = endDate || eventDate;
@@ -4969,10 +4853,7 @@ function MaintenancePageContent() {
                         )}
 
                         {nextMaintenanceDate && (() => {
-                          const daysUntilDue = Math.ceil(
-                            (new Date(nextMaintenanceDate).getTime() - new Date().getTime()) /
-                            (1000 * 60 * 60 * 24)
-                          );
+                          const daysUntilDue = maintenanceDaysBetween(nextMaintenanceDate);
                           return (
                             <div className="col-6">
                               <div className="text-muted small mb-1">BT sắp đến</div>

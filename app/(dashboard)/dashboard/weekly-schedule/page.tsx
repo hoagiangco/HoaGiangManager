@@ -698,10 +698,25 @@ export default function WeeklySchedulePage() {
   const goToThisWeek = () => setCurrentMonday(getMondayOf(new Date()));
 
   // ── Print
-  const handlePrint = () => {
+  const handlePrint = async () => {
     const deptIds = selectedDeptId > 0 ? selectedDeptId.toString() : '';
-    const url = `/api/weekly-schedule/export?weekStart=${weekStartStr}${deptIds ? `&departmentIds=${deptIds}` : ''}`;
-    window.open(url, '_blank');
+    const url = `/weekly-schedule/export?weekStart=${weekStartStr}${deptIds ? `&departmentIds=${deptIds}` : ''}`;
+    const printWindow = window.open('', '_blank');
+
+    if (!printWindow) {
+      toast.error('Trình duyệt đã chặn cửa sổ in. Vui lòng cho phép popup và thử lại.');
+      return;
+    }
+
+    try {
+      const response = await api.get<string>(url, { responseType: 'text' });
+      printWindow.document.open();
+      printWindow.document.write(response.data);
+      printWindow.document.close();
+    } catch {
+      printWindow.close();
+      toast.error('Không thể tạo bản in lịch tuần');
+    }
   };
 
   if (!isSuperAdmin) {

@@ -3,9 +3,17 @@ import pool from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { generateToken } from '@/lib/auth/jwt';
+import { validatePassword } from '@/lib/auth/password';
 
 export async function POST(request: NextRequest) {
   try {
+    if (process.env.ALLOW_PUBLIC_REGISTRATION !== 'true') {
+      return NextResponse.json(
+        { status: false, error: 'Public registration is disabled' },
+        { status: 404 }
+      );
+    }
+
     const { email, password, fullName } = await request.json();
 
     if (!email || !password) {
@@ -15,9 +23,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (password.length < 6) {
+    const passwordError = validatePassword(String(password));
+    if (passwordError) {
       return NextResponse.json(
-        { status: false, error: 'Mật khẩu phải có ít nhất 6 ký tự' },
+        { status: false, error: passwordError },
         { status: 400 }
       );
     }
@@ -49,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = uuidv4();
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, 12);
     const normalizedEmail = email.toUpperCase();
     const normalizedUserName = email.toUpperCase();
 

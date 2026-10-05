@@ -41,8 +41,8 @@ npm run db:seed
 
 Lệnh này sẽ tạo:
 - Roles: Admin, User
-- Admin user: admin@quanlyvt.com / Admin@123
-- User: user@quanlyvt.com / User@123
+- Admin user: admin@quanlyvt.com / mật khẩu tạm trong `SEED_ADMIN_PASSWORD`
+- User: user@quanlyvt.com / mật khẩu tạm trong `SEED_USER_PASSWORD`
 
 ## Bước 4: Chạy Development Server
 
@@ -57,7 +57,7 @@ npm run dev
 1. Mở trình duyệt và truy cập: http://localhost:3000
 2. Đăng nhập với:
    - **Email**: admin@quanlyvt.com
-   - **Password**: Admin@123
+   - **Password**: giá trị đã đặt trong `SEED_ADMIN_PASSWORD`
 
 ## Troubleshooting
 

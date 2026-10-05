@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { rename } from 'fs/promises';
 import path from 'path';
-import { authenticate } from '@/lib/auth/middleware';
+import { requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 import { existsSync } from 'fs';
 
 export async function POST(request: NextRequest) {
   try {
     // Check authentication
-    const authResult = await authenticate(request);
-    if (!authResult.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const authResult = await requirePermission(request, Permission.FileManage);
+    if (!authResult.authorized) return authResult.response;
 
     const body = await request.json();
     const { oldName, newName } = body;

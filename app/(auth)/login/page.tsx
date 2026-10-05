@@ -67,7 +67,7 @@ export default function LoginPage() {
         safeLocalStorage.setItem('token', response.data.data.token);
         updateUser(response.data.data.user);
         toast.success('Đăng nhập thành công!');
-        router.push('/dashboard');
+        router.push(response.data.data.user.mustChangePassword ? '/change-password' : '/dashboard');
       } else {
         const errorMessage = response.data.error || 'Đăng nhập thất bại';
         setError(errorMessage);

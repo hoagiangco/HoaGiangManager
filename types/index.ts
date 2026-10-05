@@ -9,6 +9,7 @@ export interface User {
   lockoutEnabled?: boolean;
   lockoutEnd?: Date | null;
   isLocked?: boolean;
+  mustChangePassword?: boolean;
 }
 
 // Department types

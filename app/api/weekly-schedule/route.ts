@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WeeklyScheduleService } from '@/lib/services/weeklyScheduleService';
+import { requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 
 const svc = new WeeklyScheduleService();
 
 export async function GET(req: NextRequest) {
   try {
+    const authorization = await requirePermission(req, Permission.WeeklyScheduleManage);
+    if (!authorization.authorized) return authorization.response;
+
     const { searchParams } = new URL(req.url);
     const weekStart = searchParams.get('weekStart');
     const departmentId = parseInt(searchParams.get('departmentId') || '0');
@@ -30,11 +35,14 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
+    const authorization = await requirePermission(req, Permission.WeeklyScheduleManage);
+    if (!authorization.authorized) return authorization.response;
+
     const body = await req.json();
-    const { cells, weeklyNote, approvedImageUrl, approvedBy, creatorSignatureUrl, creatorName, createdBy, weekStart } = body;
+    const { cells, weeklyNote, approvedImageUrl, creatorSignatureUrl, creatorName, weekStart } = body;
 
     if (cells && Array.isArray(cells) && cells.length > 0) {
-      await svc.upsertBatch(cells, createdBy);
+      await svc.upsertBatch(cells, authorization.user.userId);
     }
     
     if (weeklyNote !== undefined && weekStart) {
@@ -42,7 +50,7 @@ export async function PUT(req: NextRequest) {
     }
 
     if (approvedImageUrl !== undefined && weekStart) {
-      await svc.setApprovedImage(weekStart, approvedImageUrl, approvedBy || createdBy);
+      await svc.setApprovedImage(weekStart, approvedImageUrl, authorization.user.email);
     }
 
     if ((creatorSignatureUrl !== undefined || creatorName !== undefined) && weekStart) {

@@ -4,6 +4,12 @@ import axios from 'axios';
 dotenv.config();
 
 const API_URL = process.env.API_URL || 'http://localhost:3000';
+const TEST_EMAIL = process.env.TEST_EMAIL;
+const TEST_PASSWORD = process.env.TEST_PASSWORD;
+
+if (!TEST_EMAIL || !TEST_PASSWORD) {
+  throw new Error('TEST_EMAIL and TEST_PASSWORD are required');
+}
 
 async function testAPI() {
   try {
@@ -12,8 +18,8 @@ async function testAPI() {
     // Test login
     console.log('1. Testing login...');
     const loginResponse = await axios.post(`${API_URL}/api/auth/login`, {
-      email: 'admin@quanlyvt.com',
-      password: 'Admin@123'
+      email: TEST_EMAIL,
+      password: TEST_PASSWORD
     });
 
     if (loginResponse.data.status) {

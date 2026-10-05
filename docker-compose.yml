@@ -8,7 +8,7 @@ services:
     environment:
       POSTGRES_DB: hoagiang_manager
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     ports:
       - "5432:5432"
     volumes:
@@ -29,8 +29,10 @@ services:
     container_name: hoagiang-app
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/hoagiang_manager
-      JWT_SECRET: ${JWT_SECRET:-change-this-secret-key-min-32-characters}
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/hoagiang_manager
+      DATABASE_SSL_MODE: disable
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      ALLOW_PUBLIC_REGISTRATION: ${ALLOW_PUBLIC_REGISTRATION:-false}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
       PORT: 4000
       UPLOAD_DIR: /app/public/uploads

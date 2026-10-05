@@ -1,6 +1,11 @@
 import pool from '../db';
 import { Staff, StaffVM } from '@/types';
 import { UserService } from './userService';
+import { getDefaultStaffPassword } from '@/lib/auth/password';
+
+export interface StaffMutationResult {
+  id: number;
+}
 import { PoolClient } from 'pg';
 
 interface StaffUsageSummary {
@@ -101,7 +106,7 @@ export class StaffService {
     };
   }
 
-  async create(staff: Omit<Staff, 'id'>): Promise<number> {
+  async create(staff: Omit<Staff, 'id'>): Promise<StaffMutationResult> {
     const userService = new UserService();
     let userId: string | null = null;
 
@@ -135,8 +140,11 @@ export class StaffService {
         const hasHash: string | null = userRow.rows[0]?.PasswordHash || null;
         const isBcrypt = !!hasHash && /^\$2[aby]\$/.test(hasHash);
         if (!isBcrypt) {
-          const defaultPassword = 'Staff@123';
-          await new UserService().update({ id: userId as string, password: defaultPassword, fullName: staff.name });
+          await new UserService().update({
+            id: userId as string,
+            password: getDefaultStaffPassword(),
+            fullName: staff.name,
+          });
         } else {
           // Update FullName to match staff name
           await pool.query(
@@ -157,13 +165,11 @@ export class StaffService {
         console.log(`Linked existing user account for staff: ${staff.email} (userId: ${userId})`);
       } else {
         // Create new user account
-        const defaultPassword = 'Staff@123'; // Default password
-        
         userId = await userService.create({
           email: staff.email.trim(),
-          password: defaultPassword,
+          password: getDefaultStaffPassword(),
           fullName: staff.name,
-          roles: ['User'] // Default role is User
+          roles: ['User'], // Default role is User
         });
 
         console.log(`Created user account for staff: ${staff.email} (userId: ${userId})`);
@@ -189,10 +195,10 @@ export class StaffService {
       ]
     );
 
-    return nextId;
+    return { id: nextId };
   }
 
-  async update(staff: Staff): Promise<number> {
+  async update(staff: Staff): Promise<StaffMutationResult> {
     const userService = new UserService();
     // Get existing staff to preserve userId
     const existingStaff = await this.getById(staff.id);
@@ -245,8 +251,11 @@ export class StaffService {
           [userId]
         );
         if (!userRow.rows[0]?.PasswordHash) {
-          const defaultPassword = 'Staff@123';
-          await userService.update({ id: userId as string, password: defaultPassword, fullName: staff.name });
+          await userService.update({
+            id: userId as string,
+            password: getDefaultStaffPassword(),
+            fullName: staff.name,
+          });
         } else {
           // Update FullName to match staff name
           await pool.query(
@@ -267,13 +276,11 @@ export class StaffService {
         console.log(`Linked existing user account for staff: ${staff.email} (userId: ${userId})`);
       } else {
         // Create new user account
-        const defaultPassword = 'Staff@123'; // Default password
-        
         userId = await userService.create({
           email: staff.email.trim(),
-          password: defaultPassword,
+          password: getDefaultStaffPassword(),
           fullName: staff.name,
-          roles: ['User'] // Default role is User
+          roles: ['User'], // Default role is User
         });
 
         console.log(`Created user account for staff: ${staff.email} (userId: ${userId})`);
@@ -303,7 +310,7 @@ export class StaffService {
       );
     }
 
-    return staff.id;
+    return { id: staff.id };
   }
 
   // Helper method to check and sync names between Staff and User

@@ -1,25 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/auth/middleware';
+import { requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 import { UserService } from '@/lib/services/userService';
+import { validatePassword } from '@/lib/auth/password';
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, error } = await authenticate(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Only Admin can view users list
-    if (!user.roles || !user.roles.includes('Admin')) {
-      return NextResponse.json(
-        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được xem danh sách người dùng' },
-        { status: 403 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.UserManage);
+    if (!authorization.authorized) return authorization.response;
 
     const userService = new UserService();
     const users = await userService.getAll();
@@ -39,28 +27,23 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, error } = await authenticate(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Only Admin can create users
-    if (!user.roles || !user.roles.includes('Admin')) {
-      return NextResponse.json(
-        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được tạo người dùng' },
-        { status: 403 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.UserManage);
+    if (!authorization.authorized) return authorization.response;
+    const { user } = authorization;
 
     const userData = await request.json();
 
     if (!userData.email || !userData.password) {
       return NextResponse.json(
         { status: false, error: 'Email và mật khẩu là bắt buộc' },
+        { status: 400 }
+      );
+    }
+
+    const passwordError = validatePassword(String(userData.password));
+    if (passwordError) {
+      return NextResponse.json(
+        { status: false, error: passwordError },
         { status: 400 }
       );
     }

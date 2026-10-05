@@ -7,6 +7,56 @@ export enum Role {
   User = 'User',
 }
 
+/**
+ * Server-enforced capabilities. UI permission helpers below remain useful for
+ * rendering controls, but every state-changing API must also check one of
+ * these capabilities.
+ */
+export enum Permission {
+  StaffManage = 'staff.manage',
+  UserManage = 'user.manage',
+  DepartmentManage = 'department.manage',
+  DeviceCategoryManage = 'device-category.manage',
+  EventTypeManage = 'event-type.manage',
+  LocationManage = 'location.manage',
+  FileManage = 'file.manage',
+  MaintenanceManage = 'maintenance.manage',
+  MaintenanceExecute = 'maintenance.execute',
+  WorkPlanManage = 'work-plan.manage',
+  WeeklyScheduleManage = 'weekly-schedule.manage',
+}
+
+const adminPermissions = new Set<Permission>([
+  Permission.StaffManage,
+  Permission.UserManage,
+  Permission.DepartmentManage,
+  Permission.DeviceCategoryManage,
+  Permission.EventTypeManage,
+  Permission.LocationManage,
+  Permission.FileManage,
+  Permission.MaintenanceManage,
+  Permission.MaintenanceExecute,
+]);
+
+const rolePermissions: Record<Role, ReadonlySet<Permission>> = {
+  [Role.SuperAdmin]: new Set(Object.values(Permission)),
+  [Role.Admin]: adminPermissions,
+  [Role.Supervisor]: new Set([Permission.MaintenanceExecute]),
+  [Role.User]: new Set([Permission.MaintenanceExecute]),
+};
+
+export function hasPermission(
+  userRoles: string[] | undefined,
+  permission: Permission
+): boolean {
+  if (!userRoles?.length) return false;
+
+  return userRoles.some((role) => {
+    const permissions = rolePermissions[role as Role];
+    return permissions?.has(permission) ?? false;
+  });
+}
+
 export interface UserPermissions {
   canView: boolean;
   canCreate: boolean;
@@ -153,7 +203,4 @@ export function getAdminPermissions(userRoles: string[] | undefined): UserPermis
     canDelete: admin,
   };
 }
-
-
-
 

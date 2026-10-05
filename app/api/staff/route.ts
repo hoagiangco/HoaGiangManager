@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/auth/middleware';
+import { authenticate, requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 import { StaffService } from '@/lib/services/staffService';
 
 export async function GET(request: NextRequest) {
@@ -34,14 +35,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, error } = await authenticate(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.StaffManage);
+    if (!authorization.authorized) return authorization.response;
 
     const staffData = await request.json();
     
@@ -57,12 +52,12 @@ export async function POST(request: NextRequest) {
     const { userId, ...createData } = staffData;
     
     const staffService = new StaffService();
-    const id = await staffService.create(createData);
+    const result = await staffService.create(createData);
 
     return NextResponse.json({
-      status: id > 0,
-      data: { id },
-      message: 'Tạo nhân viên và tài khoản thành công. Mật khẩu mặc định: Staff@123'
+      status: result.id > 0,
+      data: result,
+      message: 'Tạo nhân viên và tài khoản thành công.'
     });
   } catch (error: any) {
     console.error('Create staff error:', error);
@@ -72,4 +67,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

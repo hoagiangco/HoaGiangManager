@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/auth/middleware';
+import { authenticate, requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 import { DepartmentService } from '@/lib/services/departmentService';
 
 export async function GET(
@@ -7,14 +8,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { user, error } = await authenticate(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.DepartmentManage);
+    if (!authorization.authorized) return authorization.response;
 
     const id = parseInt(params.id);
     const departmentService = new DepartmentService();
@@ -38,14 +33,8 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { user, error } = await authenticate(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.DepartmentManage);
+    if (!authorization.authorized) return authorization.response;
 
     const id = parseInt(params.id);
     const departmentData = await request.json();

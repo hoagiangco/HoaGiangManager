@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
-import { authenticate } from '@/lib/auth/middleware';
+import { requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 
 // Upload to Vercel Blob (works in both local dev and production when BLOB_READ_WRITE_TOKEN is set)
 async function uploadToBlob(fileName: string, buffer: Buffer, contentType: string): Promise<string | null> {
@@ -40,11 +41,8 @@ export async function POST(request: NextRequest) {
     console.log('Upload endpoint called');
     
     // Check authentication
-    const authResult = await authenticate(request);
-    if (!authResult.user) {
-      console.log('Authentication failed');
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const authResult = await requirePermission(request, Permission.FileManage);
+    if (!authResult.authorized) return authResult.response;
 
     console.log('Authentication successful, user:', authResult.user.email);
     

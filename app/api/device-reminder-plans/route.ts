@@ -1,5 +1,7 @@
+import { calculateNextDueDay, maintenanceDay } from '@/lib/utils/maintenanceScheduler';
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/auth/middleware';
+import { authenticate, requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 import { DeviceReminderPlanService } from '@/lib/services/deviceReminderPlanService';
 import { DeviceReminderPlan, EventCategory } from '@/types';
 import { getVNNow } from '@/lib/utils/dateFormat';
@@ -72,13 +74,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, error } = await authenticate(request);
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.MaintenanceManage);
+    if (!authorization.authorized) return authorization.response;
+    const { user } = authorization;
 
     const payload = await request.json();
     if (!payload || typeof payload !== 'object') {
@@ -179,6 +177,25 @@ export async function POST(request: NextRequest) {
     };
 
     const service = new DeviceReminderPlanService();
+    try {
+      if (intervalValue && intervalUnit) {
+        if (!planData.startFrom) throw new Error('Bảo trì định kỳ cần có ngày bắt đầu');
+        const first = calculateNextDueDay(planData.startFrom, intervalValue, intervalUnit, metadata?.scheduleConfig, true, planData.startFrom);
+        planData.nextDueDate = new Date(first);
+        // Adding devices to a batch may join a later scheduled occurrence.
+        if (payload.nextDueDate && maintenanceDay(payload.nextDueDate) >= first) {
+          planData.nextDueDate = parseDate(payload.nextDueDate);
+        }
+      }
+      if (planData.endAt && planData.startFrom && maintenanceDay(planData.endAt) < maintenanceDay(planData.startFrom)) {
+        throw new Error('Ngày kết thúc không được trước ngày bắt đầu');
+      }
+      if (planData.endAt && planData.nextDueDate && maintenanceDay(planData.nextDueDate) > maintenanceDay(planData.endAt)) {
+        throw new Error('Ngày đến hạn vượt ngày kết thúc kế hoạch');
+      }
+    } catch (error: any) {
+      return NextResponse.json({ status: false, error: error.message }, { status: 400 });
+    }
     const id = await service.create(planData);
 
     return NextResponse.json({

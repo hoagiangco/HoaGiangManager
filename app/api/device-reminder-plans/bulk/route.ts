@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/auth/middleware';
+import { requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 import { DeviceReminderPlanService } from '@/lib/services/deviceReminderPlanService';
 import { DeviceService } from '@/lib/services/deviceService';
 import { DeviceReminderPlan, EventCategory } from '@/types';
 
-import { calculateNextDueDate, ScheduleConfig } from '@/lib/utils/maintenanceScheduler';
+import { calculateNextDueDay, maintenanceDay, ScheduleConfig } from '@/lib/utils/maintenanceScheduler';
 
 const parseDate = (value: any): Date | null => {
   if (!value) return null;
@@ -14,13 +15,9 @@ const parseDate = (value: any): Date | null => {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, error } = await authenticate(request);
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.MaintenanceManage);
+    if (!authorization.authorized) return authorization.response;
+    const { user } = authorization;
 
     const body = await request.json();
     const {
@@ -101,9 +98,19 @@ export async function POST(request: NextRequest) {
 
     // Calculate nextDueDate: If using specific dates, calculate based on it. Otherwise startFrom.
     const scheduleConfig = planMetadata?.scheduleConfig as ScheduleConfig | null;
-    const nextDueDate = scheduleConfig?.scheduleType === 'specific_dates' 
-        ? calculateNextDueDate(startFromDate, intervalValue, intervalUnit as any, scheduleConfig, true, startFromDate)
-        : new Date(startFromDate);
+    let nextDueDate: Date;
+    try {
+      const first = calculateNextDueDay(startFrom, Number(intervalValue), intervalUnit, scheduleConfig, true, startFrom);
+      if (endAt && maintenanceDay(endAt) < maintenanceDay(startFrom)) {
+        throw new Error('Ngày kết thúc không được trước ngày bắt đầu');
+      }
+      if (endAt && first > maintenanceDay(endAt)) {
+        throw new Error('Không có kỳ bảo trì nào trong khoảng ngày đã cài đặt');
+      }
+      nextDueDate = new Date(first);
+    } catch (error: any) {
+      return NextResponse.json({ status: false, error: error.message }, { status: 400 });
+    }
 
     // Create reminder plans for each device
     const reminderPlanService = new DeviceReminderPlanService();

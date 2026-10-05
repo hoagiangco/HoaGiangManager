@@ -1,277 +1,70 @@
-/**
- * Scheduled Job: Check Maintenance Reminders
- * 
- * This script checks for DeviceReminderPlan records that are due today,
- * creates Event records for them, and updates the nextDueDate.
- * 
- * Run manually: npm run check-reminders
- * Schedule with cron: 0 9 * * * (9 AM daily)
- */
-
-process.env.TZ = 'Asia/Ho_Chi_Minh';
-
+﻿/** Generate scheduled occurrences without using report/completion dates as calendar anchors. */
 import pool from '../lib/db';
-import { EventStatus } from '../types';
-import { getVNNow } from '../lib/utils/dateFormat';
+import { calculateNextDueDay, maintenanceDay, maintenanceToday, IntervalUnit } from '../lib/utils/maintenanceScheduler';
 
-import { calculateNextDueDate, ScheduleConfig } from '../lib/utils/maintenanceScheduler';
-
-async function checkMaintenanceReminders() {
+export async function checkMaintenanceReminders() {
   const client = await pool.connect();
-  
+  const today = maintenanceToday();
   try {
-    console.log('=== Bắt đầu kiểm tra kế hoạch bảo trì ===');
-    console.log(`Thời gian: ${getVNNow().toISOString()}`);
-
-    const today = getVNNow();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = getVNNow();
-    tomorrow.setDate(today.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
-
-    // Get all active reminder plans due today
-    const result = await client.query(
-      `
-      SELECT 
-        p."ID" as id,
-        p."DeviceID" as "deviceId",
-        p."EventTypeID" as "eventTypeId",
-        p."Title" as title,
-        p."Description" as description,
-        p."IntervalValue" as "intervalValue",
-        p."IntervalUnit" as "intervalUnit",
-        p."NextDueDate" as "nextDueDate",
-        p."StartFrom" as "startFrom",
-        p."EndAt" as "endAt",
-        p."Metadata" as metadata,
-        p."CreatedBy" as "createdBy"
-      FROM "DeviceReminderPlan" p
-      WHERE p."IsActive" = true
-        AND p."NextDueDate" IS NOT NULL
-        AND p."NextDueDate" >= $1
-        AND p."NextDueDate" < $2
-      ORDER BY p."NextDueDate" ASC
-      `,
-      [today, tomorrow]
-    );
-
-    const duePlans = result.rows;
-    console.log(`Tìm thấy ${duePlans.length} kế hoạch đến hạn hôm nay`);
-
-    if (duePlans.length === 0) {
-      console.log('Không có kế hoạch nào đến hạn. Kết thúc.');
-      return;
-    }
-
-    let createdEvents = 0;
-    let updatedPlans = 0;
-    let errors = 0;
-
-    // Process each plan
-    for (const row of duePlans) {
+    // IDs only: re-read and lock each plan in its transaction, after any competing writer commits.
+    const due = await client.query(`SELECT "ID" FROM "DeviceReminderPlan"
+      WHERE "IsActive" = true AND "NextDueDate"::date <= $1::date ORDER BY "ID"`, [today]);
+    let failures = 0;
+    for (const candidate of due.rows) {
       try {
         await client.query('BEGIN');
-
-        // Parse metadata
-        let metadata: Record<string, any> | null = null;
-        if (row.metadata) {
-          if (typeof row.metadata === 'string') {
-            try {
-              metadata = JSON.parse(row.metadata);
-            } catch (error) {
-              console.warn(`Lỗi parse metadata cho plan ${row.id}:`, error);
-              metadata = null;
-            }
-          } else {
-            metadata = row.metadata;
-          }
-        }
-
-        const nextDueDate = new Date(row.nextDueDate);
-        const startFrom = row.startFrom ? new Date(row.startFrom) : null;
-        const endAt = row.endAt ? new Date(row.endAt) : null;
-
-        // Check if plan has ended
-        if (endAt && endAt < today) {
-          console.log(`Plan ${row.id} đã hết hạn (endAt: ${endAt.toISOString()})`);
-          await client.query('UPDATE "DeviceReminderPlan" SET "IsActive" = false WHERE "ID" = $1', [row.id]);
+        const locked = await client.query(`SELECT *, "StartFrom"::date::text AS anchor_day,
+          "NextDueDate"::date::text AS due_day, "EndAt"::date::text AS end_day
+          FROM "DeviceReminderPlan" WHERE "ID" = $1 FOR UPDATE`, [candidate.ID]);
+        const plan = locked.rows[0];
+        if (!plan?.IsActive || !plan.due_day || plan.due_day > today) {
           await client.query('COMMIT');
           continue;
         }
-
-        // Ensure Event sequence is correct
-        const maxRes = await client.query('SELECT COALESCE(MAX("ID"), 0) AS max_id FROM "Event"');
-        const seqRes = await client.query('SELECT last_value, is_called FROM "Event_ID_seq"');
-        const maxId = Number(maxRes.rows[0]?.max_id || 0);
-        let seqValue = Number(seqRes.rows[0]?.last_value || 0);
-        const isCalled = seqRes.rows[0]?.is_called ?? false;
-        if (!isCalled) seqValue -= 1;
-        if (maxId > seqValue) {
-          await client.query('SELECT setval(pg_get_serial_sequence(\'"Event"\', \'ID\'), $1, true)', [maxId]);
-        }
-
-        // Create Event for this device using client transaction
-        const eventMetadata = {
-          ...metadata,
-          maintenanceBatchId: metadata?.maintenanceBatchId || null,
-        };
-
-        // Check if there is an existing DamageReport for this maintenanceBatchId
-        let newEventStatus = EventStatus.Planned;
-        let relatedReportId = null;
-        let handlerId = null;
-        let startDate = nextDueDate;
-        let endDate = null;
-
-        if (eventMetadata.maintenanceBatchId) {
-          const reportRes = await client.query(
-            `SELECT "ID", "Status", "HandlerID", "HandlingDate", "CompletedDate" FROM "DamageReport" 
-             WHERE "MaintenanceBatchId" = $1
-             ORDER BY "CreatedAt" DESC LIMIT 1`,
-            [eventMetadata.maintenanceBatchId]
-          );
-
-          if (reportRes.rows.length > 0) {
-            const report = reportRes.rows[0];
-            relatedReportId = report.ID;
-            handlerId = report.HandlerID;
-            
-            // Map DamageReportStatus to EventStatus
-            if (report.Status === 1 || report.Status === 2) { // Pending or Assigned
-              newEventStatus = EventStatus.Planned;
-            } else if (report.Status === 3) { // InProgress
-              newEventStatus = EventStatus.InProgress;
-              if (report.HandlingDate) startDate = report.HandlingDate;
-            } else if (report.Status === 4) { // Completed
-              newEventStatus = EventStatus.Completed;
-              if (report.HandlingDate) startDate = report.HandlingDate;
-              if (report.CompletedDate) endDate = report.CompletedDate;
-              else endDate = getVNNow();
-            } else if (report.Status === 5 || report.Status === 6) { // Cancelled or Rejected
-              newEventStatus = EventStatus.Cancelled;
-            }
+        if (!plan.IntervalValue || !plan.IntervalUnit) throw new Error('Recurring interval is required');
+        const metadata = typeof plan.Metadata === 'string' ? JSON.parse(plan.Metadata) : plan.Metadata || {};
+        const anchor = plan.anchor_day || plan.due_day;
+        let next: string | null = plan.due_day;
+        // Process missed occurrences too; a bounded backlog is continued on the next run.
+        for (let count = 0; next && next <= today && count < 366; count++) {
+          if (plan.end_day && next > plan.end_day) { next = null; break; }
+          const existing = await client.query(`SELECT "ID" FROM "Event"
+            WHERE "DeviceID" = $1 AND (
+              ("Metadata"->>'maintenancePlanId' = $2 AND "Metadata"->>'scheduledDueDate' = $3)
+              OR ("Metadata"->>'maintenanceBatchId' = $4 AND "EventDate"::date = $3::date)
+            ) LIMIT 1`, [plan.DeviceID, String(plan.ID), next, metadata.maintenanceBatchId || null]);
+          if (!existing.rows.length) {
+            await client.query(`INSERT INTO "Event" (
+              "Title", "DeviceID", "EventTypeID", "Description", "Notes", "Status", "EventDate",
+              "Metadata", "CreatedBy", "CreatedAt", "UpdatedBy", "UpdatedAt")
+              VALUES ($1,$2,$3,$4,'','planned',$5::date,$6::jsonb,$7,CURRENT_TIMESTAMP,$7,CURRENT_TIMESTAMP)`, [
+              plan.Title || `Maintenance - ${next}`, plan.DeviceID, plan.EventTypeID, plan.Description || '', next,
+              JSON.stringify({ ...metadata, maintenancePlanId: plan.ID, scheduledDueDate: next }),
+              plan.CreatedBy || 'system',
+            ]);
           }
+          next = calculateNextDueDay(next, plan.IntervalValue, plan.IntervalUnit as IntervalUnit,
+            metadata.scheduleConfig, false, anchor);
+          if (plan.end_day && next > plan.end_day) next = null;
         }
-
-        // Avoid duplicating if an event with this batchId and deviceId and EventDate already exists (e.g. created by DamageReport completion)
-        const checkExistingEvent = await client.query(
-          `SELECT "ID" FROM "Event"
-           WHERE "DeviceID" = $1 
-             AND "Metadata"::text LIKE $2
-             AND ("EventDate"::date = $3::date OR "Status" = 'completed')
-           ORDER BY "CreatedAt" DESC LIMIT 1`,
-          [row.deviceId, `%"maintenanceBatchId":"${eventMetadata.maintenanceBatchId}"%`, nextDueDate]
-        );
-
-        let eventId;
-        const now = getVNNow();
-
-        if (checkExistingEvent.rows.length > 0) {
-           eventId = checkExistingEvent.rows[0].ID;
-           console.log(`Event ${eventId} đã tồn tại cho Device ${row.deviceId} tại batch này, bỏ qua tạo mới`);
-        } else {
-          const eventResult = await client.query(
-            `INSERT INTO "Event" (
-              "Title", "DeviceID", "EventTypeID", "Description", "Notes",
-              "Status", "EventDate", "StartDate", "EndDate", "StaffID",
-              "RelatedReportID", "Metadata", "CreatedBy", "CreatedAt",
-              "UpdatedBy", "UpdatedAt"
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-            RETURNING "ID"`,
-            [
-              row.title || `Bảo trì định kỳ - ${nextDueDate.toISOString().split('T')[0]}`,
-              row.deviceId,
-              row.eventTypeId,
-              row.description || null,
-              null, // Notes field is not used
-              newEventStatus,
-              nextDueDate,
-              startDate,
-              endDate,
-              handlerId,
-              relatedReportId,
-              eventMetadata ? JSON.stringify(eventMetadata) : null,
-              row.createdBy || 'system',
-              now,
-              row.createdBy || 'system',
-              now,
-            ]
-          );
-
-          eventId = eventResult.rows[0].ID;
-          console.log(`Đã tạo Event ${eventId} (Status: ${newEventStatus}) cho Device ${row.deviceId}`);
-        }
-
-        const scheduleConfig: ScheduleConfig | null = metadata?.scheduleConfig || null;
-        const newNextDueDate = calculateNextDueDate(
-          nextDueDate,
-          row.intervalValue,
-          row.intervalUnit,
-          scheduleConfig,
-          false,
-          startFrom
-        );
-
-        // Check if new nextDueDate exceeds endAt
-        if (endAt && newNextDueDate > endAt) {
-          // Plan has ended, deactivate it
-          await client.query(
-            `UPDATE "DeviceReminderPlan" 
-             SET "NextDueDate" = NULL,
-                 "LastTriggeredAt" = $1,
-                 "IsActive" = false,
-                 "UpdatedAt" = CURRENT_TIMESTAMP
-             WHERE "ID" = $2`,
-            [today, row.id]
-          );
-          console.log(`Plan ${row.id} đã kết thúc sau khi tính toán nextDueDate mới`);
-        } else {
-          // Update plan with new nextDueDate
-          await client.query(
-            `UPDATE "DeviceReminderPlan" 
-             SET "NextDueDate" = $1,
-                 "LastTriggeredAt" = $2,
-                 "UpdatedAt" = CURRENT_TIMESTAMP
-             WHERE "ID" = $3`,
-            [newNextDueDate, today, row.id]
-          );
-          console.log(`Đã cập nhật Plan ${row.id} với nextDueDate mới: ${newNextDueDate.toISOString().split('T')[0]}`);
-        }
-
+        await client.query(`UPDATE "DeviceReminderPlan" SET "NextDueDate"=$1::date,
+          "IsActive"=($1::date IS NOT NULL), "LastTriggeredAt"=CURRENT_TIMESTAMP,
+          "UpdatedAt"=CURRENT_TIMESTAMP WHERE "ID"=$2`, [next, plan.ID]);
         await client.query('COMMIT');
-        createdEvents++;
-        updatedPlans++;
-
-      } catch (error: any) {
+      } catch (error) {
         await client.query('ROLLBACK');
-        console.error(`Lỗi xử lý plan ${row.id}:`, error.message);
-        errors++;
+        failures++;
+        console.error(`Maintenance plan ${candidate.ID} failed:`, error);
       }
     }
-
-    console.log('\n=== Kết quả ===');
-    console.log(`- Đã tạo ${createdEvents} Event`);
-    console.log(`- Đã cập nhật ${updatedPlans} Plan`);
-    console.log(`- Lỗi: ${errors}`);
-    console.log('=== Hoàn thành ===\n');
-
-  } catch (error: any) {
-    console.error('Lỗi khi kiểm tra kế hoạch bảo trì:', error);
-    throw error;
-  } finally {
-    client.release();
-  }
+    if (failures) throw new Error(`${failures} maintenance plans failed`);
+  } finally { client.release(); }
 }
 
-// Run the script
-checkMaintenanceReminders()
-  .then(() => {
-    console.log('Script hoàn thành thành công');
-    process.exit(0);
-  })
-  .catch((error) => {
-    console.error('Script thất bại:', error);
-    process.exit(1);
+if (require.main === module) {
+  checkMaintenanceReminders().then(() => pool.end()).catch(async error => {
+    console.error(error);
+    await pool.end();
+    process.exitCode = 1;
   });
-
+}

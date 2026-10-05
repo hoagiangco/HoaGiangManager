@@ -1,5 +1,6 @@
 import { Pool, types } from 'pg';
 import dotenv from 'dotenv';
+import { getDatabaseSslConfig } from './ssl';
 
 dotenv.config();
 // Also load from .env.local if it exists
@@ -9,11 +10,9 @@ dotenv.config({ path: '.env.local', override: true });
 // This prevents timezone shift (e.g. "2026-06-05" becoming June 4 in UTC)
 types.setTypeParser(1082, (val: string) => val);
 
-const isLocalhost = process.env.DATABASE_URL?.includes('localhost') || process.env.DATABASE_URL?.includes('127.0.0.1');
-
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: (process.env.NODE_ENV === 'production' && !isLocalhost) ? { rejectUnauthorized: false } : false,
+  ssl: getDatabaseSslConfig(),
 });
 
 // Set timezone for all connections in the pool

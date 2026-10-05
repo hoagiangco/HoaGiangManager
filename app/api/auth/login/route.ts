@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { generateToken } from '@/lib/auth/jwt';
+import { getLoginSecurityConfig } from '@/lib/auth/loginSecurity';
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest) {
     }
 
     const user = userResult.rows[0];
+    const loginSecurity = getLoginSecurityConfig();
 
     const lockoutEnabled = !!user.LockoutEnabled;
     const lockoutEndRaw = user.LockoutEnd;
@@ -43,6 +45,15 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           { status: false, error: 'Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.' },
           { status: 403 }
+        );
+      }
+
+      if (!Number.isNaN(lockoutEnd.getTime())) {
+        await pool.query(
+          `UPDATE "AspNetUsers"
+           SET "LockoutEnabled" = FALSE, "LockoutEnd" = NULL, "AccessFailedCount" = 0
+           WHERE "Id" = $1`,
+          [user.Id]
         );
       }
     }
@@ -58,18 +69,42 @@ export async function POST(request: NextRequest) {
     const isValidPassword = await bcrypt.compare(password, user.PasswordHash);
 
     if (!isValidPassword) {
+      await pool.query(
+        `UPDATE "AspNetUsers"
+         SET "AccessFailedCount" = COALESCE("AccessFailedCount", 0) + 1,
+             "LockoutEnabled" = CASE
+               WHEN COALESCE("AccessFailedCount", 0) + 1 >= $2 THEN TRUE
+               ELSE "LockoutEnabled"
+             END,
+             "LockoutEnd" = CASE
+               WHEN COALESCE("AccessFailedCount", 0) + 1 >= $2
+                 THEN CURRENT_TIMESTAMP + ($3::integer * INTERVAL '1 minute')
+               ELSE "LockoutEnd"
+             END
+         WHERE "Id" = $1`,
+        [user.Id, loginSecurity.maxFailedAttempts, loginSecurity.lockoutMinutes]
+      );
+
       return NextResponse.json(
         { status: false, error: 'Email hoặc mật khẩu không đúng' },
         { status: 401 }
       );
     }
 
+    await pool.query(
+      `UPDATE "AspNetUsers"
+       SET "AccessFailedCount" = 0
+       WHERE "Id" = $1`,
+      [user.Id]
+    );
+
     // Generate JWT token (roles can be null when user has no roles - ARRAY_AGG returns null)
     const roles = Array.isArray(user.roles) ? user.roles.filter((r: string) => r != null) : [];
     const token = generateToken({
       userId: user.Id,
       email: user.Email,
-      roles: roles
+      roles: roles,
+      mustChangePassword: Boolean(user.MustChangePassword),
     });
 
     return NextResponse.json({
@@ -80,7 +115,8 @@ export async function POST(request: NextRequest) {
           id: user.Id,
           email: user.Email ?? '',
           fullName: user.FullName ?? user.Email ?? '',
-          roles
+          roles,
+          mustChangePassword: Boolean(user.MustChangePassword),
         }
       }
     });

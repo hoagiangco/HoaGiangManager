@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { authenticate } from '@/lib/auth/middleware';
 
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const userId = searchParams.get('userId');
-
-    if (!userId) {
-      return NextResponse.json({ status: false, error: 'Missing userId' }, { status: 400 });
+    const { user, error } = await authenticate(req);
+    if (!user) {
+      return NextResponse.json(
+        { status: false, error: error || 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const result = await pool.query(
@@ -15,7 +17,7 @@ export async function GET(req: NextRequest) {
        FROM "Staff" s
        LEFT JOIN "Department" d ON s."DepartmentID" = d."ID"
        WHERE s."UserId" = $1`,
-      [userId]
+      [user.userId]
     );
 
     if (result.rows.length === 0) {

@@ -1,4 +1,6 @@
 import pool from '../db';
+import { advanceMaintenanceSchedule } from './maintenanceScheduleService';
+import { maintenanceDay } from '../utils/maintenanceScheduler';
 import { PoolClient } from 'pg';
 import { NotificationService, NotificationType, NotificationCategory } from './notificationService';
 import { Event, EventVM, EventStatus } from '@/types';
@@ -246,82 +248,120 @@ export class EventService {
   }
 
   async create(event: Omit<Event, 'id'>): Promise<number> {
-    await this.ensureEventSequence();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await this.ensureEventSequence(client);
 
-    const now = getVNNow();
-    const result = await pool.query(
-      `INSERT INTO "Event" (
-        "Title", "DeviceID", "EventTypeID", "Description", "Notes",
-        "Status", "EventDate", "StartDate", "EndDate", "StaffID",
-        "RelatedReportID", "Metadata", "CreatedBy", "CreatedAt",
-        "UpdatedBy", "UpdatedAt"
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-      RETURNING "ID"`,
-      [
-        event.title || null,
-        event.deviceId || null,
-        event.eventTypeId,
-        event.description != null ? event.description : '', // Description is NOT NULL, fallback to empty string
-        event.notes != null ? event.notes : '', // Notes column is NOT NULL, so use empty string instead of null
-        event.status || EventStatus.Completed,
-        event.eventDate || null,
-        event.startDate || null,
-        event.endDate || null,
-        event.staffId || null,
-        event.relatedReportId || null,
-        event.metadata ? JSON.stringify(event.metadata) : null,
-        event.createdBy || null,
-        event.createdAt || now,
-        event.updatedBy || event.createdBy || null,
-        event.updatedAt || now
-      ]
-    );
+      const now = getVNNow();
+      const result = await client.query(
+        `INSERT INTO "Event" (
+          "Title", "DeviceID", "EventTypeID", "Description", "Notes",
+          "Status", "EventDate", "StartDate", "EndDate", "StaffID",
+          "RelatedReportID", "Metadata", "CreatedBy", "CreatedAt",
+          "UpdatedBy", "UpdatedAt"
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        RETURNING "ID"`,
+        [
+          event.title || null,
+          event.deviceId || null,
+          event.eventTypeId,
+          event.description != null ? event.description : '', // Description is NOT NULL, fallback to empty string
+          event.notes != null ? event.notes : '', // Notes column is NOT NULL, so use empty string instead of null
+          event.status || EventStatus.Completed,
+          event.eventDate ? (event.metadata?.maintenanceBatchId || event.metadata?.maintenancePlanId ? maintenanceDay(event.eventDate) : event.eventDate) : null,
+          event.startDate ? maintenanceDay(event.startDate) : null,
+          event.endDate ? maintenanceDay(event.endDate) : null,
+          event.staffId || null,
+          event.relatedReportId || null,
+          event.metadata ? JSON.stringify(event.metadata) : null,
+          event.createdBy || null,
+          event.createdAt || now,
+          event.updatedBy || event.createdBy || null,
+          event.updatedAt || now
+        ]
+      );
 
-    return result.rows[0].ID;
+      if ((event.status || EventStatus.Completed) === EventStatus.Completed && event.deviceId) {
+        await advanceMaintenanceSchedule({ batchId: event.metadata?.maintenanceBatchId,
+          planId: event.metadata?.maintenancePlanId, deviceId: event.deviceId }, client);
+      }
+      await client.query('COMMIT');
+      return result.rows[0].ID;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async update(event: Event): Promise<number> {
-    await this.ensureEventSequence();
+    const client = await pool.connect();
+    let oldStatus: string | undefined;
+    try {
+      await client.query('BEGIN');
+      await this.ensureEventSequence(client);
 
-    // Get current status to detect change
-    const currentRes = await pool.query('SELECT "Status" FROM "Event" WHERE "ID" = $1', [event.id]);
-    const oldStatus = currentRes.rows[0]?.Status;
+      // Get current status to detect change
+      const currentRes = await client.query('SELECT "Status", "Metadata", "EventDate"::date::text AS scheduled_day FROM "Event" WHERE "ID" = $1 FOR UPDATE', [event.id]);
+      if (!currentRes.rows.length) throw new Error('Event not found');
+      oldStatus = currentRes.rows[0].Status;
+      const storedMetadata = currentRes.rows[0].Metadata;
+      const previousMetadata = typeof storedMetadata === 'string' ? JSON.parse(storedMetadata) : storedMetadata || {};
+      const mergedMetadata: Record<string, any> = { ...previousMetadata, ...event.metadata };
+      if (mergedMetadata.maintenanceBatchId || mergedMetadata.maintenancePlanId) {
+        mergedMetadata.scheduledDueDate = previousMetadata.scheduledDueDate || mergedMetadata.scheduledDueDate || currentRes.rows[0].scheduled_day;
+      }
+      event.metadata = mergedMetadata;
 
-    await pool.query(
-      `UPDATE "Event" SET
-        "Title" = $1,
-        "DeviceID" = $2,
-        "EventTypeID" = $3,
-        "Description" = $4,
-        "Notes" = $5,
-        "Status" = $6,
-        "EventDate" = $7,
-        "StartDate" = $8,
-        "EndDate" = $9,
-        "StaffID" = $10,
-        "RelatedReportID" = $11,
-        "Metadata" = $12,
-        "UpdatedBy" = $13,
-        "UpdatedAt" = CURRENT_TIMESTAMP
-      WHERE "ID" = $14`,
-      [
-        event.title || null,
-        event.deviceId || null,
-        event.eventTypeId,
-        event.description != null ? event.description : '', // Description is NOT NULL, fallback to empty string
-        event.notes != null ? event.notes : '', // Notes column is NOT NULL, so use empty string instead of null
-        event.status || 'completed',
-        event.eventDate || null,
-        event.startDate || null,
-        event.endDate || null,
-        event.staffId || null,
-        event.relatedReportId || null,
-        event.metadata ? JSON.stringify(event.metadata) : null,
-        event.updatedBy || null,
-        event.id
-      ]
-    );
+      await client.query(
+        `UPDATE "Event" SET
+          "Title" = $1,
+          "DeviceID" = $2,
+          "EventTypeID" = $3,
+          "Description" = $4,
+          "Notes" = $5,
+          "Status" = $6,
+          "EventDate" = $7,
+          "StartDate" = $8,
+          "EndDate" = $9,
+          "StaffID" = $10,
+          "RelatedReportID" = $11,
+          "Metadata" = $12,
+          "UpdatedBy" = $13,
+          "UpdatedAt" = CURRENT_TIMESTAMP
+        WHERE "ID" = $14`,
+        [
+          event.title || null,
+          event.deviceId || null,
+          event.eventTypeId,
+          event.description != null ? event.description : '', // Description is NOT NULL, fallback to empty string
+          event.notes != null ? event.notes : '', // Notes column is NOT NULL, so use empty string instead of null
+          event.status || 'completed',
+          event.eventDate ? (event.metadata?.maintenanceBatchId || event.metadata?.maintenancePlanId ? maintenanceDay(event.eventDate) : event.eventDate) : null,
+          event.startDate ? maintenanceDay(event.startDate) : null,
+          event.endDate ? maintenanceDay(event.endDate) : null,
+          event.staffId || null,
+          event.relatedReportId || null,
+          event.metadata ? JSON.stringify(event.metadata) : null,
+          event.updatedBy || null,
+          event.id
+        ]
+      );
+
+      if (oldStatus !== event.status && event.status === EventStatus.Completed && event.deviceId) {
+        await advanceMaintenanceSchedule({ batchId: event.metadata?.maintenanceBatchId,
+          planId: event.metadata?.maintenancePlanId, deviceId: event.deviceId }, client);
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
 
     // Notification on completion
     if (oldStatus !== event.status && event.status === 'completed') {
@@ -346,6 +386,7 @@ export class EventService {
 
     return event.id;
   }
+
 
   async delete(id: number): Promise<boolean> {
     await pool.query('DELETE FROM "Event" WHERE "ID" = $1', [id]);

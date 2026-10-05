@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/auth/middleware';
+import { authenticate, requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 import { StaffService } from '@/lib/services/staffService';
 
 export async function GET(
@@ -38,14 +39,8 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { user, error } = await authenticate(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.StaffManage);
+    if (!authorization.authorized) return authorization.response;
 
     const id = parseInt(params.id);
     const staffData = await request.json();
@@ -55,16 +50,12 @@ export async function PUT(
     
     // Pass all fields through; service will handle creating/linking user and updating email
     const { userId, ...updateData } = staffData;
-    const before = await staffService.getById(id);
-    await staffService.update({ ...updateData, id });
-
-    const after = await staffService.getById(id);
-
-    const createdAccount = !before?.userId && !!after?.userId;
+    const result = await staffService.update({ ...updateData, id });
 
     return NextResponse.json({
       status: true,
-      message: createdAccount ? 'Cập nhật nhân viên và tạo tài khoản thành công. Mật khẩu mặc định: Staff@123' : undefined
+      data: result,
+      message: 'Cập nhật nhân viên thành công.'
     });
   } catch (error: any) {
     console.error('Update staff error:', error);
@@ -83,14 +74,8 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { user, error } = await authenticate(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.StaffManage);
+    if (!authorization.authorized) return authorization.response;
 
     const id = parseInt(params.id);
     console.log(`Deleting staff ${id}`);

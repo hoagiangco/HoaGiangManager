@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/auth/middleware';
+import { requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 import { UserService } from '@/lib/services/userService';
 
 export async function PUT(
@@ -7,21 +8,9 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { user, error } = await authenticate(request);
-
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    if (!user.roles || !user.roles.includes('Admin')) {
-      return NextResponse.json(
-        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được khóa/mở khóa người dùng' },
-        { status: 403 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.UserManage);
+    if (!authorization.authorized) return authorization.response;
+    const { user } = authorization;
 
     const userService = new UserService();
     const targetUser = await userService.getById(params.id);

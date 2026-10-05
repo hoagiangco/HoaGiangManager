@@ -1,3 +1,4 @@
+import { maintenanceToday, calculateNextDueDay } from '@/lib/utils/maintenanceScheduler';
 import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import { authenticate } from '@/lib/auth/middleware';
@@ -13,10 +14,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const nextMonth = new Date(today);
-    nextMonth.setDate(nextMonth.getDate() + 30);
+    const today = maintenanceToday();
+    const nextMonth = calculateNextDueDay(today, 30, 'day');
 
     const isAdmin = user.roles && user.roles.includes('Admin');
     const userId = user.userId;
@@ -29,7 +28,7 @@ export async function GET(request: NextRequest) {
       scoped_plans AS (
         SELECT
           COALESCE(p."Metadata"->>'maintenanceBatchId', 'no-batch-' || p."ID"::text) AS batch_id,
-          p."NextDueDate" AS next_due_date
+          p."NextDueDate"::date AS next_due_date
         FROM "DeviceReminderPlan" p
         WHERE p."IsActive" = true
           AND p."NextDueDate" IS NOT NULL
@@ -44,10 +43,10 @@ export async function GET(request: NextRequest) {
       ),
       plan_summary AS (
         SELECT
-          COUNT(DISTINCT batch_id) FILTER (WHERE next_due_date < $1) AS overdue_batches,
-          COUNT(*) FILTER (WHERE next_due_date < $1) AS overdue_devices,
-          COUNT(DISTINCT batch_id) FILTER (WHERE next_due_date >= $1 AND next_due_date <= $2) AS upcoming_batches,
-          COUNT(*) FILTER (WHERE next_due_date >= $1 AND next_due_date <= $2) AS upcoming_devices
+          COUNT(DISTINCT batch_id) FILTER (WHERE next_due_date < $1::date) AS overdue_batches,
+          COUNT(*) FILTER (WHERE next_due_date < $1::date) AS overdue_devices,
+          COUNT(DISTINCT batch_id) FILTER (WHERE next_due_date >= $1::date AND next_due_date <= $2::date) AS upcoming_batches,
+          COUNT(*) FILTER (WHERE next_due_date >= $1::date AND next_due_date <= $2::date) AS upcoming_devices
         FROM scoped_plans
       ),
       scoped_events AS (

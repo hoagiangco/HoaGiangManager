@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unlink } from 'fs/promises';
 import path from 'path';
-import { authenticate } from '@/lib/auth/middleware';
+import { requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 
 export async function DELETE(request: NextRequest) {
   try {
     // Check authentication
-    const authResult = await authenticate(request);
-    if (!authResult.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const authResult = await requirePermission(request, Permission.FileManage);
+    if (!authResult.authorized) return authResult.response;
 
     const { searchParams } = new URL(request.url);
     const rawFileParam = searchParams.get('file');

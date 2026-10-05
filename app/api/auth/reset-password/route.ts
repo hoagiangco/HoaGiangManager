@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import { validatePassword } from '@/lib/auth/password';
+import { v4 as uuidv4 } from 'uuid';
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,9 +12,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: false, error: 'Thiếu thông tin bắt buộc' }, { status: 400 });
     }
 
-    if (newPassword.length < 6) {
+    const passwordError = validatePassword(String(newPassword));
+    if (passwordError) {
       return NextResponse.json(
-        { status: false, error: 'Mật khẩu phải có ít nhất 6 ký tự' },
+        { status: false, error: passwordError },
         { status: 400 }
       );
     }
@@ -52,12 +55,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Hash new password
-    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const passwordHash = await bcrypt.hash(newPassword, 12);
 
     // Update password
     await pool.query(
-      `UPDATE "AspNetUsers" SET "PasswordHash" = $1 WHERE "Id" = $2`,
-      [passwordHash, userId]
+      `UPDATE "AspNetUsers"
+       SET "PasswordHash" = $1,
+           "MustChangePassword" = FALSE,
+           "AccessFailedCount" = 0,
+           "SecurityStamp" = $3
+       WHERE "Id" = $2`,
+      [passwordHash, userId, uuidv4()]
     );
 
     // Delete token after successful usage

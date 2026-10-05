@@ -25,9 +25,23 @@ async function runSqlMigration() {
   }
 
   const isLocalhost = dbUrl.includes('localhost') || dbUrl.includes('127.0.0.1');
+  const sslMode = (process.env.DATABASE_SSL_MODE || (isLocalhost ? 'disable' : 'verify-full'))
+    .trim()
+    .toLowerCase();
+  let ssl = false;
+
+  if (sslMode === 'require') {
+    ssl = { rejectUnauthorized: false };
+  } else if (sslMode === 'verify-full') {
+    const ca = process.env.DATABASE_SSL_CA?.replace(/\\n/g, '\n').trim();
+    ssl = ca ? { rejectUnauthorized: true, ca } : { rejectUnauthorized: true };
+  } else if (sslMode !== 'disable') {
+    throw new Error(`Unsupported DATABASE_SSL_MODE "${process.env.DATABASE_SSL_MODE}"`);
+  }
+
   const client = new Client({
     connectionString: dbUrl,
-    ssl: isLocalhost ? false : { rejectUnauthorized: false }
+    ssl
   });
 
   try {

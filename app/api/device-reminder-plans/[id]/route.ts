@@ -1,5 +1,7 @@
+import { calculateNextDueDay, maintenanceDay, maintenanceToday } from '@/lib/utils/maintenanceScheduler';
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/auth/middleware';
+import { authenticate, requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 import { DeviceReminderPlanService } from '@/lib/services/deviceReminderPlanService';
 import { DeviceReminderPlan, EventCategory } from '@/types';
 
@@ -79,13 +81,9 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { user, error } = await authenticate(request);
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.MaintenanceManage);
+    if (!authorization.authorized) return authorization.response;
+    const { user } = authorization;
 
     const id = Number(params.id);
     if (!id || Number.isNaN(id)) {
@@ -203,6 +201,28 @@ export async function PUT(
       updatedAt: new Date(),
     };
 
+    try {
+      if (planData.startFrom && planData.endAt && maintenanceDay(planData.endAt) < maintenanceDay(planData.startFrom)) {
+        throw new Error('Ngày kết thúc không được trước ngày bắt đầu');
+      }
+      const changed = existing.intervalValue !== intervalValue || existing.intervalUnit !== intervalUnit ||
+        (existing.startFrom ? maintenanceDay(existing.startFrom) : null) !== (planData.startFrom ? maintenanceDay(planData.startFrom) : null) ||
+        JSON.stringify(existing.metadata?.scheduleConfig || null) !== JSON.stringify(metadata?.scheduleConfig || null);
+      // The generic edit endpoint cannot overwrite the calendar with a completion date.
+      planData.nextDueDate = existing.nextDueDate;
+      if (changed && intervalValue && intervalUnit) {
+        if (!planData.startFrom) throw new Error('Bảo trì định kỳ cần có ngày bắt đầu');
+        planData.nextDueDate = new Date(calculateNextDueDay(maintenanceToday(), intervalValue, intervalUnit,
+          metadata?.scheduleConfig, true, planData.startFrom));
+      }
+      if (planData.nextDueDate && planData.endAt && maintenanceDay(planData.nextDueDate) > maintenanceDay(planData.endAt)) {
+        planData.nextDueDate = null;
+        planData.isActive = false;
+      }
+    } catch (error: any) {
+      return NextResponse.json({ status: false, error: error.message }, { status: 400 });
+    }
+
     await service.update(planData);
 
     return NextResponse.json({ status: true });
@@ -223,13 +243,8 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { user, error } = await authenticate(request);
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.MaintenanceManage);
+    if (!authorization.authorized) return authorization.response;
 
     const id = Number(params.id);
     if (!id || Number.isNaN(id)) {

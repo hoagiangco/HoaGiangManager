@@ -84,8 +84,8 @@ npm run db:seed
 ```
 
 Tạo các roles và user mặc định:
-- **Admin**: admin@quanlyvt.com / Admin@123
-- **User**: user@quanlyvt.com / User@123
+- **Admin**: admin@quanlyvt.com / mật khẩu tạm trong `SEED_ADMIN_PASSWORD`
+- **User**: user@quanlyvt.com / mật khẩu tạm trong `SEED_USER_PASSWORD`
 
 ### 5. Chạy Development Server
 

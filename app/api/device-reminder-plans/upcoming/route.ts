@@ -1,3 +1,4 @@
+import { maintenanceToday, calculateNextDueDay, maintenanceDaysBetween } from '@/lib/utils/maintenanceScheduler';
 import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import { authenticate } from '@/lib/auth/middleware';
@@ -30,10 +31,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const futureDate = new Date(today);
-    futureDate.setDate(futureDate.getDate() + days);
+    const today = maintenanceToday();
+    const futureDate = calculateNextDueDay(today, days, 'day');
 
     // Get upcoming reminder plans
     const result = await pool.query(
@@ -44,15 +43,15 @@ export async function GET(request: NextRequest) {
         d."Name" as "deviceName",
         p."Title" as title,
         p."Description" as description,
-        p."NextDueDate" as "nextDueDate",
+        p."NextDueDate"::date::text as "nextDueDate",
         p."Metadata" as metadata,
         p."IsActive" as "isActive"
       FROM "DeviceReminderPlan" p
       INNER JOIN "Device" d ON p."DeviceID" = d."ID"
       WHERE p."IsActive" = true
         AND p."NextDueDate" IS NOT NULL
-        AND p."NextDueDate" >= $1
-        AND p."NextDueDate" <= $2
+        AND p."NextDueDate"::date >= $1::date
+        AND p."NextDueDate"::date <= $2::date
       ORDER BY p."NextDueDate" ASC
       `,
       [today, futureDate]
@@ -72,16 +71,16 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      const nextDueDate = row.nextDueDate ? new Date(row.nextDueDate) : null;
+      const nextDueDate = row.nextDueDate || null;
       const daysUntilDue = nextDueDate
-        ? Math.ceil((nextDueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        ? maintenanceDaysBetween(nextDueDate, today)
         : null;
 
       return {
         id: row.id,
         deviceId: row.deviceId,
         deviceName: row.deviceName,
-        nextDueDate: nextDueDate ? nextDueDate.toISOString().split('T')[0] : null,
+        nextDueDate: nextDueDate,
         daysUntilDue,
         title: row.title,
         description: row.description,

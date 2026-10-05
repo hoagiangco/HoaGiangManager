@@ -1,27 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/auth/middleware';
+import { requirePermission } from '@/lib/auth/middleware';
+import { Permission } from '@/lib/auth/permissions';
 import { UserService } from '@/lib/services/userService';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, error } = await authenticate(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Only Admin can view roles
-    if (!user.roles || !user.roles.includes('Admin')) {
-      return NextResponse.json(
-        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được xem danh sách vai trò' },
-        { status: 403 }
-      );
-    }
+    const authorization = await requirePermission(request, Permission.UserManage);
+    if (!authorization.authorized) return authorization.response;
 
     const userService = new UserService();
     const roles = await userService.getAllRoles();

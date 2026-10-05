@@ -1,3 +1,4 @@
+import { advanceMaintenanceSchedule } from './maintenanceScheduleService';
 import pool from '../db';
 import { PoolClient } from 'pg';
 import { DamageReport, DamageReportVM, DamageReportStatus, DamageReportPriority, DeviceStatus, EventStatus, TimelineEntry } from '@/types';
@@ -1680,65 +1681,8 @@ export class DamageReportService {
     // - Bump NextDueDate nếu cron chưa kịp bump (NextDueDate <= hôm nay)
     //   Anchor vào StartFrom để tránh trôi lịch. Nếu cron đã bump rồi (NextDueDate > hôm nay), bỏ qua.
     if (s === DamageReportStatus.Completed) {
-      // Bump NextDueDate cho tất cả plans trong batch NẾU chưa được bump hôm nay
-      try {
-        const { calculateNextDueDate } = require('../utils/maintenanceScheduler');
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        // Lấy StartFrom cho mỗi plan
-        const planIdsForBump = plans.map((p: any) => p.id);
-        if (planIdsForBump.length > 0) {
-          const plansWithStartFrom = await pool.query(
-            `SELECT "ID", "StartFrom", "NextDueDate", "IntervalValue", "IntervalUnit", "Metadata"
-             FROM "DeviceReminderPlan"
-             WHERE "ID" = ANY($1::int[]) AND "IsActive" = true`,
-            [planIdsForBump]
-          );
-
-          for (const plan of plansWithStartFrom.rows) {
-            const planNextDue = plan.NextDueDate ? new Date(plan.NextDueDate) : null;
-            if (!planNextDue) continue;
-            planNextDue.setHours(0, 0, 0, 0);
-
-            // Chỉ bump nếu NextDueDate vẫn còn là hôm nay hoặc trước đó
-            // Nếu NextDueDate đã ở tương lai (cron đã bump trước), bỏ qua để tránh double-bump
-            if (planNextDue > today) {
-              console.log(`Plan ${plan.ID}: NextDueDate đã được bump (${planNextDue.toISOString().split('T')[0]}), bỏ qua`);
-              continue;
-            }
-
-            if (!plan.IntervalValue || !plan.IntervalUnit) continue;
-
-            let metadata: any = {};
-            try {
-              metadata = typeof plan.Metadata === 'string' ? JSON.parse(plan.Metadata) : (plan.Metadata || {});
-            } catch (e) {}
-
-            const startFrom = plan.StartFrom ? new Date(plan.StartFrom) : null;
-
-            // Tính lịch tiếp theo từ ngày hiện tại, anchor theo startFrom
-            const newNextDueDate = calculateNextDueDate(
-              today,
-              plan.IntervalValue,
-              plan.IntervalUnit,
-              metadata?.scheduleConfig || null,
-              false,
-              startFrom
-            );
-
-            await pool.query(
-              `UPDATE "DeviceReminderPlan"
-               SET "NextDueDate" = $1, "LastTriggeredAt" = $2, "UpdatedAt" = CURRENT_TIMESTAMP
-               WHERE "ID" = $3`,
-              [newNextDueDate, today, plan.ID]
-            );
-            console.log(`Plan ${plan.ID}: Đã bump NextDueDate từ ${planNextDue.toISOString().split('T')[0]} → ${newNextDueDate.toISOString().split('T')[0]}`);
-          }
-        }
-      } catch (err) {
-        console.error('Error bumping NextDueDate on completion:', err);
-      }
+      // Keep the configured calendar, irrespective of the report's completion date.
+      await advanceMaintenanceSchedule({ batchId });
 
       // Notify about maintenance completion
       try {
