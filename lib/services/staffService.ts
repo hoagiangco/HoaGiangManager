@@ -18,7 +18,7 @@ interface StaffUsageSummary {
 }
 
 export class StaffService {
-  async getStaffByDepartment(departmentId: number = 0): Promise<StaffVM[]> {
+  async getStaffByDepartment(departmentId: number = 0, includeResigned: boolean = false): Promise<StaffVM[]> {
     let query = `
       SELECT 
         s."ID" as id,
@@ -27,17 +27,23 @@ export class StaffService {
         s."Birthday" as birthday,
         s."DepartmentID" as "departmentId",
         s."UserId" as "userId",
+        s."IsResigned" as "isResigned",
         u."Email" as email,
         d."Name" as "departmentName"
       FROM "Staff" s
       LEFT JOIN "Department" d ON s."DepartmentID" = d."ID"
       LEFT JOIN "AspNetUsers" u ON s."UserId" = u."Id"
+      WHERE 1=1
     `;
 
     const params: any[] = [];
     if (departmentId > 0) {
-      query += ` WHERE s."DepartmentID" = $1`;
       params.push(departmentId);
+      query += ` AND s."DepartmentID" = ${params.length}`;
+    }
+
+    if (!includeResigned) {
+      query += ` AND (s."IsResigned" IS NULL OR s."IsResigned" = false)`;
     }
 
     query += ` ORDER BY s."Name"`;
@@ -183,8 +189,8 @@ export class StaffService {
     const nextId = maxResult.rows[0].next_id;
 
     await pool.query(
-      `INSERT INTO "Staff" ("ID", "Name", "Gender", "Birthday", "DepartmentID", "UserId")
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+      `INSERT INTO "Staff" ("ID", "Name", "Gender", "Birthday", "DepartmentID", "UserId", "IsResigned")
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         nextId,
         staff.name,

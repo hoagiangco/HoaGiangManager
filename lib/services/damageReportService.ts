@@ -1116,16 +1116,6 @@ export class DamageReportService {
 
       await client.query('COMMIT');
 
-      // Sync maintenance events if linked to a batch
-      try {
-        await this.syncMaintenanceBatchEvents(id, status, updatedBy, {
-          handlerId: row.handler_id,
-          handlingDate: handlingDate,
-          damageContent: damageContent
-        });
-      } catch (err) {
-        console.error('Failed to sync maintenance events on updateStatus:', err);
-      }
 
       // Send notifications AFTER commit
       if (currentStatusStr !== status.toString()) {
@@ -1538,20 +1528,53 @@ export class DamageReportService {
 
     const metadataFilter = `%"maintenanceBatchId":"${batchId}"%`;
 
-    // Prepare notes update if provided
+
+    let eventNotesStr = options?.handlerNotes;
+    if (eventNotesStr !== undefined) {
+      if (eventNotesStr) {
+        try {
+          if (typeof eventNotesStr === 'string' && eventNotesStr.trim().startsWith('[')) {
+            const tl = JSON.parse(eventNotesStr);
+            if (Array.isArray(tl) && tl.length > 0) {
+              const userEntries = tl.filter((e: any) => e.type !== 'auto');
+              const lastEntry = userEntries.length > 0 ? userEntries[userEntries.length - 1] : tl[tl.length - 1];
+              eventNotesStr = lastEntry?.content || '';
+            }
+          }
+        } catch {}
+      }
+      eventNotesStr = String(eventNotesStr || '').substring(0, 200);
+    }
+
     let notesUpdateClause = '';
-    let notesParamIndex = -1;
     const updateParams1: any[] = [mappedStatus, reportId];
-    if (options?.handlerNotes !== undefined) {
-      updateParams1.push(options.handlerNotes);
-      notesParamIndex = updateParams1.length;
-      notesUpdateClause = `, "Notes" = $${notesParamIndex}`;
+    if (eventNotesStr !== undefined) {
+      updateParams1.push(eventNotesStr);
+      notesUpdateClause = `, "Notes" = $${updateParams1.length}`;
+    }
+
+    let eventTypeUpdateClause = '';
+    if (options?.eventTypeId) {
+      updateParams1.push(options.eventTypeId);
+      eventTypeUpdateClause = `, "EventTypeID" = $${updateParams1.length}`;
+    }
+
+    let titleUpdateClause = '';
+    if (options?.eventTitle) {
+      updateParams1.push(options.eventTitle);
+      titleUpdateClause = `, "Title" = $${updateParams1.length}`;
+    }
+
+    let descriptionUpdateClause = '';
+    if (options?.eventDescription) {
+      updateParams1.push(options.eventDescription);
+      descriptionUpdateClause = `, "Description" = $${updateParams1.length}`;
     }
 
     // 1. Update events ALREADY linked to this report (strict match)
     await pool.query(
       `UPDATE "Event" 
-       SET "Status" = $1, "UpdatedAt" = CURRENT_TIMESTAMP ${startDateUpdate} ${endDateUpdate} ${notesUpdateClause}
+       SET "Status" = $1, "UpdatedAt" = CURRENT_TIMESTAMP ${startDateUpdate} ${endDateUpdate} ${notesUpdateClause} ${eventTypeUpdateClause} ${titleUpdateClause} ${descriptionUpdateClause}
        WHERE "RelatedReportID" = $2`,
       updateParams1
     );
@@ -1566,21 +1589,39 @@ export class DamageReportService {
     // Prepare params for step 3
     const updateParams3: any[] = [mappedStatus, reportId, metadataFilter, batchId];
     let notesUpdateClause3 = '';
-    if (options?.handlerNotes !== undefined) {
-      updateParams3.push(options.handlerNotes);
+    if (eventNotesStr !== undefined) {
+      updateParams3.push(eventNotesStr);
       notesUpdateClause3 = `, "Notes" = $${updateParams3.length}`;
     }
 
+    let eventTypeUpdateClause3 = '';
+    if (options?.eventTypeId) {
+      updateParams3.push(options.eventTypeId);
+      eventTypeUpdateClause3 = `, "EventTypeID" = $${updateParams3.length}`;
+    }
+
+    let titleUpdateClause3 = '';
+    if (options?.eventTitle) {
+      updateParams3.push(options.eventTitle);
+      titleUpdateClause3 = `, "Title" = $${updateParams3.length}`;
+    }
+
+    let descriptionUpdateClause3 = '';
+    if (options?.eventDescription) {
+      updateParams3.push(options.eventDescription);
+      descriptionUpdateClause3 = `, "Description" = $${updateParams3.length}`;
+    }
+
     // 3. Update existing UNLINKED non-completed events for this batch (loose match)
-    // This handles cases where events were created by the scheduler but not yet linked to a report
     await pool.query(
       `UPDATE "Event" 
-       SET "Status" = $1, "UpdatedAt" = CURRENT_TIMESTAMP ${startDateUpdate} ${endDateUpdate} ${notesUpdateClause3},
+       SET "Status" = $1, "UpdatedAt" = CURRENT_TIMESTAMP ${startDateUpdate} ${endDateUpdate} ${notesUpdateClause3} ${eventTypeUpdateClause3} ${titleUpdateClause3} ${descriptionUpdateClause3},
            "RelatedReportID" = $2
        WHERE ("Metadata"::text LIKE $3 OR ("Metadata"->>'maintenanceBatchId') = $4)
          AND "RelatedReportID" IS NULL`,
       updateParams3
     );
+
 
     // 4. Find plans belonging to this batch to identify missing events
     const plansResult = await pool.query(

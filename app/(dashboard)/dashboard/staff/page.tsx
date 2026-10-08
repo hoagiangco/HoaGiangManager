@@ -50,7 +50,7 @@ function StaffPageContent() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/staff?departmentId=0');
+      const response = await api.get('/staff?departmentId=0&includeResigned=true');
       if (response.data.status) {
         setAllStaff(response.data.data || []);
       }
@@ -641,12 +641,21 @@ function StaffPageContent() {
                       {getSortIcon('department')}
                     </div>
                   </th>
+                  <th 
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => handleSort('isResigned')}
+                  >
+                    <div className="d-flex align-items-center gap-2">
+                      <span>Trạng thái</span>
+                      {getSortIcon('isResigned')}
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {currentStaff.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-4">
+                    <td colSpan={7} className="text-center py-4">
                       <span className="text-muted">Không có dữ liệu</span>
                     </td>
                   </tr>
@@ -670,6 +679,13 @@ function StaffPageContent() {
                       </td>
                       <td>{staffMember.email || <span className="text-muted">-</span>}</td>
                       <td>{staffMember.departmentName || <span className="text-muted">-</span>}</td>
+                      <td>
+                        {staffMember.isResigned ? (
+                          <span className="badge bg-danger">Đã nghỉ việc</span>
+                        ) : (
+                          <span className="badge bg-success">Đang làm việc</span>
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -859,6 +875,22 @@ function StaffPageContent() {
                     ))}
                   </select>
                 </div>
+                {isEdit && (
+                  <div className="mb-3 mt-3">
+                    <div className="form-check form-switch">
+                      <input 
+                        className="form-check-input" 
+                        type="checkbox" 
+                        id="isResigned" 
+                        checked={formData.isResigned || false}
+                        onChange={e => setFormData({ ...formData, isResigned: e.target.checked })}
+                      />
+                      <label className="form-check-label text-danger" htmlFor="isResigned">
+                        Đánh dấu là đã nghỉ việc
+                      </label>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="modal-footer d-flex justify-content-end gap-2">
                 <button

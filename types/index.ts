@@ -80,6 +80,7 @@ export interface Staff {
   birthday?: Date;
   departmentId?: number;
   userId?: string; // Link to AspNetUsers.Id (auto-generated)
+  isResigned?: boolean;
 }
 
 export interface StaffVM extends Staff {

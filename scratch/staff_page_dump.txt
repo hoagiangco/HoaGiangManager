@@ -1,0 +1,935 @@
+﻿1 'use client';
+2 
+3 export const dynamic = 'force-dynamic';
+4 
+5 import React, { useState, useEffect } from 'react';
+6 import api from '@/lib/utils/api';
+7 import { toast } from 'react-toastify';
+8 import { StaffVM, Department } from '@/types';
+9 import { formatDateDisplay, formatDateInput } from '@/lib/utils/dateFormat';
+10 import DateInput from '@/components/DateInput';
+11 import AdminRoute from '@/components/AdminRoute';
+12 import Loading from '@/components/Loading';
+13 
+14 function StaffPageContent() {
+15   // Control mobile filter visibility
+16   const [filtersOpen, setFiltersOpen] = useState(false);
+17   const [staff, setStaff] = useState<StaffVM[]>([]);
+18   const [allStaff, setAllStaff] = useState<StaffVM[]>([]);
+19   const [departments, setDepartments] = useState<Department[]>([]);
+20   const [loading, setLoading] = useState(true);
+21   const [selectedDepartment, setSelectedDepartment] = useState(0);
+22   const [searchKeyword, setSearchKeyword] = useState('');
+23   const [showModal, setShowModal] = useState(false);
+24   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+25   
+26   // Pagination state
+27   const [currentPage, setCurrentPage] = useState(1);
+28   const [itemsPerPage, setItemsPerPage] = useState(10);
+29   
+30   // Sort state
+31   const [sortField, setSortField] = useState<string>('name');
+32   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+33   
+34   // Form state
+35   const [formData, setFormData] = useState<Partial<StaffVM>>({
+36     id: 0,
+37     name: '',
+38     email: '',
+39     gender: undefined,
+40     birthday: undefined,
+41     departmentId: undefined,
+42   });
+43   const [isEdit, setIsEdit] = useState(false);
+44 
+45   useEffect(() => {
+46     loadData();
+47     loadDepartments();
+48   }, []);
+49 
+50   const loadData = async () => {
+51     try {
+52       setLoading(true);
+53       const response = await api.get('/staff?departmentId=0&includeResigned=true');
+54       if (response.data.status) {
+55         setAllStaff(response.data.data || []);
+56       }
+57     } catch (error) {
+58       toast.error('Lß╗ùi khi tß║úi danh s├ích nh├ón vi├¬n');
+59     } finally {
+60       setLoading(false);
+61     }
+62   };
+63 
+64   const loadDepartments = async () => {
+65     try {
+66       const response = await api.get('/departments');
+67       if (response.data.status) {
+68         setDepartments(response.data.data || []);
+69       }
+70     } catch (error) {
+71       console.error('Error loading departments:', error);
+72     }
+73   };
+74 
+75   // Filter and search logic
+76   useEffect(() => {
+77     let filtered = [...allStaff];
+78 
+79     // Filter by department
+80     if (selectedDepartment > 0) {
+81       filtered = filtered.filter(s => s.departmentId === selectedDepartment);
+82     }
+83 
+84     // Search by keyword
+85     if (searchKeyword.trim()) {
+86       const keyword = searchKeyword.toLowerCase();
+87       filtered = filtered.filter(s =>
+88         s.name?.toLowerCase().includes(keyword) ||
+89         s.departmentName?.toLowerCase().includes(keyword)
+90       );
+91     }
+92 
+93     setStaff(filtered);
+94     setCurrentPage(1); // Reset to first page when filtering
+95   }, [allStaff, selectedDepartment, searchKeyword]);
+96 
+97   const handleNew = () => {
+98     setFormData({
+99       id: 0,
+100       name: '',
+101       email: '',
+102       gender: undefined,
+103       birthday: undefined,
+104       departmentId: undefined,
+105     });
+106     setIsEdit(false);
+107     setShowModal(true);
+108   };
+109 
+110   const handleEdit = () => {
+111     if (selectedIds.length !== 1) {
+112       toast.warning('Vui l├▓ng chß╗ìn ─æ├║ng 1 nh├ón vi├¬n ─æß╗â sß╗¡a');
+113       return;
+114     }
+115 
+116     const selectedStaff = allStaff.find(s => s.id === selectedIds[0]);
+117     if (selectedStaff) {
+118       setFormData({
+119         id: selectedStaff.id,
+120         name: selectedStaff.name || '',
+121         email: selectedStaff.email || '',
+122         gender: selectedStaff.gender,
+123         birthday: selectedStaff.birthday,
+124         departmentId: selectedStaff.departmentId,
+125       });
+126       setIsEdit(true);
+127       setShowModal(true);
+128     }
+129   };
+130 
+131   const handleCheckNameSync = async () => {
+132     try {
+133       const response = await api.get('/staff/sync-names');
+134       if (response.data.status) {
+135         const mismatches = response.data.data || [];
+136         if (mismatches.length === 0) {
+137           toast.success('Tß║Ñt cß║ú t├¬n nh├ón vi├¬n ─æ├ú ─æ╞░ß╗úc ─æß╗ông bß╗Ö vß╗¢i t├ái khoß║ún');
+138         } else {
+139           const message = `T├¼m thß║Ñy ${mismatches.length} nh├ón vi├¬n c├│ t├¬n kh├íc nhau:\n${mismatches.map((m: any) => `- ${m.staffName} (Staff) vs ${m.userName || '(trß╗æng)'} (User)`).join('\n')}\n\nBß║ín c├│ muß╗æn ─æß╗ông bß╗Ö kh├┤ng?`;
+140           if (confirm(message)) {
+141             const syncResponse = await api.post('/staff/sync-names');
+142             if (syncResponse.data.status) {
+143               toast.success(syncResponse.data.message || '─Éß╗ông bß╗Ö th├ánh c├┤ng');
+144               loadData();
+145             } else {
+146               toast.error(syncResponse.data.error || 'Lß╗ùi khi ─æß╗ông bß╗Ö');
+147             }
+148           }
+149         }
+150       } else {
+151         toast.error(response.data.error || 'Lß╗ùi khi kiß╗âm tra');
+152       }
+153     } catch (error: any) {
+154       toast.error('Lß╗ùi khi kiß╗âm tra ─æß╗ông bß╗Ö t├¬n');
+155       console.error('Check name sync error:', error);
+156     }
+157   };
+158 
+159   const handleDelete = async () => {
+160     if (selectedIds.length === 0) {
+161       toast.warning('Vui l├▓ng chß╗ìn ├¡t nhß║Ñt 1 nh├ón vi├¬n ─æß╗â x├│a');
+162       return;
+163     }
+164 
+165     if (!confirm('Bß║ín c├│ chß║»c chß║»n muß╗æn x├│a c├íc nh├ón vi├¬n ─æ├ú chß╗ìn?')) {
+166       return;
+167     }
+168 
+169     try {
+170       let deletedCount = 0;
+171       for (const id of selectedIds) {
+172         let response = await api.delete(`/staff/${id}`);
+173 
+174         if (!response.data.status && response.data.requiresConfirmation) {
+175           let warningMessage = response.data.message || 'Nh├ón vi├¬n n├áy ─æ├ú ─æ╞░ß╗úc sß╗¡ dß╗Ñng, nß║┐u x├│a sß║╜ l├ám ß║únh h╞░ß╗ƒng ─æß║┐n dß╗» liß╗çu.';
+176           const usageDetails = formatUsageDetails(response.data.usage);
+177           if (usageDetails) {
+178             warningMessage += `\n\nß║ónh h╞░ß╗ƒng:\n${usageDetails}`;
+179           }
+180           warningMessage += '\n\nBß║ín c├│ chß║»c chß║»n muß╗æn tiß║┐p tß╗Ñc?';
+181 
+182           if (!confirm(warningMessage)) {
+183             continue;
+184           }
+185 
+186           response = await api.delete(`/staff/${id}?force=true`);
+187         }
+188 
+189         if (!response.data.status) {
+190           toast.error(response.data.message || response.data.error || 'Kh├┤ng thß╗â x├│a nh├ón vi├¬n');
+191           return;
+192         }
+193 
+194         deletedCount++;
+195       }
+196       if (deletedCount > 0) {
+197         toast.success(`─É├ú x├│a ${deletedCount} nh├ón vi├¬n th├ánh c├┤ng`);
+198         setSelectedIds([]);
+199         loadData();
+200       } else {
+201         toast.info('Kh├┤ng c├│ nh├ón vi├¬n n├áo ─æ╞░ß╗úc x├│a');
+202       }
+203     } catch (error: any) {
+204       toast.error('Lß╗ùi khi x├│a nh├ón vi├¬n');
+205       console.error('Delete error:', error);
+206     }
+207   };
+208 
+209   const handleSave = async () => {
+210     if (!formData.name || !formData.name.trim()) {
+211       toast.error('Vui l├▓ng nhß║¡p t├¬n nh├ón vi├¬n');
+212       return;
+213     }
+214 
+215     // Email is required when creating new staff or when staff doesn't have userId yet
+216     if (!isEdit && (!formData.email || !formData.email.trim())) {
+217       toast.error('Vui l├▓ng nhß║¡p email ─æß╗â tß║ío t├ái khoß║ún');
+218       return;
+219     }
+220 
+221     // If editing and staff doesn't have userId, email is required
+222     if (isEdit && !formData.userId && (!formData.email || !formData.email.trim())) {
+223       toast.error('Vui l├▓ng nhß║¡p email ─æß╗â tß║ío t├ái khoß║ún cho nh├ón vi├¬n n├áy');
+224       return;
+225     }
+226 
+227     // Validate email format
+228     if (formData.email && formData.email.trim()) {
+229       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+230       if (!emailRegex.test(formData.email.trim())) {
+231         toast.error('Email kh├┤ng hß╗úp lß╗ç');
+232         return;
+233       }
+234     }
+235 
+236     try {
+237       const payload = {
+238         name: formData.name.trim(),
+239         email: formData.email?.trim() || null,
+240         gender: formData.gender !== undefined ? formData.gender : null,
+241         birthday: formData.birthday || null,
+242         departmentId: formData.departmentId || null,
+243       };
+244 
+245       if (isEdit) {
+246         await api.put(`/staff/${formData.id}`, { ...payload, id: formData.id });
+247         toast.success('Cß║¡p nhß║¡t th├ánh c├┤ng');
+248       } else {
+249         const response = await api.post('/staff', payload);
+250         if (response.data.message) {
+251           toast.success(response.data.message);
+252         } else {
+253           toast.success('Th├¬m mß╗¢i th├ánh c├┤ng');
+254         }
+255       }
+256 
+257       setShowModal(false);
+258       loadData();
+259     } catch (error: any) {
+260       toast.error(isEdit ? 'Lß╗ùi khi cß║¡p nhß║¡t' : 'Lß╗ùi khi th├¬m mß╗¢i');
+261       console.error('Save error:', error);
+262     }
+263   };
+264 
+265   // Sort and pagination calculations
+266   const sortedStaff = [...staff].sort((a, b) => {
+267     let aValue: any;
+268     let bValue: any;
+269 
+270     switch (sortField) {
+271       case 'name':
+272         aValue = a.name || '';
+273         bValue = b.name || '';
+274         break;
+275       case 'gender':
+276         aValue = a.gender === true ? 1 : a.gender === false ? 0 : -1;
+277         bValue = b.gender === true ? 1 : b.gender === false ? 0 : -1;
+278         break;
+279       case 'birthday':
+280         aValue = a.birthday ? new Date(a.birthday).getTime() : 0;
+281         bValue = b.birthday ? new Date(b.birthday).getTime() : 0;
+282         break;
+283       case 'email':
+284         aValue = a.email || '';
+285         bValue = b.email || '';
+286         break;
+287       case 'department':
+288         aValue = a.departmentName || '';
+289         bValue = b.departmentName || '';
+290         break;
+291       default:
+292         aValue = a.name || '';
+293         bValue = b.name || '';
+294     }
+295 
+296     if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+297     if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+298     return 0;
+299   });
+300 
+301   const totalPages = Math.ceil(sortedStaff.length / itemsPerPage);
+302   const startIndex = (currentPage - 1) * itemsPerPage;
+303   const endIndex = startIndex + itemsPerPage;
+304   const currentStaff = sortedStaff.slice(startIndex, endIndex);
+305 
+306   const handleSort = (field: string) => {
+307     if (sortField === field) {
+308       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+309     } else {
+310       setSortField(field);
+311       setSortDirection('asc');
+312     }
+313     setCurrentPage(1);
+314   };
+315 
+316   const getSortIcon = (field: string) => {
+317     if (sortField !== field) {
+318       return <i className="fas fa-sort text-muted" style={{ fontSize: '0.8rem' }}></i>;
+319     }
+320     return sortDirection === 'asc' 
+321       ? <i className="fas fa-sort-up text-primary"></i>
+322       : <i className="fas fa-sort-down text-primary"></i>;
+323   };
+324 
+325   const getSortFieldLabel = (field: string) => {
+326     const labels: { [key: string]: string } = {
+327       name: 'T├¬n nh├ón vi├¬n',
+328       gender: 'Giß╗¢i t├¡nh',
+329       birthday: 'Ng├áy sinh',
+330       email: 'Email',
+331       department: 'Ph├▓ng ban',
+332     };
+333     return labels[field] || field;
+334   };
+335 
+336   const handlePageChange = (page: number) => {
+337     setCurrentPage(page);
+338     setSelectedIds([]);
+339   };
+340 
+341   const handleItemsPerPageChange = (items: number) => {
+342     setItemsPerPage(items);
+343     setCurrentPage(1);
+344   };
+345 
+346   const handleCheckboxChange = (id: number) => {
+347     setSelectedIds(prev => 
+348       prev.includes(id) 
+349         ? prev.filter(i => i !== id)
+350         : [...prev, id]
+351     );
+352   };
+353 
+354   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+355     if (e.target.checked) {
+356       setSelectedIds(currentStaff.map(s => s.id));
+357     } else {
+358       setSelectedIds([]);
+359     }
+360   };
+361 
+362   const getGenderLabel = (gender?: boolean) => {
+363     if (gender === true) return 'Nam';
+364     if (gender === false) return 'Nß╗»';
+365     return 'Ch╞░a x├íc ─æß╗ïnh';
+366   };
+367 
+368   const getGenderBadge = (gender?: boolean) => {
+369     if (gender === true) return <span className="badge bg-info">Nam</span>;
+370     if (gender === false) return <span className="badge bg-pink">Nß╗»</span>;
+371     return <span className="badge bg-secondary">Ch╞░a x├íc ─æß╗ïnh</span>;
+372   };
+373 
+374   const formatUsageDetails = (usage: any) => {
+375     if (!usage) return '';
+376     const parts: string[] = [];
+377     if (usage.damageReportsHandled) parts.push(`- ${usage.damageReportsHandled} b├ío c├ío ─æang xß╗¡ l├╜`);
+378     if (usage.damageReportsReported) parts.push(`- ${usage.damageReportsReported} b├ío c├ío ─æ├ú b├ío c├ío`);
+379     if (usage.events) parts.push(`- ${usage.events} sß╗▒ kiß╗çn`);
+380     if (usage.reportsCreatedBy) parts.push(`- ${usage.reportsCreatedBy} b├ío c├ío ─æ╞░ß╗úc tß║ío bß╗ƒi t├ái khoß║ún n├áy`);
+381     if (usage.reportsUpdatedBy) parts.push(`- ${usage.reportsUpdatedBy} b├ío c├ío ─æ╞░ß╗úc cß║¡p nhß║¡t bß╗ƒi t├ái khoß║ún n├áy`);
+382     if (usage.historyChanges) parts.push(`- ${usage.historyChanges} lß╗ïch sß╗¡ thay ─æß╗òi`);
+383     return parts.join('\n');
+384   };
+385 
+386   // Handle table scroll for visual indicators
+387   useEffect(() => {
+388     const tableContainer = document.getElementById('staff-table-responsive');
+389     const scrollHint = document.querySelector('.table-scroll-hint');
+390     if (!tableContainer) return;
+391 
+392     const handleScroll = () => {
+393       const { scrollLeft, scrollWidth, clientWidth } = tableContainer;
+394       const isAtStart = scrollLeft === 0;
+395       const isAtEnd = scrollLeft + clientWidth >= scrollWidth - 1;
+396       const hasScrolled = scrollLeft > 0;
+397 
+398       // Update classes for visual indicators
+399       tableContainer.classList.toggle('scrolled', hasScrolled);
+400       tableContainer.classList.toggle('scrolled-to-end', isAtEnd);
+401       tableContainer.classList.toggle('has-scrolled', hasScrolled);
+402 
+403       // Hide scroll hint after first scroll
+404       if (scrollHint && hasScrolled) {
+405         (scrollHint as HTMLElement).style.display = 'none';
+406       }
+407     };
+408 
+409     // Check initial state
+410     handleScroll();
+411 
+412     tableContainer.addEventListener('scroll', handleScroll);
+413     window.addEventListener('resize', handleScroll);
+414 
+415     return () => {
+416       tableContainer.removeEventListener('scroll', handleScroll);
+417       window.removeEventListener('resize', handleScroll);
+418     };
+419   }, [currentStaff]); // Re-run when table content changes
+420 
+421   if (loading) {
+422     return <Loading fullPage />;
+423   }
+424 
+425   return (
+426     <div className="container-fluid" style={{ marginLeft: 0, marginRight: 0, paddingLeft: 0, paddingRight: 0 }}>
+427       <div className="card">
+428         <div className="card-header">
+429           <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+430             <h4 className="mb-0 mb-2 mb-md-0">NH├éN VI├èN</h4>
+431             <div className="d-flex gap-1 align-items-center" style={{ flexWrap: 'nowrap' }}>
+432               {/* Mobile-only filter toggle */}
+433               <button
+434                 type="button"
+435                 className="btn btn-outline-secondary btn-sm d-md-none"
+436                 onClick={() => setFiltersOpen((s) => !s)}
+437                 aria-pressed={!filtersOpen}
+438                 aria-label={filtersOpen ? 'ß║¿n bß╗Ö lß╗ìc' : 'Hiß╗çn bß╗Ö lß╗ìc'}
+439                 title={filtersOpen ? 'ß║¿n bß╗Ö lß╗ìc' : 'Hiß╗çn bß╗Ö lß╗ìc'}
+440               >
+441                 <i className={`fas ${filtersOpen ? 'fa-chevron-up' : 'fa-filter'}`}></i>
+442               </button>
+443               <button 
+444                 className="btn btn-primary btn-sm" 
+445                 onClick={handleNew}
+446                 title="Th├¬m mß╗¢i"
+447                 aria-label="Th├¬m mß╗¢i"
+448               >
+449                 <i className="fas fa-plus"></i>
+450               </button>
+451               <button 
+452                 className="btn btn-success btn-sm" 
+453                 onClick={handleEdit}
+454                 title="Sß╗¡a"
+455                 aria-label="Sß╗¡a"
+456               >
+457                 <i className="fas fa-edit"></i>
+458               </button>
+459               <button 
+460                 className="btn btn-danger btn-sm" 
+461                 onClick={handleDelete}
+462                 title="X├│a"
+463                 aria-label="X├│a"
+464               >
+465                 <i className="fas fa-trash"></i>
+466               </button>
+467               <button 
+468                 className="btn btn-dark btn-sm" 
+469                 onClick={loadData}
+470                 title="Tß║úi lß║íi"
+471                 aria-label="Tß║úi lß║íi"
+472               >
+473                 <i className="fas fa-circle-notch"></i>
+474               </button>
+475               <button 
+476                 className="btn btn-info btn-sm" 
+477                 onClick={handleCheckNameSync}
+478                 title="Kiß╗âm tra ─æß╗ông bß╗Ö t├¬n"
+479                 aria-label="Kiß╗âm tra ─æß╗ông bß╗Ö t├¬n"
+480               >
+481                 <i className="fas fa-sync-alt"></i>
+482               </button>
+483             </div>
+484           </div>
+485           
+486           {/* Filter Section */}
+487           <div className={`card mb-3 filter-card ${filtersOpen ? 'filter-open' : 'filter-collapsed'}`} style={{ backgroundColor: '#f8f9fa' }}>
+488             <div className="card-body py-2">
+489               <div className="row g-2">
+490                 <div className="col-12 col-md-6 col-lg-3">
+491                   <label className="form-label small">T├¼m kiß║┐m</label>
+492                   <input
+493                     type="text"
+494                     className="form-control form-control-sm"
+495                     placeholder="T├¬n, ph├▓ng ban..."
+496                     value={searchKeyword}
+497                     onChange={(e) => setSearchKeyword(e.target.value)}
+498                   />
+499                 </div>
+500                 <div className="col-12 col-md-6 col-lg-3">
+501                   <label className="form-label small">Ph├▓ng ban</label>
+502                   <select
+503                     className="form-control form-control-sm"
+504                     value={selectedDepartment}
+505                     onChange={(e) => setSelectedDepartment(Number(e.target.value))}
+506                   >
+507                     <option value="0">Tß║Ñt cß║ú</option>
+508                     {departments.map(dept => (
+509                       <option key={dept.id} value={dept.id}>{dept.name}</option>
+510                     ))}
+511                   </select>
+512                 </div>
+513                 <div className="col-12 col-md-6 col-lg-3">
+514                   <div className="d-flex align-items-end h-100">
+515                     <button
+516                       className="btn btn-secondary btn-sm w-100"
+517                       onClick={() => {
+518                         setSearchKeyword('');
+519                         setSelectedDepartment(0);
+520                       }}
+521                     >
+522                       <i className="fas fa-filter"></i> X├│a bß╗Ö lß╗ìc
+523                     </button>
+524                   </div>
+525                 </div>
+526               </div>
+527             </div>
+528           </div>
+529           <div className="d-flex justify-content-between align-items-center" style={{ flexWrap: 'nowrap', gap: '0.5rem' }}>
+530             <div className="d-flex align-items-center gap-1" style={{ flexWrap: 'nowrap', flexShrink: 0 }}>
+531               <span className="d-none d-sm-inline" style={{ whiteSpace: 'nowrap' }}>Hiß╗ân thß╗ï:</span>
+532               <span className="d-sm-none" style={{ whiteSpace: 'nowrap' }}>Hiß╗çn:</span>
+533               <select
+534                 className="form-control form-control-sm"
+535                 style={{ width: '60px', padding: '0.25rem 0.5rem' }}
+536                 value={itemsPerPage}
+537                 onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+538               >
+539                 <option value="10">10</option>
+540                 <option value="25">25</option>
+541                 <option value="50">50</option>
+542                 <option value="100">100</option>
+543               </select>
+544               <span className="d-none d-sm-inline" style={{ whiteSpace: 'nowrap' }}>d├▓ng/trang</span>
+545             </div>
+546             <div style={{ flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+547               <span style={{ fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+548                 Hiß╗ân thß╗ï {sortedStaff.length > 0 ? startIndex + 1 : 0}-{Math.min(endIndex, sortedStaff.length)} cß╗ºa {sortedStaff.length} nh├ón vi├¬n
+549                 {(selectedDepartment > 0 || searchKeyword.trim()) && (
+550                   <span className="text-muted"> (─æ├ú lß╗ìc)</span>
+551                 )}
+552                 {sortField && (
+553                   <span className="text-muted ms-2 d-none d-lg-inline">
+554                     <i className="fas fa-sort"></i> Sß║»p xß║┐p: {getSortFieldLabel(sortField)} ({sortDirection === 'asc' ? 'T─âng dß║ºn' : 'Giß║úm dß║ºn'})
+555                   </span>
+556                 )}
+557               </span>
+558             </div>
+559           </div>
+560         </div>
+561         <div className="card-body p-0 p-md-3" style={{ padding: 0 }}>
+562           {/* Scroll hint for mobile */}
+563           <div className="table-scroll-hint d-block d-sm-none text-center text-muted" style={{ fontSize: '0.75rem', padding: '0.25rem 0', marginBottom: '0.5rem' }}>
+564             ΓåÉ Cuß╗Ön ─æß╗â xem th├¬m ΓåÆ
+565           </div>
+566           <div
+567             className="table-responsive"
+568             id="staff-table-responsive"
+569             style={{
+570               overflowX: 'auto',
+571               overflowY: 'visible',
+572               WebkitOverflowScrolling: 'touch',
+573               position: 'relative',
+574               width: '100%',
+575               display: 'block',
+576               scrollBehavior: 'smooth',
+577               touchAction: 'pan-x',
+578               minHeight: '0',
+579               maxWidth: '100%'
+580             }}
+581           >
+582             <table
+583               className="table table-striped table-hover mb-0"
+584               style={{
+585                 tableLayout: 'auto',
+586                 marginBottom: 0,
+587                 display: 'table'
+588               }}
+589             >
+590               <thead>
+591                 <tr>
+592                   <th style={{ width: '50px' }}>
+593                     <input
+594                       type="checkbox"
+595                       checked={selectedIds.length === currentStaff.length && currentStaff.length > 0 && selectedIds.length > 0}
+596                       onChange={handleSelectAll}
+597                     />
+598                   </th>
+599                   <th 
+600                     style={{ cursor: 'pointer', userSelect: 'none' }}
+601                     onClick={() => handleSort('name')}
+602                   >
+603                     <div className="d-flex align-items-center gap-2">
+604                       <span>T├¬n nh├ón vi├¬n</span>
+605                       {getSortIcon('name')}
+606                     </div>
+607                   </th>
+608                   <th 
+609                     style={{ cursor: 'pointer', userSelect: 'none' }}
+610                     onClick={() => handleSort('gender')}
+611                   >
+612                     <div className="d-flex align-items-center gap-2">
+613                       <span>Giß╗¢i t├¡nh</span>
+614                       {getSortIcon('gender')}
+615                     </div>
+616                   </th>
+617                   <th 
+618                     style={{ cursor: 'pointer', userSelect: 'none' }}
+619                     onClick={() => handleSort('birthday')}
+620                   >
+621                     <div className="d-flex align-items-center gap-2">
+622                       <span>Ng├áy sinh</span>
+623                       {getSortIcon('birthday')}
+624                     </div>
+625                   </th>
+626                   <th 
+627                     style={{ cursor: 'pointer', userSelect: 'none' }}
+628                     onClick={() => handleSort('email')}
+629                   >
+630                     <div className="d-flex align-items-center gap-2">
+631                       <span>Email</span>
+632                       {getSortIcon('email')}
+633                     </div>
+634                   </th>
+635                   <th 
+636                     style={{ cursor: 'pointer', userSelect: 'none' }}
+637                     onClick={() => handleSort('department')}
+638                   >
+639                     <div className="d-flex align-items-center gap-2">
+640                       <span>Ph├▓ng ban</span>
+641                       {getSortIcon('department')}
+642                     </div>
+643                   </th>
+644                   <th 
+645                     style={{ cursor: 'pointer', userSelect: 'none' }}
+646                     onClick={() => handleSort('isResigned')}
+647                   >
+648                     <div className="d-flex align-items-center gap-2">
+649                       <span>Trß║íng th├íi</span>
+650                       {getSortIcon('isResigned')}
+651                     </div>
+652                   </th>
+653                 </tr>
+654               </thead>
+655               <tbody>
+656                 {currentStaff.length === 0 ? (
+657                   <tr>
+658                     <td colSpan={7} className="text-center py-4">
+659                       <span className="text-muted">Kh├┤ng c├│ dß╗» liß╗çu</span>
+660                     </td>
+661                   </tr>
+662                 ) : (
+663                   currentStaff.map((staffMember) => (
+664                     <tr key={staffMember.id}>
+665                       <td>
+666                         <input
+667                           type="checkbox"
+668                           checked={selectedIds.includes(staffMember.id)}
+669                           onChange={() => handleCheckboxChange(staffMember.id)}
+670                         />
+671                       </td>
+672                       <td>{staffMember.name}</td>
+673                       <td>{getGenderBadge(staffMember.gender)}</td>
+674                       <td>
+675                         {staffMember.birthday 
+676                           ? formatDateDisplay(staffMember.birthday)
+677                           : <span className="text-muted">-</span>
+678                         }
+679                       </td>
+680                       <td>{staffMember.email || <span className="text-muted">-</span>}</td>
+681                       <td>{staffMember.departmentName || <span className="text-muted">-</span>}</td>
+682                       <td>
+683                         {staffMember.isResigned ? (
+684                           <span className="badge bg-danger">─É├ú nghß╗ë viß╗çc</span>
+685                         ) : (
+686                           <span className="badge bg-success">─Éang l├ám viß╗çc</span>
+687                         )}
+688                       </td>
+689                     </tr>
+690                       <td>
+691                         {staffMember.isResigned ? (
+692                           <span className="badge bg-danger">─É├ú nghß╗ë viß╗çc</span>
+693                         ) : (
+694                           <span className="badge bg-success">─Éang l├ám viß╗çc</span>
+695                         )}
+696                       </td>
+697                     </tr>
+698                   ))
+699                 )}
+700               </tbody>
+701             </table>
+702           </div>
+703 
+704           {/* Pagination */}
+705           {totalPages > 1 && (
+706             <nav aria-label="Page navigation" className="mt-3">
+707               <ul className="pagination justify-content-center">
+708                 <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
+709                   <button
+710                     className="page-link"
+711                     onClick={() => handlePageChange(currentPage - 1)}
+712                     disabled={currentPage === 1}
+713                     title="Trang tr╞░ß╗¢c"
+714                     aria-label="Trang tr╞░ß╗¢c"
+715                   >
+716                     <i className="fas fa-angle-left"></i>
+717                   </button>
+718                 </li>
+719                 
+720                 {/* Page numbers */}
+721                 {(() => {
+722                   const pages: number[] = [];
+723                   
+724                   if (totalPages <= 7) {
+725                     for (let i = 1; i <= totalPages; i++) {
+726                       pages.push(i);
+727                     }
+728                   } else {
+729                     pages.push(1);
+730                     
+731                     let startPage = Math.max(2, currentPage - 1);
+732                     let endPage = Math.min(totalPages - 1, currentPage + 1);
+733                     
+734                     if (currentPage <= 3) {
+735                       startPage = 2;
+736                       endPage = 4;
+737                     }
+738                     
+739                     if (currentPage >= totalPages - 2) {
+740                       startPage = totalPages - 4;
+741                       endPage = totalPages - 1;
+742                     }
+743                     
+744                     for (let i = startPage; i <= endPage; i++) {
+745                       if (i > 1 && i < totalPages && !pages.includes(i)) {
+746                         pages.push(i);
+747                       }
+748                     }
+749                     
+750                     if (!pages.includes(totalPages)) {
+751                       pages.push(totalPages);
+752                     }
+753                   }
+754                   
+755                   const uniquePages = Array.from(new Set(pages)).sort((a, b) => a - b);
+756                   
+757                   return uniquePages.map((page, index) => {
+758                     const prevPage = index > 0 ? uniquePages[index - 1] : 0;
+759                     const showEllipsisBefore = prevPage > 0 && page - prevPage > 1;
+760                     
+761                     return (
+762                       <React.Fragment key={page}>
+763                         {showEllipsisBefore && (
+764                           <li className="page-item disabled">
+765                             <span className="page-link">...</span>
+766                           </li>
+767                         )}
+768                         <li className={`page-item ${currentPage === page ? 'active' : ''}`}>
+769                           <button
+770                             className="page-link"
+771                             onClick={() => handlePageChange(page)}
+772                           >
+773                             {page}
+774                           </button>
+775                         </li>
+776                       </React.Fragment>
+777                     );
+778                   });
+779                 })()}
+780                 
+781                 <li className={`page-item ${currentPage === totalPages ? 'disabled' : ''}`}>
+782                   <button
+783                     className="page-link"
+784                     onClick={() => handlePageChange(currentPage + 1)}
+785                     disabled={currentPage === totalPages}
+786                     title="Trang sau"
+787                     aria-label="Trang sau"
+788                   >
+789                     <i className="fas fa-angle-right"></i>
+790                   </button>
+791                 </li>
+792               </ul>
+793             </nav>
+794           )}
+795         </div>
+796       </div>
+797 
+798       {/* Add/Edit Modal */}
+799       {showModal && (
+800         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} tabIndex={-1}>
+801           <div className="modal-dialog modal-lg">
+802             <div className="modal-content">
+803               <div className="modal-header">
+804                 <h5 className="modal-title">{isEdit ? 'Cß║¡p nhß║¡t nh├ón vi├¬n' : 'Th├¬m mß╗¢i nh├ón vi├¬n'}</h5>
+805                 <button
+806                   type="button"
+807                   className="btn-close"
+808                   onClick={() => setShowModal(false)}
+809                 ></button>
+810               </div>
+811               <div className="modal-body">
+812                 <div className="mb-3">
+813                   <label className="form-label">T├¬n nh├ón vi├¬n <span className="text-danger">*</span></label>
+814                   <input
+815                     type="text"
+816                     className="form-control"
+817                     value={formData.name || ''}
+818                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+819                     placeholder="Nhß║¡p t├¬n nh├ón vi├¬n"
+820                     required
+821                   />
+822                 </div>
+823 
+824                 <div className="mb-3">
+825                   <label className="form-label">
+826                     Email <span className="text-danger">*</span>
+827                   </label>
+828                   <input
+829                     type="email"
+830                     className="form-control"
+831                     value={formData.email || ''}
+832                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+833                     placeholder="example@company.com"
+834                     required
+835                   />
+836                   {isEdit && (
+837                     <small className="form-text text-muted d-block mt-1">
+838                       Cß║¡p nhß║¡t email n├áy sß║╜ ─æß╗ông bß╗Ö email ─æ─âng nhß║¡p cß╗ºa t├ái khoß║ún nh├ón vi├¬n.
+839                     </small>
+840                   )}
+841                 </div>
+842                 
+843                 <div className="mb-3">
+844                   <label className="form-label">Giß╗¢i t├¡nh</label>
+845                   <select
+846                     className="form-control"
+847                     value={formData.gender === undefined ? '' : formData.gender ? 'true' : 'false'}
+848                     onChange={(e) => setFormData({ 
+849                       ...formData, 
+850                       gender: e.target.value === '' ? undefined : e.target.value === 'true'
+851                     })}
+852                   >
+853                     <option value="">Ch╞░a x├íc ─æß╗ïnh</option>
+854                     <option value="true">Nam</option>
+855                     <option value="false">Nß╗»</option>
+856                   </select>
+857                 </div>
+858 
+859                 <div className="mb-3">
+860                   <label className="form-label">Ng├áy sinh</label>
+861                   <DateInput
+862                     value={formData.birthday}
+863                     onChange={(value) => setFormData({ 
+864                       ...formData, 
+865                       birthday: value ? new Date(value) : undefined
+866                     })}
+867                   />
+868                 </div>
+869 
+870                 <div className="mb-3">
+871                   <label className="form-label">Ph├▓ng ban</label>
+872                   <select
+873                     className="form-control"
+874                     value={formData.departmentId || ''}
+875                     onChange={(e) => setFormData({ 
+876                       ...formData, 
+877                       departmentId: e.target.value ? Number(e.target.value) : undefined
+878                     })}
+879                   >
+880                     <option value="">Chß╗ìn ph├▓ng ban</option>
+881                     {departments.map(dept => (
+882                       <option key={dept.id} value={dept.id}>{dept.name}</option>
+883                     ))}
+884                   </select>
+885                 </div>
+886                 {isEdit && (
+887                   <div className="mb-3 mt-3">
+888                     <div className="form-check form-switch">
+889                       <input 
+890                         className="form-check-input" 
+891                         type="checkbox" 
+892                         id="isResigned" 
+893                         checked={formData.isResigned || false}
+894                         onChange={e => setFormData({ ...formData, isResigned: e.target.checked })}
+895                       />
+896                       <label className="form-check-label text-danger" htmlFor="isResigned">
+897                         ─É├ính dß║Ñu l├á ─æ├ú nghß╗ë viß╗çc
+898                       </label>
+899                     </div>
+900                   </div>
+901                 )}
+902               </div>
+903               <div className="modal-footer d-flex justify-content-end gap-2">
+904                 <button
+905                   type="button"
+906                   className="btn btn-secondary"
+907                   onClick={() => setShowModal(false)}
+908                 >
+909                   ─É├│ng
+910                 </button>
+911                 <button
+912                   type="button"
+913                   className="btn btn-primary"
+914                   onClick={handleSave}
+915                 >
+916                   L╞░u
+917                 </button>
+918               </div>
+919             </div>
+920           </div>
+921         </div>
+922       )}
+923     </div>
+924   );
+925 }
+926 
+927 export default function StaffPage() {
+928   return (
+929     <AdminRoute>
+930       <StaffPageContent />
+931     </AdminRoute>
+932   );
+933 }
+934 
+935 

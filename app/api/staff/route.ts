@@ -16,9 +16,10 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const departmentId = parseInt(searchParams.get('departmentId') || '0');
+    const includeResigned = searchParams.get('includeResigned') === 'true';
 
     const staffService = new StaffService();
-    const staff = await staffService.getStaffByDepartment(departmentId);
+    const staff = await staffService.getStaffByDepartment(departmentId, includeResigned);
 
     return NextResponse.json({
       status: true,
