@@ -136,6 +136,9 @@ export async function POST(request: NextRequest) {
     const eventService = new EventService();
     const id = await eventService.create(eventData);
 
+    const { logAudit } = await import('@/lib/services/auditService');
+    await logAudit(null, user.userId, 'CREATE', 'Events', id.toString(), null, { title: eventData.title, status: eventData.status });
+
     return NextResponse.json({
       status: id > 0,
       data: { id }

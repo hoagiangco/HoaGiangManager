@@ -85,6 +85,9 @@ export async function POST(request: NextRequest) {
     const deviceService = new DeviceService();
     const id = await deviceService.create(deviceData);
 
+    const { logAudit } = await import('@/lib/services/auditService');
+    await logAudit(null, user.userId, 'CREATE', 'Device', id.toString(), null, { serial: deviceData.serial, name: deviceData.name, status: deviceData.status }, request.headers.get('x-forwarded-for') || request.ip);
+
     console.log('Device created successfully with ID:', id);
 
     return NextResponse.json({

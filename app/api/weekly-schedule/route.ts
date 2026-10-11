@@ -41,20 +41,40 @@ export async function PUT(req: NextRequest) {
     const body = await req.json();
     const { cells, weeklyNote, approvedImageUrl, creatorSignatureUrl, creatorName, weekStart } = body;
 
+    const targetWeekStart =
+      weekStart ||
+      (Array.isArray(cells) && cells.length > 0 ? cells[0].weekStartDate : undefined) ||
+      '';
+
     if (cells && Array.isArray(cells) && cells.length > 0) {
       await svc.upsertBatch(cells, authorization.user.userId);
     }
     
-    if (weeklyNote !== undefined && weekStart) {
-      await svc.setWeeklyNote(weekStart, weeklyNote);
+    if (weeklyNote !== undefined && targetWeekStart) {
+      await svc.setWeeklyNote(targetWeekStart, weeklyNote);
     }
 
-    if (approvedImageUrl !== undefined && weekStart) {
-      await svc.setApprovedImage(weekStart, approvedImageUrl, authorization.user.email);
+    if (approvedImageUrl !== undefined && targetWeekStart) {
+      await svc.setApprovedImage(targetWeekStart, approvedImageUrl, authorization.user.email);
     }
 
-    if ((creatorSignatureUrl !== undefined || creatorName !== undefined) && weekStart) {
-      await svc.setCreatorSignature(weekStart, creatorSignatureUrl, creatorName);
+    if ((creatorSignatureUrl !== undefined || creatorName !== undefined) && targetWeekStart) {
+      await svc.setCreatorSignature(targetWeekStart, creatorSignatureUrl, creatorName);
+    }
+
+    try {
+      const { logAudit } = await import('@/lib/services/auditService');
+      await logAudit(
+        null,
+        authorization.user.userId,
+        'UPDATE',
+        'WeeklySchedule',
+        targetWeekStart || 'WeeklySchedule',
+        { action: 'Update Weekly Schedule' },
+        { weekStart: targetWeekStart, cellsCount: cells?.length || 0 }
+      );
+    } catch (auditError) {
+      console.error('Audit log failed for WeeklySchedule:', auditError);
     }
 
     return NextResponse.json({ status: true });

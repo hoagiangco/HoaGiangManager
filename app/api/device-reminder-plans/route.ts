@@ -198,6 +198,9 @@ export async function POST(request: NextRequest) {
     }
     const id = await service.create(planData);
 
+    const { logAudit } = await import('@/lib/services/auditService');
+    await logAudit(null, user.userId, 'CREATE', 'DeviceReminderPlans', id.toString(), null, { title: planData.title, deviceId: planData.deviceId, reminderType: planData.reminderType });
+
     return NextResponse.json({
       status: id > 0,
       data: { id },

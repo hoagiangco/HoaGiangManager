@@ -51,6 +51,11 @@ function DevicesPageContent() {
   const [showModal, setShowModal] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferFormData, setTransferFormData] = useState({ targetDepartmentId: 0, targetLocationId: 0, notes: '' });
+  const [transferHistory, setTransferHistory] = useState<any[]>([]);
+
+
   // Quick Add Location modal state
   const [showQuickAddLocation, setShowQuickAddLocation] = useState(false);
   const [quickAddLocationName, setQuickAddLocationName] = useState('');
@@ -358,7 +363,35 @@ function DevicesPageContent() {
     }
   };
 
-  const handleDelete = async () => {
+  
+  const handleTransfer = () => {
+    if (selectedIds.length !== 1) {
+      toast.warning('Vui lòng chọn 1 thiết bị để luân chuyển');
+      return;
+    }
+    const device = devices.find((d) => d.id === selectedIds[0]);
+    if (device) {
+      setTransferFormData({ targetDepartmentId: device.departmentId, targetLocationId: device.locationId || 0, notes: '' });
+      setShowTransferModal(true);
+    }
+  };
+
+  const submitTransfer = async () => {
+    try {
+      const res = await api.post(`/devices/${selectedIds[0]}/transfer`, transferFormData);
+      if (res.data.status) {
+        toast.success('Luân chuyển thành công');
+        setShowTransferModal(false);
+        loadData();
+      } else {
+        toast.error(res.data.error || 'Lỗi luân chuyển');
+      }
+    } catch (e: any) {
+      toast.error('Lỗi khi luân chuyển thiết bị');
+    }
+  };
+
+const handleDelete = async () => {
     if (selectedIds.length === 0) {
       toast.warning('Vui lòng chọn ít nhất 1 thiết bị để xóa');
       return;
@@ -430,6 +463,14 @@ function DevicesPageContent() {
         }
         
         setHistoryData(data || null);
+
+        try {
+          const transRes = await api.get(`/devices/${deviceId}/transfers`);
+          if (transRes.data?.status) {
+            setTransferHistory(transRes.data.data);
+          }
+        } catch(e) {}
+
       } else {
         toast.error(response.data?.error || 'Không thể tải lịch sử thiết bị');
         setShowHistoryModal(false);
@@ -924,8 +965,13 @@ function DevicesPageContent() {
                 <i className="fas fa-plus"></i>
               </button>
               <button 
-                className="btn btn-success btn-sm" 
-                onClick={handleEdit}
+                className="btn btn-warning btn-sm text-white" 
+                onClick={handleTransfer}
+                title="Luân chuyển vị trí"
+              >
+                <i className="fas fa-exchange-alt"></i>
+              </button>
+              <button className="btn btn-success btn-sm" onClick={handleEdit}
                 title="Sửa"
                 aria-label="Sửa"
               >
@@ -1818,7 +1864,48 @@ function DevicesPageContent() {
         </div>
       )}
       
-      {/* File Manager Modal */}
+      
+      {showTransferModal && (
+        <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Luân chuyển thiết bị</h5>
+                <button type="button" className="btn-close" onClick={() => setShowTransferModal(false)}></button>
+              </div>
+              <div className="modal-body">
+                <div className="form-group mb-3">
+                  <label>Phòng ban mới</label>
+                  <select className="form-control" value={transferFormData.targetDepartmentId} onChange={e => setTransferFormData({...transferFormData, targetDepartmentId: Number(e.target.value)})}>
+                    <option value="0">-- Chọn phòng ban --</option>
+                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+                <div className="form-group mb-3">
+                  <label>Vị trí mới</label>
+                  <SearchableSelect
+                    className="form-control"
+                    options={formattedLocations}
+                    value={transferFormData.targetLocationId}
+                    onChange={(val: number) => setTransferFormData({ ...transferFormData, targetLocationId: val })}
+                    placeholder="-- Chọn vị trí --"
+                  />
+                </div>
+                <div className="form-group mb-3">
+                  <label>Ghi chú / Lý do chuyển</label>
+                  <textarea className="form-control" rows={3} value={transferFormData.notes} onChange={e => setTransferFormData({...transferFormData, notes: e.target.value})}></textarea>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowTransferModal(false)}>Hủy</button>
+                <button type="button" className="btn btn-primary" onClick={submitTransfer}>Xác nhận luân chuyển</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+{/* File Manager Modal */}
       <FileManager
         isOpen={showFileManager}
         onClose={() => {

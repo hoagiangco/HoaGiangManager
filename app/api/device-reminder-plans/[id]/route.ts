@@ -225,6 +225,9 @@ export async function PUT(
 
     await service.update(planData);
 
+    const { logAudit } = await import('@/lib/services/auditService');
+    await logAudit(null, user.userId, 'UPDATE', 'DeviceReminderPlans', id.toString(), { title: existing?.title, intervalValue: existing?.intervalValue }, { title: planData.title, intervalValue: planData.intervalValue });
+
     return NextResponse.json({ status: true });
   } catch (error: any) {
     console.error('Update reminder plan error:', error);
@@ -255,7 +258,11 @@ export async function DELETE(
     }
 
     const service = new DeviceReminderPlanService();
+    const existing = await service.getById(id);
     await service.delete(id);
+
+    const { logAudit } = await import('@/lib/services/auditService');
+    await logAudit(null, authorization.user.userId, 'DELETE', 'DeviceReminderPlans', id.toString(), { title: existing?.title }, null);
 
     return NextResponse.json({ status: true, message: 'Xóa kế hoạch thành công' });
   } catch (error: any) {

@@ -84,7 +84,7 @@ export async function POST(
 
     // Check report exists and is in a valid state
     const reportRes = await pool.query(
-      `SELECT "ID", "Status", "HandlerID" FROM "DamageReport" WHERE "ID" = $1`,
+      `SELECT "ID", "Status", "HandlerID", "IsDeleted" FROM "DamageReport" WHERE "ID" = $1`,
       [reportId]
     );
 
@@ -94,6 +94,13 @@ export async function POST(
 
     const report = reportRes.rows[0];
     const statusNum = Number(report.Status);
+
+    if (report.IsDeleted) {
+      return NextResponse.json(
+        { status: false, error: 'Báo cáo đã bị xóa, vui lòng khôi phục trước' },
+        { status: 400 }
+      );
+    }
 
     // Only allow check-in for active reports (not completed/cancelled/rejected)
     if (statusNum === 4 || statusNum === 5 || statusNum === 6) {

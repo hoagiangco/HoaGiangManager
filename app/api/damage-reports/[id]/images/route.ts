@@ -46,6 +46,13 @@ export async function PUT(
       );
     }
 
+    if (report.isDeleted) {
+      return NextResponse.json(
+        { status: false, error: 'Báo cáo đã bị xóa, vui lòng khôi phục trước' },
+        { status: 400 }
+      );
+    }
+
     let finalImages = images;
 
     if (!isAdmin) {

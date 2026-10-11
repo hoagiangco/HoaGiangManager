@@ -61,6 +61,7 @@ export class StaffService {
         s."Birthday" as birthday,
         s."DepartmentID" as "departmentId",
         s."UserId" as "userId",
+        s."IsResigned" as "isResigned",
         u."Email" as email
       FROM "Staff" s
       LEFT JOIN "AspNetUsers" u ON s."UserId" = u."Id"
@@ -79,7 +80,8 @@ export class StaffService {
       gender: row.gender,
       birthday: row.birthday,
       departmentId: row.departmentId,
-      userId: row.userId
+      userId: row.userId,
+      isResigned: row.isResigned
     };
   }
 
@@ -91,7 +93,8 @@ export class StaffService {
         "Gender" as gender,
         "Birthday" as birthday,
         "DepartmentID" as "departmentId",
-        "UserId" as "userId"
+        "UserId" as "userId",
+        "IsResigned" as "isResigned"
       FROM "Staff" WHERE "UserId" = $1`,
       [userId]
     );
@@ -108,7 +111,8 @@ export class StaffService {
       gender: row.gender,
       birthday: row.birthday,
       departmentId: row.departmentId,
-      userId: row.userId
+      userId: row.userId,
+      isResigned: row.isResigned
     };
   }
 
@@ -197,7 +201,8 @@ export class StaffService {
         staff.gender === undefined || staff.gender === null ? null : staff.gender,
         staff.birthday ?? null,
         staff.departmentId ?? null,
-        userId
+        userId,
+        staff.isResigned ?? false
       ]
     );
 
@@ -296,7 +301,7 @@ export class StaffService {
     // Update staff record (preserve or set userId)
     await pool.query(
       `UPDATE "Staff" 
-       SET "Name" = $1, "Gender" = $2, "Birthday" = $3, "DepartmentID" = $4, "UserId" = $5
+       SET "Name" = $1, "Gender" = $2, "Birthday" = $3, "DepartmentID" = $4, "UserId" = $5, "IsResigned" = $7
        WHERE "ID" = $6`,
       [
         staff.name,
@@ -304,7 +309,8 @@ export class StaffService {
         staff.birthday ?? null,
         staff.departmentId ?? null,
         userId,
-        staff.id
+        staff.id,
+        staff.isResigned ?? false
       ]
     );
 

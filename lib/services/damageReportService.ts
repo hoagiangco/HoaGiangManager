@@ -1479,9 +1479,47 @@ export class DamageReportService {
     return true;
   }
 
+  /**
+   * Toggle the soft-delete flag and record the change in DamageReportHistory.
+   * Only updates rows currently in the opposite state; returns false otherwise.
+   */
+  private async setDeletedFlag(id: number, userId: string, deleted: boolean): Promise<boolean> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const stateCondition = deleted
+        ? '("IsDeleted" = false OR "IsDeleted" IS NULL)'
+        : '"IsDeleted" = true';
+      const res = await client.query(
+        `UPDATE "DamageReport" SET "IsDeleted" = $3, "UpdatedBy" = $2, "UpdatedAt" = NOW()
+         WHERE "ID" = $1 AND ${stateCondition}`,
+        [id, userId, deleted]
+      );
+      const changed = (res.rowCount ?? 0) > 0;
+      if (changed) {
+        await this.ensureHistorySequence(client);
+        await client.query(
+          `INSERT INTO "DamageReportHistory" ("DamageReportID", "FieldName", "OldValue", "NewValue", "ChangedBy")
+           VALUES ($1, 'IsDeleted', $2, $3, $4)`,
+          [id, (!deleted).toString(), deleted.toString(), userId]
+        );
+      }
+      await client.query('COMMIT');
+      return changed;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async softDelete(id: number, userId: string): Promise<boolean> {
-    await pool.query('UPDATE "DamageReport" SET "IsDeleted" = true, "UpdatedBy" = $2, "UpdatedAt" = NOW() WHERE "ID" = $1', [id, userId]);
-    return true;
+    return this.setDeletedFlag(id, userId, true);
+  }
+
+  async restore(id: number, userId: string): Promise<boolean> {
+    return this.setDeletedFlag(id, userId, false);
   }
 
   /**

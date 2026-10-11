@@ -82,6 +82,13 @@ export async function PUT(
       );
     }
 
+    if (existingReport.isDeleted) {
+      return NextResponse.json(
+        { status: false, error: 'Báo cáo đã bị xóa, vui lòng khôi phục trước' },
+        { status: 400 }
+      );
+    }
+
     // Only Admin, Supervisor or the assigned Handler can edit damage reports
     if (!isAdminUser && !isSupervisorUser) {
       const staffService = new (await import('@/lib/services/staffService')).StaffService();
@@ -102,6 +109,9 @@ export async function PUT(
     reportData.updatedBy = user.userId;
 
     await damageReportService.update(reportData);
+
+    const { logAudit } = await import('@/lib/services/auditService');
+    await logAudit(null, user.userId, 'UPDATE', 'DamageReports', id.toString(), { damageContent: existingReport?.damageContent, status: existingReport?.status, handlerId: existingReport?.handlerId, priority: existingReport?.priority }, { damageContent: reportData.damageContent, status: reportData.status, handlerId: reportData.handlerId, priority: reportData.priority });
 
     return NextResponse.json({
       status: true
@@ -156,8 +166,12 @@ export async function DELETE(
     let result = false;
     if (isHardDelete) {
       result = await damageReportService.delete(id);
+      const { logAudit } = await import('@/lib/services/auditService');
+      await logAudit(null, user.userId, 'DELETE', 'DamageReports', id.toString(), { damageContent: "Deleted", isHardDelete: true }, null);
     } else {
       result = await damageReportService.softDelete(id, user.userId);
+      const { logAudit } = await import('@/lib/services/auditService');
+      await logAudit(null, user.userId, 'DELETE', 'DamageReports', id.toString(), { damageContent: "Soft deleted" }, null);
     }
 
     return NextResponse.json({

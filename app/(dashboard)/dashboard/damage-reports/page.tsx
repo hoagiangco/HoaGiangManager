@@ -1370,6 +1370,34 @@ export default function DamageReportsPage() {
     }
   };
 
+  const handleRestore = async (ids: number[] = selectedIds) => {
+    if (ids.length === 0) {
+      toast.warning('Vui lòng chọn ít nhất 1 báo cáo để khôi phục');
+      return;
+    }
+
+    if (!confirm(`Khôi phục ${ids.length} báo cáo đã chọn về danh sách?`)) {
+      return;
+    }
+
+    const results = await Promise.allSettled(
+      ids.map(id => api.post(`/damage-reports/${id}/restore`))
+    );
+    const successCount = results.filter(r => r.status === 'fulfilled').length;
+    const failCount = results.length - successCount;
+
+    if (successCount > 0) {
+      toast.success(`Đã khôi phục ${successCount} báo cáo`);
+    }
+    if (failCount > 0) {
+      const firstError = results.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined;
+      toast.error(`Không thể khôi phục ${failCount} báo cáo: ` + (firstError?.reason?.response?.data?.error || 'Lỗi không xác định'));
+    }
+
+    setSelectedIds(prev => prev.filter(id => !ids.includes(id)));
+    loadData();
+  };
+
   const handleSave = async (shouldOpenCompletion = false) => {
     // Validation
     if (formData.deviceSelection === 'device' && !formData.deviceId) {
@@ -1650,7 +1678,7 @@ export default function DamageReportsPage() {
   };
 
   const canUpdateStatusForReport = (report?: DamageReportVM | null): boolean => {
-    if (!report) return false;
+    if (!report || report.isDeleted) return false;
     if (!userPermissions.canUpdateStatus) return false;
     
     // Admin has full control over all states
@@ -2122,11 +2150,11 @@ export default function DamageReportsPage() {
                   </button>
                 </>
               )}
-              {isSuperAdmin(currentUser?.roles) && (
+              {isAdmin(currentUser?.roles) && (
                 <button
                   className={`btn btn-sm d-flex align-items-center justify-content-center ${showDeletedFilter ? 'btn-secondary' : 'btn-outline-secondary'}`}
-                  onClick={() => setShowDeletedFilter(!showDeletedFilter)}
-                  title="Hiển thị báo cáo đã xóa"
+                  onClick={() => { setShowDeletedFilter(!showDeletedFilter); setSelectedIds([]); }}
+                  title={showDeletedFilter ? 'Quay lại danh sách báo cáo' : 'Hiển thị báo cáo đã xóa'}
                   style={{ width: '36px', height: '36px', borderRadius: '8px', padding: 0 }}
                 >
                   <i className="fas fa-archive" style={{ fontSize: '0.8rem' }}></i>
@@ -2140,7 +2168,7 @@ export default function DamageReportsPage() {
                     {/* Desktop: nút inline riêng lẻ */}
                     <div className="d-none d-md-flex gap-1 align-items-center">
                       {/* Buttons removed: ColumnDropdown and Export Excel */}
-                      {(userPermissions.canEdit || (selectedIds.length === 1 && (allReports.find(r => r.id === selectedIds[0])?.handlerId === currentUserStaffId || allReports.find(r => r.id === selectedIds[0])?.reporterId === currentUserStaffId))) && (
+                      {!showDeletedFilter && (userPermissions.canEdit || (selectedIds.length === 1 && (allReports.find(r => r.id === selectedIds[0])?.handlerId === currentUserStaffId || allReports.find(r => r.id === selectedIds[0])?.reporterId === currentUserStaffId))) && (
                         <button
                           className="btn btn-outline-secondary btn-sm d-flex align-items-center justify-content-center"
                           onClick={handleEdit}
@@ -2150,11 +2178,21 @@ export default function DamageReportsPage() {
                           <i className="fas fa-edit" style={{ fontSize: '0.8rem' }}></i>
                         </button>
                       )}
-                      {userPermissions.canDelete && (
+                      {showDeletedFilter && isAdmin(currentUser?.roles) && (
+                        <button
+                          className="btn btn-outline-success btn-sm d-flex align-items-center justify-content-center"
+                          onClick={() => handleRestore()}
+                          title="Khôi phục"
+                          style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
+                        >
+                          <i className="fas fa-undo" style={{ fontSize: '0.8rem' }}></i>
+                        </button>
+                      )}
+                      {userPermissions.canDelete && (!showDeletedFilter || isSuperAdmin(currentUser?.roles)) && (
                         <button
                           className="btn btn-outline-danger btn-sm d-flex align-items-center justify-content-center"
                           onClick={handleDelete}
-                          title="Xóa"
+                          title={showDeletedFilter ? 'Xóa vĩnh viễn' : 'Xóa'}
                           style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
                         >
                           <i className="fas fa-trash" style={{ fontSize: '0.8rem' }}></i>
@@ -2184,7 +2222,7 @@ export default function DamageReportsPage() {
                           minWidth: '170px',
                           overflow: 'hidden'
                         }}>
-                          {(userPermissions.canEdit || (selectedIds.length === 1 && (allReports.find(r => r.id === selectedIds[0])?.handlerId === currentUserStaffId || allReports.find(r => r.id === selectedIds[0])?.reporterId === currentUserStaffId))) && (
+                          {!showDeletedFilter && (userPermissions.canEdit || (selectedIds.length === 1 && (allReports.find(r => r.id === selectedIds[0])?.handlerId === currentUserStaffId || allReports.find(r => r.id === selectedIds[0])?.reporterId === currentUserStaffId))) && (
                             <button
                               className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start py-3 px-3"
                               style={{ fontSize: '0.85rem', cursor: 'pointer' }}
@@ -2194,14 +2232,24 @@ export default function DamageReportsPage() {
                               Sửa báo cáo
                             </button>
                           )}
-                          {userPermissions.canDelete && (
+                          {showDeletedFilter && isAdmin(currentUser?.roles) && (
+                            <button
+                              className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start py-3 px-3"
+                              style={{ fontSize: '0.85rem', cursor: 'pointer', color: '#198754' }}
+                              onClick={() => { handleRestore(); setIsOverflowMenuOpen(false); }}
+                            >
+                              <i className="fas fa-undo" style={{ width: '16px' }}></i>
+                              Khôi phục báo cáo
+                            </button>
+                          )}
+                          {userPermissions.canDelete && (!showDeletedFilter || isSuperAdmin(currentUser?.roles)) && (
                             <button
                               className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start py-3 px-3"
                               style={{ fontSize: '0.85rem', cursor: 'pointer', color: '#dc3545' }}
                               onClick={() => { handleDelete(); setIsOverflowMenuOpen(false); }}
                             >
                               <i className="fas fa-trash" style={{ width: '16px' }}></i>
-                              Xóa báo cáo
+                              {showDeletedFilter ? 'Xóa vĩnh viễn' : 'Xóa báo cáo'}
                             </button>
                           )}
                         </div>
@@ -2378,6 +2426,17 @@ export default function DamageReportsPage() {
           </div>
         </div>
         <div className="card-body mobile-sticky-body" style={{ padding: viewMode === 'table' ? 0 : '1rem' }}>
+          {showDeletedFilter && (
+            <div
+              className="alert alert-warning d-flex align-items-center gap-2 mb-0 rounded-0 border-0 border-bottom py-2 px-3"
+              style={{ fontSize: '0.8rem' }}
+            >
+              <i className="fas fa-archive"></i>
+              <span>
+                Đang xem <strong>báo cáo đã xóa</strong>. Chọn báo cáo và bấm <i className="fas fa-undo mx-1"></i><strong>Khôi phục</strong> để đưa về danh sách.
+              </span>
+            </div>
+          )}
           {/* Table View */}
           {viewMode === 'table' && (
             <div
@@ -2506,7 +2565,7 @@ export default function DamageReportsPage() {
                                 </button>
                                 {/* Bell button — always takes space to keep column width consistent */}
                                 <div style={{ width: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned || report.status === DamageReportStatus.InProgress) && report.handlerId && (isAdmin(currentUser?.roles) || report.reporterId === currentUserStaffId) ? (
+                                  {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned || report.status === DamageReportStatus.InProgress) && report.handlerId && !report.isDeleted && (isAdmin(currentUser?.roles) || report.reporterId === currentUserStaffId) ? (
                                     <button
                                       type="button"
                                       title="Nhắc nhở xử lý"
@@ -2536,7 +2595,7 @@ export default function DamageReportsPage() {
                                 </div>
                                 {/* Daily check-in button icon */}
                               <div style={{ width: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: '1px solid #e2e8f0' }}>
-                                {(report.status === DamageReportStatus.InProgress && (isAdmin(currentUser?.roles) || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && !hasNotesToday(report.handlerNotes)) ? (
+                                {(report.status === DamageReportStatus.InProgress && !report.isDeleted && (isAdmin(currentUser?.roles) || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && !hasNotesToday(report.handlerNotes)) ? (
                                   <DailyCheckinButton reportId={report.id} initialData={getCheckinStatus(report.id)} onCheckinChange={() => mutateCheckins()} compact={true} />
                                 ) : (
                                     <span style={{ width: '100%', display: 'block' }} />
@@ -2664,7 +2723,7 @@ export default function DamageReportsPage() {
                               className="damage-report-priority-select"
                               value={report.priority}
                               onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
-                              disabled={!userPermissions.canEdit || report.status === DamageReportStatus.Completed}
+                              disabled={!userPermissions.canEdit || report.isDeleted || report.status === DamageReportStatus.Completed}
                               style={{
                                 fontSize: '0.68rem',
                                 fontWeight: 600,
@@ -2672,7 +2731,7 @@ export default function DamageReportsPage() {
                                 height: '22px',
                                 border: '1.5px solid',
                                 borderRadius: '4px',
-                                cursor: (!userPermissions.canEdit || report.status === DamageReportStatus.Completed) ? 'default' : 'pointer',
+                                cursor: (!userPermissions.canEdit || report.isDeleted || report.status === DamageReportStatus.Completed) ? 'default' : 'pointer',
                                 outline: 'none',
                                 width: 'fit-content',
                                 letterSpacing: '0.01em',
@@ -2693,7 +2752,7 @@ export default function DamageReportsPage() {
                               reportId={report.id}
                               value={report.handlerNotes || ''}
                               onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
-                              canEdit={(userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && report.status !== DamageReportStatus.Completed}
+                              canEdit={!report.isDeleted && (userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && report.status !== DamageReportStatus.Completed}
                               isAdmin={isAdmin(currentUser?.roles)}
                               isAdding={editingNoteReportId === `table-${report.id}`}
                               setIsAdding={(adding) => setEditingNoteReportId(adding ? `table-${report.id}` : null)}
@@ -2831,7 +2890,7 @@ export default function DamageReportsPage() {
                           >
                             <i className="fas fa-expand-alt fa-sm"></i>
                           </button>
-                          {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned || report.status === DamageReportStatus.InProgress) && report.handlerId && (isAdmin(currentUser?.roles) || report.reporterId === currentUserStaffId) && (
+                          {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned || report.status === DamageReportStatus.InProgress) && report.handlerId && !report.isDeleted && (isAdmin(currentUser?.roles) || report.reporterId === currentUserStaffId) && (
                             <button
                               type="button"
                               className="btn btn-icon-only rounded-circle border-0"
@@ -2851,7 +2910,7 @@ export default function DamageReportsPage() {
                             </button>
                           )}
                           {/* Daily check-in button in header */}
-                          {report.status === DamageReportStatus.InProgress &&
+                          {report.status === DamageReportStatus.InProgress && !report.isDeleted &&
                            (isAdmin(currentUser?.roles) || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && 
                            !hasNotesToday(report.handlerNotes) && (
                             <div onClick={(e) => e.stopPropagation()}>
@@ -2928,7 +2987,7 @@ export default function DamageReportsPage() {
                                 className="form-select form-select-sm fw-bold border"
                                 value={report.priority}
                                 onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
-                                disabled={!userPermissions.canEdit || report.status === DamageReportStatus.Completed}
+                                disabled={!userPermissions.canEdit || report.isDeleted || report.status === DamageReportStatus.Completed}
                                 style={{
                                   fontSize: '0.75rem',
                                   borderRadius: '6px',
@@ -3041,7 +3100,7 @@ export default function DamageReportsPage() {
                             value={report.handlerNotes || ''}
                             onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
                             isCard={true}
-                            canEdit={(userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && 
+                            canEdit={!report.isDeleted && (userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && 
                                      report.status !== DamageReportStatus.Completed && 
                                      report.status !== DamageReportStatus.Cancelled && 
                                      report.status !== DamageReportStatus.Rejected}

@@ -326,6 +326,45 @@ async function migrate() {
       CREATE INDEX IF NOT EXISTS idx_daily_work_log_staff ON "DailyWorkLog"("StaffID");
     `);
 
+    // Create DeviceTransfers table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "DeviceTransfers" (
+        "Id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "DeviceId" INTEGER NOT NULL REFERENCES "Device"("ID") ON DELETE CASCADE,
+        "FromDepartmentId" SMALLINT REFERENCES "Department"("ID"),
+        "ToDepartmentId" SMALLINT REFERENCES "Department"("ID"),
+        "FromLocationId" INTEGER REFERENCES "Location"("ID"),
+        "ToLocationId" INTEGER REFERENCES "Location"("ID"),
+        "TransferredByUserId" TEXT NOT NULL REFERENCES "AspNetUsers"("Id"),
+        "TransferDate" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        "Notes" TEXT
+      )
+    `);
+    
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS "IX_DeviceTransfers_DeviceId" ON "DeviceTransfers"("DeviceId");
+    `);
+
+    // Create AuditLogs table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "AuditLogs" (
+        "Id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "UserId" TEXT NOT NULL REFERENCES "AspNetUsers"("Id"),
+        "Action" VARCHAR(50) NOT NULL,
+        "TableName" VARCHAR(100) NOT NULL,
+        "RecordId" VARCHAR(100) NOT NULL,
+        "OldValues" JSONB,
+        "NewValues" JSONB,
+        "CreatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        "IpAddress" VARCHAR(50)
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS "IX_AuditLogs_TableName_RecordId" ON "AuditLogs"("TableName", "RecordId");
+      CREATE INDEX IF NOT EXISTS "IX_AuditLogs_UserId" ON "AuditLogs"("UserId");
+    `);
+
     await client.query('COMMIT');
     console.log('✅ Database migration completed successfully!');
   } catch (error) {

@@ -71,6 +71,9 @@ export async function PUT(
 
     await userService.update({ ...userData, id: params.id });
 
+    const { logAudit } = await import('@/lib/services/auditService');
+    await logAudit(null, user.userId, 'UPDATE', 'Users', params.id, { email: targetUser?.email, roles: targetUser?.roles, fullName: targetUser?.fullName }, { email: userData.email, roles: userData.roles, fullName: userData.fullName });
+
     return NextResponse.json({
       status: true
     });
@@ -112,6 +115,9 @@ export async function DELETE(
     }
 
     const result = await userService.delete(params.id);
+
+    const { logAudit } = await import('@/lib/services/auditService');
+    await logAudit(null, user.userId, 'DELETE', 'Users', params.id, { email: targetUser?.email, roles: targetUser?.roles, fullName: targetUser?.fullName }, null);
 
     return NextResponse.json({
       status: result

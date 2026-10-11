@@ -561,8 +561,13 @@ export default function WeeklySchedulePage() {
           const [staffId, dayOfWeek] = key.split(':').map(Number);
           return { weekStartDate: weekStartStr, staffId, dayOfWeek, content: cell.content, note: cell.note || '' };
         });
-        await api.put('/weekly-schedule', { cells: payload, createdBy: user?.id });
-      } catch {
+        await api.put('/weekly-schedule', {
+          cells: payload,
+          weekStart: weekStartStr,
+          createdBy: user?.id,
+        });
+      } catch (err: any) {
+        console.error('Lỗi khi tự động lưu lịch tuần:', err);
         toast.error('Lưu thất bại, thử lại sau');
       } finally {
         setSaving(false);

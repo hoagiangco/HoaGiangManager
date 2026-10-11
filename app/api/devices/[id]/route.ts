@@ -60,7 +60,16 @@ export async function PUT(
     console.log(`Updating device ${id} with data:`, deviceData);
     
     const deviceService = new DeviceService();
+    const oldDevice = await deviceService.getById(id);
     await deviceService.update({ ...deviceData, id });
+    const newDevice = await deviceService.getById(id);
+
+    try {
+      const { logAudit } = await import('@/lib/services/auditService');
+      await logAudit(null, user.userId, 'UPDATE', 'Device', id.toString(), { serial: oldDevice?.serial, name: oldDevice?.name, status: oldDevice?.status }, { serial: newDevice?.serial, name: newDevice?.name, status: newDevice?.status }, request.headers.get('x-forwarded-for') || request.ip);
+    } catch (auditError) {
+      console.error('Audit log failed for device update:', auditError);
+    }
 
     console.log(`Device ${id} updated successfully`);
 
@@ -111,7 +120,17 @@ export async function DELETE(
     console.log(`Deleting device ${id}`);
     
     const deviceService = new DeviceService();
+    const oldDevice = await deviceService.getById(id);
     const result = await deviceService.delete(id);
+
+    if (result) {
+      try {
+        const { logAudit } = await import('@/lib/services/auditService');
+        await logAudit(null, user.userId, 'DELETE', 'Device', id.toString(), { serial: oldDevice?.serial, name: oldDevice?.name }, null, request.headers.get('x-forwarded-for') || request.ip);
+      } catch (auditError) {
+        console.error('Audit log failed for device delete:', auditError);
+      }
+    }
 
     console.log(`Device ${id} deleted:`, result);
 

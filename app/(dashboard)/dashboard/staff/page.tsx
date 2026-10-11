@@ -102,6 +102,7 @@ function StaffPageContent() {
       gender: undefined,
       birthday: undefined,
       departmentId: undefined,
+      isResigned: false,
     });
     setIsEdit(false);
     setShowModal(true);
@@ -122,6 +123,7 @@ function StaffPageContent() {
         gender: selectedStaff.gender,
         birthday: selectedStaff.birthday,
         departmentId: selectedStaff.departmentId,
+        isResigned: selectedStaff.isResigned,
       });
       setIsEdit(true);
       setShowModal(true);
@@ -240,6 +242,7 @@ function StaffPageContent() {
         gender: formData.gender !== undefined ? formData.gender : null,
         birthday: formData.birthday || null,
         departmentId: formData.departmentId || null,
+        isResigned: formData.isResigned ?? false,
       };
 
       if (isEdit) {

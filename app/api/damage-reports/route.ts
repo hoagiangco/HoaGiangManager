@@ -68,6 +68,15 @@ export async function GET(request: NextRequest) {
     const isDeleted = searchParams.get('isDeleted');
     if (isDeleted !== null) {
       filters.isDeleted = isDeleted === 'true';
+      if (filters.isDeleted) {
+        const { isAdmin } = await import('@/lib/auth/permissions');
+        if (!isAdmin(user.roles)) {
+          return NextResponse.json(
+            { status: false, error: 'Forbidden: Chỉ quản trị viên mới được xem báo cáo đã xóa' },
+            { status: 403 }
+          );
+        }
+      }
     }
 
     const damageReportService = new DamageReportService();
@@ -141,6 +150,9 @@ export async function POST(request: NextRequest) {
 
     const damageReportService = new DamageReportService();
     const id = await damageReportService.create(reportData);
+
+    const { logAudit } = await import('@/lib/services/auditService');
+    await logAudit(null, user.userId, 'CREATE', 'DamageReports', id.toString(), null, { damageContent: reportData.damageContent, status: reportData.status, priority: reportData.priority, deviceId: reportData.deviceId });
 
     return NextResponse.json({
       status: id > 0,

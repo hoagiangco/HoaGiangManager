@@ -45,7 +45,7 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
   // Output configuration
-  output: 'standalone', // For Docker deployment
+  // output: 'standalone', // For Docker deployment
   experimental: {
     // Prevent 3221226505 (buffer overrun / OOM) error on Windows
     workerThreads: false,

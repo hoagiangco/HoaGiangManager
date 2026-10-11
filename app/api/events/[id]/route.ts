@@ -177,7 +177,11 @@ export async function DELETE(
     console.log(`Deleting event ${id}`);
     
     const eventService = new EventService();
+    const existingEvent = await eventService.getById(id);
     const result = await eventService.delete(id);
+
+    const { logAudit } = await import('@/lib/services/auditService');
+    await logAudit(null, user.userId, 'DELETE', 'Events', id.toString(), { title: existingEvent?.title }, null);
 
     console.log(`Event ${id} deleted:`, result);
 

@@ -69,6 +69,9 @@ export async function POST(request: NextRequest) {
     const userService = new UserService();
     const userId = await userService.create(userData);
 
+    const { logAudit } = await import('@/lib/services/auditService');
+    await logAudit(null, user.userId, 'CREATE', 'Users', userId, null, { email: userData.email, roles: userData.roles, fullName: userData.fullName });
+
     return NextResponse.json({
       status: true,
       data: { id: userId }

@@ -71,6 +71,13 @@ export async function PUT(
       );
     }
 
+    if (report.isDeleted) {
+      return NextResponse.json(
+        { status: false, error: 'Báo cáo đã bị xóa, vui lòng khôi phục trước' },
+        { status: 400 }
+      );
+    }
+
     if (!isAdminUser) {
       const staffService = new StaffService();
       const staff = await staffService.getByUserId(user.userId);

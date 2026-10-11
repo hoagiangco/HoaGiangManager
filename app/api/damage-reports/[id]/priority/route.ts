@@ -36,6 +36,19 @@ export async function PUT(
     }
 
     const damageReportService = new DamageReportService();
+    const report = await damageReportService.getById(id);
+    if (!report) {
+      return NextResponse.json(
+        { status: false, error: 'Báo cáo không tồn tại' },
+        { status: 404 }
+      );
+    }
+    if (report.isDeleted) {
+      return NextResponse.json(
+        { status: false, error: 'Báo cáo đã bị xóa, vui lòng khôi phục trước' },
+        { status: 400 }
+      );
+    }
     await damageReportService.updatePriority(id, priority as DamageReportPriority, user.userId);
 
     return NextResponse.json({

@@ -4878,6 +4878,40 @@ function MaintenancePageContent() {
                         <span className="badge bg-secondary small">{selectedGroup.batchId}</span>
                       </div>
                     )}
+
+                    {/* Lịch sử dời lịch */}
+                    {currentUser?.roles?.includes('SuperAdmin') && firstPlan?.metadata?.rescheduleHistory && firstPlan.metadata.rescheduleHistory.length > 0 && (
+                      <div className="mt-3 pt-3 border-top">
+                        <div className="text-muted small mb-2 fw-bold">
+                          <i className="fas fa-history me-1"></i>
+                          Lịch sử dời lịch (SuperAdmin)
+                        </div>
+                        <div className="table-responsive">
+                          <table className="table table-sm table-bordered mb-0" style={{ fontSize: '0.8rem' }}>
+                            <thead className="table-light">
+                              <tr>
+                                <th>Thời gian</th>
+                                <th>Từ ngày</th>
+                                <th>Đến ngày</th>
+                                <th>Người dời</th>
+                                <th>Lý do</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {firstPlan.metadata.rescheduleHistory.map((history: any, index: number) => (
+                                <tr key={index}>
+                                  <td>{formatDateDisplay(history.rescheduledAt)}</td>
+                                  <td>{history.fromDate ? formatDateDisplay(history.fromDate) : '-'}</td>
+                                  <td>{history.toDate ? formatDateDisplay(history.toDate) : '-'}</td>
+                                  <td>{history.rescheduledBy}</td>
+                                  <td>{history.reason}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="modal-footer py-2">
                     {isUserAdmin && (

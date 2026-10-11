@@ -26,8 +26,19 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     if (!isAdmin(user.roles)) return NextResponse.json({ status: false, error: 'Forbidden' }, { status: 403 });
 
     const data = await request.json();
+    const id = parseInt(params.id);
     const sparePartService = new SparePartService();
-    await sparePartService.update(parseInt(params.id), data);
+    
+    const oldItem = await sparePartService.getById(id);
+    await sparePartService.update(id, data);
+    const newItem = await sparePartService.getById(id);
+
+    try {
+      const { logAudit } = await import('@/lib/services/auditService');
+      await logAudit(null, user.userId, 'UPDATE', 'SparePart', id.toString(), oldItem, newItem, request.headers.get('x-forwarded-for') || request.ip);
+    } catch (auditError) {
+      console.error('Audit log failed for spare part update:', auditError);
+    }
 
     return NextResponse.json({ status: true });
   } catch (error: any) {
@@ -43,8 +54,18 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     const { isAdmin } = await import('@/lib/auth/permissions');
     if (!isAdmin(user.roles)) return NextResponse.json({ status: false, error: 'Forbidden' }, { status: 403 });
 
+    const id = parseInt(params.id);
     const sparePartService = new SparePartService();
-    await sparePartService.delete(parseInt(params.id));
+    const oldItem = await sparePartService.getById(id);
+    
+    await sparePartService.delete(id);
+
+    try {
+      const { logAudit } = await import('@/lib/services/auditService');
+      await logAudit(null, user.userId, 'DELETE', 'SparePart', id.toString(), oldItem, null, request.headers.get('x-forwarded-for') || request.ip);
+    } catch (auditError) {
+      console.error('Audit log failed for spare part delete:', auditError);
+    }
 
     return NextResponse.json({ status: true });
   } catch (error: any) {
