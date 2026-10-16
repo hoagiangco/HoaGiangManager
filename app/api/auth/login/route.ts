@@ -105,6 +105,7 @@ export async function POST(request: NextRequest) {
       email: user.Email,
       roles: roles,
       mustChangePassword: Boolean(user.MustChangePassword),
+      securityStamp: user.SecurityStamp || undefined,
     });
 
     return NextResponse.json({

@@ -5,6 +5,7 @@ import { validatePassword } from '@/lib/auth/password';
 import { v4 as uuidv4 } from 'uuid';
 
 export async function POST(request: NextRequest) {
+  const client = await pool.connect();
   try {
     const { token, email, newPassword } = await request.json();
 
@@ -20,45 +21,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get SuperAdmin User ID
-    const userResult = await pool.query(
-      'SELECT "Id" FROM "AspNetUsers" WHERE "NormalizedEmail" = $1',
+    await client.query('BEGIN');
+
+    // Get User ID and lock user row
+    const userResult = await client.query(
+      'SELECT "Id" FROM "AspNetUsers" WHERE "NormalizedEmail" = $1 FOR UPDATE',
       [email.toUpperCase()]
     );
 
     if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
       return NextResponse.json({ status: false, error: 'Người dùng không tồn tại' }, { status: 404 });
     }
 
     const userId = userResult.rows[0].Id;
 
-    // Verify Token
-    const tokenResult = await pool.query(
-      `SELECT "Value" FROM "AspNetUserTokens" WHERE "UserId" = $1 AND "LoginProvider" = $2 AND "Name" = $3`,
+    // Atomically consume the token: DELETE and RETURN the token value in one operation.
+    // If concurrent requests hit simultaneously, only one gets the row.
+    const tokenResult = await client.query(
+      `DELETE FROM "AspNetUserTokens"
+       WHERE "UserId" = $1 AND "LoginProvider" = $2 AND "Name" = $3
+       RETURNING "Value"`,
       [userId, 'HoaGiangManager', 'ResetPassword']
     );
 
     if (tokenResult.rows.length === 0) {
-      return NextResponse.json({ status: false, error: 'Token không hợp lệ hoặc đã hết hạn.' }, { status: 400 });
+      await client.query('ROLLBACK');
+      return NextResponse.json({ status: false, error: 'Token không hợp lệ hoặc đã được sử dụng.' }, { status: 400 });
     }
 
-    const storedTokenData = JSON.parse(tokenResult.rows[0].Value);
+    let storedTokenData: { token: string; exp: number };
+    try {
+      storedTokenData = JSON.parse(tokenResult.rows[0].Value);
+    } catch {
+      await client.query('ROLLBACK');
+      return NextResponse.json({ status: false, error: 'Dữ liệu token không hợp lệ.' }, { status: 400 });
+    }
 
     // Validate rawToken and EXP
     if (storedTokenData.token !== token) {
+      await client.query('ROLLBACK');
       return NextResponse.json({ status: false, error: 'Token không khớp.' }, { status: 400 });
     }
 
     if (Date.now() > storedTokenData.exp) {
-       // Token Expired
-       return NextResponse.json({ status: false, error: 'Token đã hết hạn. Vui lòng yêu cầu lại.' }, { status: 400 });
+      await client.query('ROLLBACK');
+      return NextResponse.json({ status: false, error: 'Token đã hết hạn. Vui lòng yêu cầu lại.' }, { status: 400 });
     }
 
     // Hash new password
     const passwordHash = await bcrypt.hash(newPassword, 12);
 
-    // Update password
-    await pool.query(
+    // Update password and regenerate SecurityStamp to immediately revoke all existing sessions
+    await client.query(
       `UPDATE "AspNetUsers"
        SET "PasswordHash" = $1,
            "MustChangePassword" = FALSE,
@@ -68,11 +83,7 @@ export async function POST(request: NextRequest) {
       [passwordHash, userId, uuidv4()]
     );
 
-    // Delete token after successful usage
-    await pool.query(
-      `DELETE FROM "AspNetUserTokens" WHERE "UserId" = $1 AND "LoginProvider" = $2 AND "Name" = $3`,
-      [userId, 'HoaGiangManager', 'ResetPassword']
-    );
+    await client.query('COMMIT');
 
     return NextResponse.json({
       status: true,
@@ -80,10 +91,13 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: any) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Reset password error:', error);
     return NextResponse.json(
       { status: false, error: 'Lỗi khi đặt lại mật khẩu: ' + (error.message || 'Đã xảy ra lỗi') },
       { status: 500 }
     );
+  } finally {
+    client.release();
   }
 }

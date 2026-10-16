@@ -1,4 +1,4 @@
-﻿/** Generate scheduled occurrences without using report/completion dates as calendar anchors. */
+/** Generate scheduled occurrences without using report/completion dates as calendar anchors. */
 import pool from '../lib/db';
 import { calculateNextDueDay, maintenanceDay, maintenanceToday, IntervalUnit } from '../lib/utils/maintenanceScheduler';
 
@@ -29,7 +29,7 @@ export async function checkMaintenanceReminders() {
         for (let count = 0; next && next <= today && count < 366; count++) {
           if (plan.end_day && next > plan.end_day) { next = null; break; }
           const existing = await client.query(`SELECT "ID" FROM "Event"
-            WHERE "DeviceID" = $1 AND (
+            WHERE (($1::integer IS NULL AND "DeviceID" IS NULL) OR "DeviceID" = $1) AND (
               ("Metadata"->>'maintenancePlanId' = $2 AND "Metadata"->>'scheduledDueDate' = $3)
               OR ("Metadata"->>'maintenanceBatchId' = $4 AND "EventDate"::date = $3::date)
             ) LIMIT 1`, [plan.DeviceID, String(plan.ID), next, metadata.maintenanceBatchId || null]);

@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkPlanService } from '@/lib/services/workPlanService';
-import { ApiResponse } from '@/types';
-import { format } from 'date-fns';
-import { getVNNow } from '@/lib/utils/dateFormat';
 import { requirePermission } from '@/lib/auth/middleware';
 import { Permission } from '@/lib/auth/permissions';
 
@@ -31,11 +28,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ status: false, error: 'Missing date' }, { status: 400 });
     }
 
-    const today = format(getVNNow(), 'yyyy-MM-dd');
-    if (date <= today) {
-      await workPlanService.implementDuePlans(today, 'system', parseInt(staffId));
-    }
-
+    // Pure read: fetching work plans should never mutate database state or auto-implement items
     const items = await workPlanService.list(date, parseInt(staffId));
     return NextResponse.json({ status: true, data: items });
   } catch (error: any) {

@@ -48,11 +48,18 @@ export async function GET(
       return new NextResponse('Forbidden', { status: 403 });
     }
 
+    const ext = path.extname(resolvedFullPath).toLowerCase();
+    // Security check: Never serve database backup or sensitive files through public uploads
+    const forbiddenExtensions = new Set(['.sql', '.dump', '.bak', '.tar', '.gz', '.env', '.sh', '.bat', '.ps1']);
+    if (forbiddenExtensions.has(ext)) {
+      console.warn(`[Uploads Route] Blocked sensitive file download attempt: ${resolvedFullPath}`);
+      return new NextResponse('Forbidden', { status: 403 });
+    }
+
     // Read the file
     const fileBuffer = fs.readFileSync(resolvedFullPath);
     
     // Determine content type based on extension
-    const ext = path.extname(resolvedFullPath).toLowerCase();
     const contentTypeMap: Record<string, string> = {
       '.jpg': 'image/jpeg',
       '.jpeg': 'image/jpeg',
@@ -63,8 +70,6 @@ export async function GET(
       '.pdf': 'application/pdf',
       '.mp4': 'video/mp4',
       '.webm': 'video/webm',
-      '.sql': 'text/plain',
-      '.dump': 'application/octet-stream',
     };
 
     const contentType = contentTypeMap[ext] || 'application/octet-stream';

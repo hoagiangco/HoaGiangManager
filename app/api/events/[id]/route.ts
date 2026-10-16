@@ -48,33 +48,51 @@ export async function PUT(
       );
     }
 
-    const { isAdmin, getMaintenancePermissions } = await import('@/lib/auth/permissions');
-    const payload = await request.json();
-    let isAllowed = isAdmin(user.roles);
-
-    if (!isAllowed) {
-      // Check if it's a maintenance execution
-      const metadataStr = typeof payload.metadata === 'string' ? payload.metadata : JSON.stringify(payload.metadata || {});
-      if (metadataStr.includes('maintenanceBatchId')) {
-         const perms = getMaintenancePermissions(user.roles);
-         isAllowed = perms.canExecute || false;
-      }
-    }
-
-    if (!isAllowed) {
+    const id = parseInt(params.id);
+    if (isNaN(id)) {
       return NextResponse.json(
-        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được cập nhật sự kiện' },
-        { status: 403 }
+        { status: false, error: 'ID sự kiện không hợp lệ' },
+        { status: 400 }
       );
     }
 
-    const id = parseInt(params.id);
+    const eventService = new EventService();
+    const existingEvent = await eventService.getById(id);
+    if (!existingEvent) {
+      return NextResponse.json(
+        { status: false, error: 'Sự kiện không tồn tại' },
+        { status: 404 }
+      );
+    }
 
+    const payload = await request.json();
     if (!payload || typeof payload !== 'object') {
       return NextResponse.json(
         { status: false, error: 'Dữ liệu sự kiện không hợp lệ' },
         { status: 400 }
       );
+    }
+
+    const { isAdmin, getMaintenancePermissions } = await import('@/lib/auth/permissions');
+    const isUserAdmin = isAdmin(user.roles);
+    let isMaintenanceExecution = false;
+
+    if (!isUserAdmin) {
+      // Non-admin can only update if event ACTUALLY belongs to a maintenance batch in the database
+      const existingBatchId = existingEvent.metadata?.maintenanceBatchId || existingEvent.metadata?.batchId;
+      if (existingBatchId) {
+        const perms = getMaintenancePermissions(user.roles);
+        if (perms.canExecute) {
+          isMaintenanceExecution = true;
+        }
+      }
+
+      if (!isMaintenanceExecution) {
+        return NextResponse.json(
+          { status: false, error: 'Forbidden: Chỉ quản trị viên mới được cập nhật sự kiện này' },
+          { status: 403 }
+        );
+      }
     }
 
     const parseDate = (value: any) => {
@@ -85,13 +103,11 @@ export async function PUT(
 
     const parseMetadata = (value: any) => {
       if (!value) return null;
-      if (typeof value === 'object') {
-        return value;
-      }
+      if (typeof value === 'object') return value;
       if (typeof value === 'string' && value.trim()) {
         try {
           return JSON.parse(value);
-        } catch (error) {
+        } catch {
           throw new Error('Metadata phải là JSON hợp lệ');
         }
       }
@@ -109,31 +125,31 @@ export async function PUT(
     }
 
     const eventTypeId = Number(payload.eventTypeId);
-    if (!eventTypeId || Number.isNaN(eventTypeId)) {
+    if (isUserAdmin && (!eventTypeId || Number.isNaN(eventTypeId))) {
       return NextResponse.json(
         { status: false, error: 'Vui lòng chọn loại sự kiện' },
         { status: 400 }
       );
     }
 
+    // Role-based field enforcement: non-admins can only modify execution fields
     const eventData = {
       id,
-      title: payload.title?.trim() || null,
-      deviceId: payload.deviceId ? Number(payload.deviceId) : null,
-      eventTypeId,
-      description: payload.description?.trim() || '', // NOT NULL in DB
-      notes: payload.notes?.trim() || '',  // NOT NULL in DB
-      status: (payload.status as EventStatus) || EventStatus.Planned,
-      eventDate: parseDate(payload.eventDate),
-      startDate: parseDate(payload.startDate),
-      endDate: parseDate(payload.endDate),
-      staffId: payload.staffId ? Number(payload.staffId) : null,
-      relatedReportId: payload.relatedReportId ? Number(payload.relatedReportId) : null,
-      metadata,
+      title: isUserAdmin ? (payload.title?.trim() || null) : existingEvent.title,
+      deviceId: isUserAdmin ? (payload.deviceId ? Number(payload.deviceId) : null) : existingEvent.deviceId,
+      eventTypeId: isUserAdmin ? eventTypeId : existingEvent.eventTypeId,
+      description: isUserAdmin ? (payload.description?.trim() || '') : (existingEvent.description || ''),
+      notes: payload.notes !== undefined ? (payload.notes?.trim() || '') : (existingEvent.notes || ''),
+      status: (payload.status as EventStatus) || existingEvent.status,
+      eventDate: parseDate(payload.eventDate) || existingEvent.eventDate,
+      startDate: parseDate(payload.startDate) || existingEvent.startDate,
+      endDate: parseDate(payload.endDate) || existingEvent.endDate,
+      staffId: isUserAdmin ? (payload.staffId ? Number(payload.staffId) : null) : existingEvent.staffId,
+      relatedReportId: isUserAdmin ? (payload.relatedReportId ? Number(payload.relatedReportId) : null) : existingEvent.relatedReportId,
+      metadata: isUserAdmin ? metadata : { ...existingEvent.metadata, ...(metadata || {}) },
       updatedBy: user.userId,
     };
     
-    const eventService = new EventService();
     await eventService.update(eventData);
 
     return NextResponse.json({
@@ -200,7 +216,3 @@ export async function DELETE(
     );
   }
 }
-
-
-
-

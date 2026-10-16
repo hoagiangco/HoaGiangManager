@@ -149,8 +149,8 @@ export async function GET(
         return {
           id: row.id,
           title: row.title,
-          deviceName: row.deviceName || 'N/A',
-          deviceSerial: row.deviceSerial || '',
+          deviceName: row.deviceName || row.title || 'Công việc định kỳ',
+          deviceSerial: row.deviceSerial || '-',
           eventTypeName: row.eventTypeName || 'N/A',
           status: row.status,
           eventDate: row.eventDate ? new Date(row.eventDate).toISOString().split('T')[0] : null,
@@ -204,7 +204,7 @@ export async function GET(
     // Headers
     const headers = [
       'STT', 
-      'Tên Thiết Bị', 
+      'Tên Thiết Bị / Công Việc', 
       'Serial', 
       'Kiểu Lập Lịch', 
       'Nội Dung Bảo Trì', 

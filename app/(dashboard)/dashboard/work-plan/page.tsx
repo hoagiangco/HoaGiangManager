@@ -67,10 +67,10 @@ function WorkPlanPageContent() {
     if (!user) return;
     setLoading(true);
     try {
-      const staffRes = await api.get('/staff/me').catch(() => ({ data: { status: false } }));
+      const staffRes = await api.get('/staff/me').catch(() => ({ data: { status: false, data: null } }));
       
       let targetStaffId = viewStaffId;
-      if (staffRes.data.status) {
+      if (staffRes.data?.status && staffRes.data?.data) {
         const staffData = staffRes.data.data;
         setStaff(staffData);
         if (!isAdmin) {
@@ -124,9 +124,9 @@ function WorkPlanPageContent() {
     if (!user) return;
     setOverdueLoading(true);
     try {
-      const staffRes = await api.get('/staff/me').catch(() => ({ data: { status: false } }));
-      if (!staffRes.data.status && !isAdmin) return;
-      const targetStaffId = isAdmin ? 0 : staffRes.data.data.id;
+      const staffRes = await api.get('/staff/me').catch(() => ({ data: { status: false, data: null } }));
+      if ((!staffRes.data?.status || !staffRes.data?.data) && !isAdmin) return;
+      const targetStaffId = isAdmin ? 0 : staffRes.data?.data?.id;
       const res = await api.get(`/work-plans?archive=true&staffId=${targetStaffId}`);
       if (res.data.status) {
         setOverdueItems(res.data.data);

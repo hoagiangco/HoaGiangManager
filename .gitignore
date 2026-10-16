@@ -72,3 +72,11 @@ next-env.d.ts
 
 # build artifacts
 deploy.zip
+
+# Backups and scratch scripts
+backups/
+scratch/
+scratch_*
+*.sql
+!scripts/migrations/*.sql
+

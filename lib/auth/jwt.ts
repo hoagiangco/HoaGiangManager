@@ -20,6 +20,7 @@ export interface JWTPayload {
   email: string;
   roles: string[];
   mustChangePassword?: boolean;
+  securityStamp?: string;
 }
 
 export const generateToken = (payload: JWTPayload): string => {
@@ -41,4 +42,3 @@ export const decodeToken = (token: string): JWTPayload | null => {
     return null;
   }
 };
-

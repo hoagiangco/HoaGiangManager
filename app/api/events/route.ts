@@ -3,6 +3,7 @@ import { authenticate } from '@/lib/auth/middleware';
 import { EventService } from '@/lib/services/eventService';
 import { EventStatus } from '@/types';
 import { getVNNow } from '@/lib/utils/dateFormat';
+import pool from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,27 +48,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { isAdmin, getMaintenancePermissions } = await import('@/lib/auth/permissions');
-    let isAllowed = isAdmin(user.roles);
-
     const payload = await request.json();
-
-    if (!isAllowed) {
-      // Check if it's a maintenance execution
-      const metadataStr = typeof payload.metadata === 'string' ? payload.metadata : JSON.stringify(payload.metadata || {});
-      if (metadataStr.includes('maintenanceBatchId')) {
-         const perms = getMaintenancePermissions(user.roles);
-         isAllowed = perms.canExecute || false;
-      }
-    }
-
-    if (!isAllowed) {
-      return NextResponse.json(
-        { status: false, error: 'Forbidden: Chỉ quản trị viên mới được tạo sự kiện' },
-        { status: 403 }
-      );
-    }
-
     if (!payload || typeof payload !== 'object') {
       return NextResponse.json(
         { status: false, error: 'Dữ liệu sự kiện không hợp lệ' },
@@ -75,21 +56,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const parseDate = (value: any) => {
-      if (!value) return null;
-      const date = new Date(value);
-      return Number.isNaN(date.getTime()) ? null : date;
-    };
+    const { isAdmin, getMaintenancePermissions } = await import('@/lib/auth/permissions');
+    const isUserAdmin = isAdmin(user.roles);
 
     const parseMetadata = (value: any) => {
       if (!value) return null;
-      if (typeof value === 'object') {
-        return value;
-      }
+      if (typeof value === 'object') return value;
       if (typeof value === 'string' && value.trim()) {
         try {
           return JSON.parse(value);
-        } catch (error) {
+        } catch {
           throw new Error('Metadata phải là JSON hợp lệ');
         }
       }
@@ -105,6 +81,51 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    if (!isUserAdmin) {
+      // Non-admins can only create events for existing, active maintenance plans/batches
+      const perms = getMaintenancePermissions(user.roles);
+      if (!perms.canExecute) {
+        return NextResponse.json(
+          { status: false, error: 'Forbidden: Bạn không có quyền tạo sự kiện' },
+          { status: 403 }
+        );
+      }
+
+      const batchId = metadata?.maintenanceBatchId || metadata?.batchId;
+      const planId = metadata?.maintenancePlanId;
+
+      if (!batchId && !planId) {
+        return NextResponse.json(
+          { status: false, error: 'Forbidden: Chỉ quản trị viên mới được tạo sự kiện thông thường' },
+          { status: 403 }
+        );
+      }
+
+      // Verify batchId / planId strictly exists in database
+      const checkPlan = await pool.query(
+        `SELECT "ID" FROM "DeviceReminderPlan" 
+         WHERE (
+           ($1 <> '' AND "Metadata"->>'maintenanceBatchId' = $1)
+           OR ($2 > 0 AND "ID" = $2)
+         ) AND "IsActive" = true
+         LIMIT 1`,
+        [batchId ? String(batchId) : '', Number(planId) || 0]
+      );
+
+      if (checkPlan.rows.length === 0) {
+        return NextResponse.json(
+          { status: false, error: 'Forbidden: Kế hoạch bảo trì không tồn tại hoặc đã ngừng hoạt động' },
+          { status: 403 }
+        );
+      }
+    }
+
+    const parseDate = (value: any) => {
+      if (!value) return null;
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
+    };
 
     const eventTypeId = Number(payload.eventTypeId);
     if (!eventTypeId || Number.isNaN(eventTypeId)) {
@@ -151,4 +172,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

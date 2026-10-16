@@ -21,7 +21,11 @@ export async function GET(req: NextRequest) {
     );
 
     if (result.rows.length === 0) {
-      return NextResponse.json({ status: false, error: 'Staff not found' }, { status: 404 });
+      return NextResponse.json({ 
+        status: true, 
+        data: null, 
+        message: 'Tài khoản chưa được liên kết với nhân viên' 
+      });
     }
 
     const staff = result.rows[0];

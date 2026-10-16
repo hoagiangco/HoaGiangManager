@@ -38,6 +38,7 @@ const protectedRoutes: Array<[string, string]> = [
   ['app/api/work-plans/pending/route.ts', 'Permission.WorkPlanManage'],
   ['app/api/work-plans/[id]/route.ts', 'Permission.WorkPlanManage'],
   ['app/api/work-plans/[id]/implement/route.ts', 'Permission.WorkPlanManage'],
+  ['app/api/work-plans/implement-due/route.ts', 'Permission.WorkPlanManage'],
   ['app/api/weekly-schedule/route.ts', 'Permission.WeeklyScheduleManage'],
   ['app/api/weekly-schedule/staff/route.ts', 'Permission.WeeklyScheduleManage'],
   ['app/api/weekly-schedule/export/route.ts', 'Permission.WeeklyScheduleManage'],

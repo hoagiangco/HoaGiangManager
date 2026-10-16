@@ -165,6 +165,7 @@ export async function PUT(
         ? trimmedHandlerNotes
         : previousHandlerNotes || null;
       await damageReportService.syncMaintenanceBatchEvents(id, nextStatus, user.userId, {
+        previousStatus,
         handlerId: report.handlerId,
         handlingDate: report.handlingDate,
         handlerNotes: effectiveHandlerNotes,

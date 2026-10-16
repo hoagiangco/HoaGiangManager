@@ -173,6 +173,14 @@ export class SparePartService {
   }
 
   async delete(id: number): Promise<void> {
+    // Protect transaction history and inventory integrity
+    const txCheck = await pool.query(
+      'SELECT COUNT(*)::int as count FROM "SparePartTransaction" WHERE "SparePartID" = $1',
+      [id]
+    );
+    if (txCheck.rows[0]?.count > 0) {
+      throw new Error('Không thể xóa vật tư đã có lịch sử giao dịch xuất/nhập kho để bảo toàn dữ liệu sổ kho.');
+    }
     await pool.query('DELETE FROM "SparePart" WHERE "ID" = $1', [id]);
   }
 
@@ -193,6 +201,28 @@ export class SparePartService {
 
       if (!Number.isInteger(quantity) || quantity <= 0) {
         throw new Error('Số lượng nhập/xuất phải lớn hơn 0.');
+      }
+
+      // Check for accidental duplicate submission within the last 3 seconds (idempotency protection)
+      if (transaction.createdBy) {
+        const duplicateCheck = await client.query(
+          `SELECT "ID" FROM "SparePartTransaction"
+           WHERE "SparePartID" = $1
+             AND "Type" = $2
+             AND "Quantity" = $3
+             AND "CreatedBy" = $4
+             AND ("RelatedReportID" = $5 OR ($5 IS NULL AND "RelatedReportID" IS NULL))
+             AND "CreatedAt" >= NOW() - INTERVAL '3 seconds'
+           ORDER BY "ID" DESC
+           LIMIT 1`,
+          [transaction.sparePartId, transaction.type, quantity, transaction.createdBy, transaction.relatedReportId || null]
+        );
+
+        if (duplicateCheck.rows.length > 0) {
+          console.warn(`Duplicate spare part transaction detected for user ${transaction.createdBy}, returning existing ID ${duplicateCheck.rows[0].ID}`);
+          await client.query('ROLLBACK');
+          return duplicateCheck.rows[0].ID;
+        }
       }
 
       const stockResult = await client.query(
@@ -270,12 +300,12 @@ export class SparePartService {
 
     if (startDate) {
       params.push(startDate);
-      whereClause += ` AND t."TransactionDate" >= $${params.length}`;
+      whereClause += ` AND t."TransactionDate" >= $${params.length}::date`;
     }
 
     if (endDate) {
       params.push(endDate);
-      whereClause += ` AND t."TransactionDate" <= $${params.length}`;
+      whereClause += ` AND t."TransactionDate" < ($${params.length}::date + INTERVAL '1 day')`;
     }
 
     const countQuery = `SELECT COUNT(*) FROM "SparePartTransaction" t ${whereClause}`;

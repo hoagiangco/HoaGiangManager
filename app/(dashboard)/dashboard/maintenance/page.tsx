@@ -20,8 +20,8 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 
 interface UpcomingPlan {
   id: number;
-  deviceId: number;
-  deviceName: string;
+  deviceId?: number | null;
+  deviceName?: string | null;
   nextDueDate: string;
   daysUntilDue: number;
   title: string;
@@ -64,7 +64,7 @@ interface MaintenanceBatch {
 }
 
 interface MaintenancePlanForm {
-  selectionType: 'category' | 'devices';
+  selectionType: 'category' | 'devices' | 'task';
   categoryId: number;
   deviceIds: number[];
   eventTypeId: number;
@@ -86,8 +86,8 @@ interface MaintenancePlanForm {
 
 interface DeviceReminderPlanVM {
   id: number;
-  deviceId: number;
-  deviceName?: string;
+  deviceId?: number | null;
+  deviceName?: string | null;
   reminderType: string;
   eventTypeId?: number | null;
   eventTypeName?: string;
@@ -118,8 +118,8 @@ interface DeviceReminderPlanVM {
 interface BatchEvent {
   id: number;
   title: string;
-  deviceId: number;
-  deviceName: string;
+  deviceId?: number | null;
+  deviceName?: string | null;
   eventTypeId: number;
   eventTypeName: string;
   description: string;
@@ -143,6 +143,7 @@ function MaintenancePageContent() {
   // Tab handling
   const [activeTab, setActiveTab] = useState<'create' | 'batches' | 'plans' | 'cancelled'>('plans');
   const [subFilter, setSubFilter] = useState<'all' | 'overdue' | 'upcoming'>('all');
+  const [planTypeFilter, setPlanTypeFilter] = useState<'all' | 'device' | 'task'>('all');
   const [filterDepartmentId, setFilterDepartmentId] = useState<number | 'all'>('all');
   const [filterStaffId, setFilterStaffId] = useState<number | 'all'>('all');
   const [filterTitleInput, setFilterTitleInput] = useState('');
@@ -188,6 +189,34 @@ function MaintenancePageContent() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showEditIntervalModal, setShowEditIntervalModal] = useState(false);
   const [showViewPlanModal, setShowViewPlanModal] = useState(false);
+  const [viewPlanHistoryEvents, setViewPlanHistoryEvents] = useState<any[]>([]);
+  const [loadingViewPlanHistory, setLoadingViewPlanHistory] = useState(false);
+  const [openMaintenanceTab, setOpenMaintenanceTab] = useState(true);
+  const [openRescheduleTab, setOpenRescheduleTab] = useState(false);
+  const [showPlanDevicesModal, setShowPlanDevicesModal] = useState(false);
+  const [viewingRoundDevices, setViewingRoundDevices] = useState<any | null>(null);
+  const [planDeviceSearch, setPlanDeviceSearch] = useState('');
+  const [roundDeviceSearch, setRoundDeviceSearch] = useState('');
+  const planSearchInputRef = useRef<HTMLInputElement>(null);
+  const roundSearchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (showPlanDevicesModal) {
+      const timer = setTimeout(() => {
+        planSearchInputRef.current?.focus();
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [showPlanDevicesModal]);
+
+  useEffect(() => {
+    if (viewingRoundDevices) {
+      const timer = setTimeout(() => {
+        roundSearchInputRef.current?.focus();
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [viewingRoundDevices]);
   const [selectedPlan, setSelectedPlan] = useState<DeviceReminderPlanVM | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [rescheduleReason, setRescheduleReason] = useState('');
@@ -819,6 +848,7 @@ function MaintenancePageContent() {
       batchId: string;
       title: string;
       plans: DeviceReminderPlanVM[];
+      hasDevices: boolean;
       totalDevices: number;
       activeCount: number;
       inactiveCount: number;
@@ -843,6 +873,7 @@ function MaintenancePageContent() {
           batchId,
           title,
           plans: [],
+          hasDevices: false,
           totalDevices: 0,
           activeCount: 0,
           inactiveCount: 0,
@@ -858,6 +889,9 @@ function MaintenancePageContent() {
 
       groups[batchId].plans.push(plan);
       groups[batchId].totalDevices++;
+      if (plan.deviceId) {
+        groups[batchId].hasDevices = true;
+      }
       if (plan.isActive) {
         groups[batchId].activeCount++;
       } else {
@@ -983,6 +1017,13 @@ function MaintenancePageContent() {
         }
       }
 
+      // Plan type filter (device vs task)
+      if (planTypeFilter === 'device') {
+        plans = plans.filter(p => !!p.deviceId);
+      } else if (planTypeFilter === 'task') {
+        plans = plans.filter(p => !p.deviceId);
+      }
+
       // Title filter
       if (filterTitle.trim() !== '') {
         const kw = filterTitle.toLowerCase().trim();
@@ -1027,7 +1068,7 @@ function MaintenancePageContent() {
     }
 
     return result;
-  }, [groupedPlansBase, activeTab, subFilter, filterTitle, filterDepartmentId, filterStaffId, staffListForCreate, currentUser, currentUserStaffId]);
+  }, [groupedPlansBase, activeTab, subFilter, planTypeFilter, filterTitle, filterDepartmentId, filterStaffId, staffListForCreate, currentUser, currentUserStaffId]);
 
   const loadBatchDetails = async (batchId: string) => {
     setLoadingBatchDetails(true);
@@ -1077,6 +1118,24 @@ function MaintenancePageContent() {
       toast.error(error.response?.data?.error || 'Lỗi khi tải chi tiết đợt bảo trì');
     } finally {
       setLoadingRoundDetail(false);
+    }
+  };
+
+  const loadViewPlanHistory = async (batchId: string, planIds: number[]) => {
+    setLoadingViewPlanHistory(true);
+    try {
+      const planIdsQuery = planIds.length > 0 ? `?planIds=${planIds.join(',')}` : '';
+      const response = await api.get(`/events/batch/${batchId}${planIdsQuery}`);
+      if (response.data.status) {
+        setViewPlanHistoryEvents(response.data.data || []);
+      } else {
+        setViewPlanHistoryEvents([]);
+      }
+    } catch (error) {
+      console.error('Error loading view plan history:', error);
+      setViewPlanHistoryEvents([]);
+    } finally {
+      setLoadingViewPlanHistory(false);
     }
   };
 
@@ -1498,7 +1557,7 @@ function MaintenancePageContent() {
       for (const plan of selectedGroup.plans) {
         if (!plan.isActive) continue; // Skip inactive plans
 
-        deviceNamesForReport.push(`- ${plan.deviceName || `Thiết bị #${plan.deviceId}`}`);
+        deviceNamesForReport.push(`- ${plan.deviceName || (plan.deviceId ? `Thiết bị #${plan.deviceId}` : (plan.title || 'Công việc định kỳ'))}`);
 
         try {
           const existingEvent = planEvents[plan.id];
@@ -1525,7 +1584,7 @@ function MaintenancePageContent() {
             }
 
             const eventData = {
-              title: plan.title || `Bảo trì - ${plan.deviceName}`,
+              title: plan.title || (plan.deviceName ? `Bảo trì - ${plan.deviceName}` : 'Bảo trì định kỳ'),
               deviceId: plan.deviceId,
               eventTypeId: plan.eventTypeId || defaultEventTypeId,
               description: plan.description || null,
@@ -1555,7 +1614,7 @@ function MaintenancePageContent() {
             }
 
             const response = await api.put(`/events/${eventId}`, {
-              title: existingEvent.title || plan.title || `Bảo trì - ${plan.deviceName}`,
+              title: existingEvent.title || plan.title || (plan.deviceName ? `Bảo trì - ${plan.deviceName}` : 'Bảo trì định kỳ'),
               deviceId: existingEvent.deviceId || plan.deviceId,
               eventTypeId: existingEvent.eventTypeId || plan.eventTypeId || defaultEventTypeId,
               description: existingEvent.description || plan.description || null,
@@ -1644,7 +1703,7 @@ function MaintenancePageContent() {
       for (const plan of selectedGroup.plans) {
         if (!plan.isActive) continue; // Skip inactive plans
 
-        deviceNamesForReport.push(`- ${plan.deviceName || `Thiết bị #${plan.deviceId}`}`);
+        deviceNamesForReport.push(`- ${plan.deviceName || (plan.deviceId ? `Thiết bị #${plan.deviceId}` : (plan.title || 'Công việc định kỳ'))}`);
 
         try {
           // Check if event already exists
@@ -1673,7 +1732,7 @@ function MaintenancePageContent() {
             }
 
             const eventData = {
-              title: plan.title || `Bảo trì - ${plan.deviceName}`,
+              title: plan.title || (plan.deviceName ? `Bảo trì - ${plan.deviceName}` : 'Bảo trì định kỳ'),
               deviceId: plan.deviceId,
               eventTypeId: plan.eventTypeId || defaultEventTypeId,
               description: plan.description || null,
@@ -1707,7 +1766,7 @@ function MaintenancePageContent() {
             }
 
             const response = await api.put(`/events/${eventId}`, {
-              title: existingEvent.title || plan.title || `Bảo trì - ${plan.deviceName}`,
+              title: existingEvent.title || plan.title || (plan.deviceName ? `Bảo trì - ${plan.deviceName}` : 'Bảo trì định kỳ'),
               deviceId: existingEvent.deviceId || plan.deviceId,
               eventTypeId: existingEvent.eventTypeId || plan.eventTypeId || defaultEventTypeId,
               description: existingEvent.description || plan.description || null,
@@ -2046,11 +2105,12 @@ function MaintenancePageContent() {
       }
 
       let response;
+      const eventTitle = selectedEvent.title || selectedPlan?.title || (selectedEvent.deviceName ? `Bảo trì - ${selectedEvent.deviceName}` : 'Bảo trì định kỳ');
       if (selectedEvent.id === 0) {
         // Create new event
         response = await api.post('/events', {
-          title: selectedEvent.title || `Bảo trì - ${selectedEvent.deviceName}`,
-          deviceId: selectedEvent.deviceId,
+          title: eventTitle,
+          deviceId: selectedEvent.deviceId || null,
           eventTypeId: resolvedEventTypeId,
           status: 'in_progress',
           startDate: formatDateInput(new Date()),
@@ -2066,8 +2126,8 @@ function MaintenancePageContent() {
       } else {
         // Update existing event
         response = await api.put(`/events/${selectedEvent.id}`, {
-          title: selectedEvent.title || `Bảo trì - ${selectedEvent.deviceName}`,
-          deviceId: selectedEvent.deviceId,
+          title: eventTitle,
+          deviceId: selectedEvent.deviceId || null,
           eventTypeId: resolvedEventTypeId,
           status: 'in_progress',
           startDate: formatDateInput(new Date()),
@@ -2087,14 +2147,15 @@ function MaintenancePageContent() {
 
         // Tự động tạo báo cáo (Trạng thái đang xử lý - 3)
         if (selectedEvent.maintenanceBatchId && selectedEvent.maintenanceBatchId !== 'no-batch') {
-          const batchTitle = selectedPlan?.title || `Bảo trì - ${selectedEvent.deviceName}`;
+          const batchTitle = selectedPlan?.title || (selectedEvent.deviceName ? `Bảo trì - ${selectedEvent.deviceName}` : 'Bảo trì định kỳ');
+          const reportSuffix = selectedEvent.deviceName ? `- ${selectedEvent.deviceName}` : (selectedPlan?.title ? `- ${selectedPlan.title}` : '');
           await handleGenerateReport(
             { batchId: selectedEvent.maintenanceBatchId, title: batchTitle },
             startStaffId,
             startNotes,
             formatDateInput(new Date()),
             3,
-            `- ${selectedEvent.deviceName}`
+            reportSuffix
           );
         }
 
@@ -2139,12 +2200,13 @@ function MaintenancePageContent() {
       }
 
       let eventId = selectedEvent.id;
+      const eventTitle = selectedEvent.title || selectedPlan?.title || (selectedEvent.deviceName ? `Bảo trì - ${selectedEvent.deviceName}` : 'Bảo trì định kỳ');
 
       // If event doesn't exist yet (id = 0), create it directly with status 'completed'
       if (eventId === 0 && selectedPlan) {
         const eventData = {
-          title: selectedEvent.title || selectedPlan.title || `Bảo trì - ${selectedEvent.deviceName}`,
-          deviceId: selectedEvent.deviceId,
+          title: eventTitle,
+          deviceId: selectedEvent.deviceId || null,
           eventTypeId: resolvedEventTypeId,
           description: selectedEvent.description || selectedPlan.description || null,
           status: 'completed',
@@ -2165,8 +2227,8 @@ function MaintenancePageContent() {
       } else {
         // Update existing event
         const response = await api.put(`/events/${eventId}`, {
-          title: selectedEvent.title || (selectedPlan ? selectedPlan.title : `Bảo trì - ${selectedEvent.deviceName}`),
-          deviceId: selectedEvent.deviceId,
+          title: eventTitle,
+          deviceId: selectedEvent.deviceId || null,
           eventTypeId: resolvedEventTypeId,
           status: 'completed',
           eventDate: selectedEvent.eventDate || completeDate,
@@ -2187,14 +2249,15 @@ function MaintenancePageContent() {
 
       // Tự động tạo báo cáo (Trạng thái hoàn thành - 4)
       if (selectedEvent.maintenanceBatchId && selectedEvent.maintenanceBatchId !== 'no-batch') {
-        const batchTitle = selectedPlan?.title || `Bảo trì - ${selectedEvent.deviceName}`;
+        const batchTitle = selectedPlan?.title || (selectedEvent.deviceName ? `Bảo trì - ${selectedEvent.deviceName}` : 'Bảo trì định kỳ');
+        const reportSuffix = selectedEvent.deviceName ? `- ${selectedEvent.deviceName}` : (selectedPlan?.title ? `- ${selectedPlan.title}` : '');
         await handleGenerateReport(
           { batchId: selectedEvent.maintenanceBatchId, title: batchTitle },
           completeStaffId,
           completeNotes,
           completeDate,
           4,
-          `- ${selectedEvent.deviceName}`
+          reportSuffix
         );
       }
 
@@ -2232,7 +2295,7 @@ function MaintenancePageContent() {
     try {
       const deviceIdsToRemove = devicesToRemove.map(d => d.id);
       const plansToRemove = selectedGroupForDevices.plans.filter(p =>
-        deviceIdsToRemove.includes(p.deviceId)
+        !!p.deviceId && deviceIdsToRemove.includes(p.deviceId)
       );
 
       let successCount = 0;
@@ -2354,6 +2417,13 @@ function MaintenancePageContent() {
       }
     }
 
+    if (formData.selectionType === 'task') {
+      if (!formData.title.trim()) {
+        toast.error('Vui lòng nhập tên công việc định kỳ');
+        return;
+      }
+    }
+
     if (formData.maintenanceType === 'outsource' && !formData.maintenanceProvider.trim()) {
       toast.error('Vui lòng nhập nhà cung cấp');
       return;
@@ -2380,9 +2450,10 @@ function MaintenancePageContent() {
       };
 
       // Add selection criteria
+      payload.selectionType = formData.selectionType;
       if (formData.selectionType === 'category') {
         payload.categoryId = formData.categoryId;
-      } else {
+      } else if (formData.selectionType === 'devices') {
         // Đảm bảo deviceIds là array và không rỗng
         if (!formData.deviceIds || !Array.isArray(formData.deviceIds) || formData.deviceIds.length === 0) {
           toast.error('Vui lòng chọn ít nhất một thiết bị');
@@ -2390,6 +2461,8 @@ function MaintenancePageContent() {
           return;
         }
         payload.deviceIds = formData.deviceIds;
+      } else {
+        payload.noDevice = true;
       }
 
       // Add end date if provided
@@ -2514,7 +2587,7 @@ function MaintenancePageContent() {
           title: group.title,
           scheduleType: scheduleTypeVal,
           description: descriptionVal,
-          deviceCount: `${group.totalDevices} thiết bị`,
+          deviceCount: `${group.totalDevices} ${group.hasDevices ? 'thiết bị' : 'công việc'}`,
           department: deptNames,
           staff: staffNames,
           lastDate: group.lastMaintenanceDate ? formatDateDisplay(group.lastMaintenanceDate) : '-',
@@ -2537,7 +2610,7 @@ function MaintenancePageContent() {
           { id: 'title', label: 'Tên lịch bảo trì / Nhóm', width: 40 },
           { id: 'scheduleType', label: 'Kiểu lập lịch', width: 25 },
           { id: 'description', label: 'Nội dung bảo trì', width: 40 },
-          { id: 'deviceCount', label: 'Số lượng thiết bị', width: 20 },
+          { id: 'deviceCount', label: 'Số lượng TB / CV', width: 20 },
           { id: 'department', label: 'Phòng ban', width: 25 },
           { id: 'staff', label: 'Người thực hiện', width: 25 },
           { id: 'lastDate', label: 'Lần bảo trì trước', width: 20 },
@@ -2642,7 +2715,7 @@ function MaintenancePageContent() {
                 {/* Selection Type */}
                 <div className="row mb-3">
                   <div className="col-md-12">
-                    <label className="form-label">Chọn thiết bị theo:</label>
+                    <label className="form-label fw-bold">Chọn đối tượng bảo trì / định kỳ:</label>
                     <div className="btn-group w-100" role="group">
                       <input
                         type="radio"
@@ -2653,7 +2726,7 @@ function MaintenancePageContent() {
                         onChange={() => setFormData({ ...formData, selectionType: 'category' })}
                       />
                       <label className="btn btn-outline-primary" htmlFor="selectionCategory">
-                        Danh mục
+                        <i className="fas fa-folder me-1"></i> Theo danh mục
                       </label>
 
                       <input
@@ -2665,7 +2738,19 @@ function MaintenancePageContent() {
                         onChange={() => setFormData({ ...formData, selectionType: 'devices' })}
                       />
                       <label className="btn btn-outline-primary" htmlFor="selectionDevices">
-                        Danh sách thiết bị
+                        <i className="fas fa-laptop me-1"></i> Chọn thiết bị
+                      </label>
+
+                      <input
+                        type="radio"
+                        className="btn-check"
+                        name="selectionType"
+                        id="selectionTask"
+                        checked={formData.selectionType === 'task'}
+                        onChange={() => setFormData({ ...formData, selectionType: 'task' })}
+                      />
+                      <label className="btn btn-outline-primary" htmlFor="selectionTask">
+                        <i className="fas fa-clipboard-check me-1"></i> Công việc định kỳ
                       </label>
                     </div>
                   </div>
@@ -2844,6 +2929,19 @@ function MaintenancePageContent() {
                   </>
                 )}
 
+                {/* Hướng dẫn khi chọn công việc định kỳ */}
+                {formData.selectionType === 'task' && (
+                  <div className="alert alert-primary d-flex align-items-center mb-3">
+                    <i className="fas fa-clipboard-check fa-2x me-3 text-primary flex-shrink-0"></i>
+                    <div>
+                      <strong className="d-block mb-1">Lập lịch định kỳ cho công việc</strong>
+                      <span className="text-muted small">
+                        Lập kế hoạch công việc định kỳ không gắn với thiết bị cụ thể (ví dụ: Kiểm tra định kỳ an toàn PCCC, Vệ sinh bể nước ngầm, Đo kiểm an toàn lao động, v.v.). Lịch nhắc việc và báo cáo đợt bảo trì vẫn hoạt động đầy đủ.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Loại sự kiện - Ẩn theo yêu cầu người dùng چون mặc định là Bảo trì */}
                 <div className="row mb-3 d-none">
                   <div className="col-md-12">
@@ -2867,13 +2965,20 @@ function MaintenancePageContent() {
                 {/* Title */}
                 <div className="row mb-3">
                   <div className="col-md-12">
-                    <label className="form-label">Tiêu đề <span className="text-danger">*</span></label>
+                    <label className="form-label">
+                      {formData.selectionType === 'task' ? 'Tên công việc định kỳ' : 'Tiêu đề bảo trì'}{' '}
+                      <span className="text-danger">*</span>
+                    </label>
                     <input
                       type="text"
                       className="form-control"
                       value={formData.title}
                       onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                      placeholder="Ví dụ: Bảo trì định kỳ máy lạnh"
+                      placeholder={
+                        formData.selectionType === 'task'
+                          ? 'Ví dụ: Kiểm tra an toàn hệ thống PCCC, Vệ sinh bồn nước mái...'
+                          : 'Ví dụ: Bảo trì định kỳ máy lạnh'
+                      }
                       required
                     />
                   </div>
@@ -2882,13 +2987,19 @@ function MaintenancePageContent() {
                 {/* Description */}
                 <div className="row mb-3">
                   <div className="col-md-12">
-                    <label className="form-label">Mô tả</label>
+                    <label className="form-label">
+                      {formData.selectionType === 'task' ? 'Nội dung / Quy trình thực hiện chi tiết' : 'Mô tả'}
+                    </label>
                     <textarea
                       className="form-control"
                       rows={3}
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      placeholder="Mô tả chi tiết về kế hoạch bảo trì"
+                      placeholder={
+                        formData.selectionType === 'task'
+                          ? 'Mô tả chi tiết các bước, hạng mục cần kiểm tra hoặc tiêu chuẩn thực hiện...'
+                          : 'Mô tả chi tiết về kế hoạch bảo trì'
+                      }
                     />
                   </div>
                 </div>
@@ -3392,6 +3503,16 @@ function MaintenancePageContent() {
                         <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                   </select>
+                  <select 
+                    className="form-select form-select-sm" 
+                    style={{ width: 'auto', minWidth: '150px' }}
+                    value={planTypeFilter}
+                    onChange={(e) => setPlanTypeFilter(e.target.value as any)}
+                  >
+                    <option value="all">Tất cả phân loại</option>
+                    <option value="device">Theo thiết bị</option>
+                    <option value="task">Công việc định kỳ</option>
+                  </select>
                   {activeTab === 'plans' && (
                     <select 
                       className="form-select form-select-sm" 
@@ -3474,7 +3595,7 @@ function MaintenancePageContent() {
                                 <div className="d-flex flex-column gap-1 flex-grow-1 overflow-hidden" style={{ minWidth: '150px' }}>
                                   {/* Hàng trên: Tiêu đề và Batch ID */}
                                   <div className="d-flex align-items-center gap-2 flex-wrap">
-                                    <i className="fas fa-layer-group text-primary" style={{ fontSize: '0.9rem' }}></i>
+                                    <i className={group.hasDevices ? "fas fa-layer-group text-primary" : "fas fa-clipboard-check text-primary"} style={{ fontSize: '0.9rem' }}></i>
                                     <h6 className="mb-0 fw-bold text-truncate" style={{ fontSize: '0.95rem' }}>{groupIndex + 1}. {getShortTitle(group.title)}</h6>
                                     {group.metadata?.scheduleConfig?.scheduleType === 'specific_dates' ? (
                                       <span className="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25" style={{ fontSize: '0.7rem', fontWeight: 'normal' }}>
@@ -3518,8 +3639,8 @@ function MaintenancePageContent() {
                                   {/* Badge row - full width trên mobile */}
                                   <div className="d-flex flex-wrap align-items-center justify-content-start justify-content-md-end gap-1 gap-md-2">
                                     <span className="text-muted small me-2">
-                                      <i className="fas fa-boxes me-1"></i>
-                                      <span className="fw-bold">{group.totalDevices}</span> thiết bị
+                                      <i className={group.hasDevices ? "fas fa-boxes me-1" : "fas fa-tasks me-1"}></i>
+                                      <span className="fw-bold">{group.totalDevices}</span> {group.hasDevices ? 'thiết bị' : 'công việc'}
                                     </span>
                                     {group.metadata?.assignedStaffId && (() => {
                                       const assignee = staffListForCreate.find((s: any) => s.id === group.metadata?.assignedStaffId);
@@ -3570,6 +3691,10 @@ function MaintenancePageContent() {
                                           title: group.title,
                                           plans: group.plans,
                                         });
+                                        const planIds = group.plans.map(p => p.id);
+                                        loadViewPlanHistory(group.batchId, planIds);
+                                        setOpenMaintenanceTab(true);
+                                        setOpenRescheduleTab(false);
                                         setShowViewPlanModal(true);
                                       }}
                                       title="Xem chi tiết kế hoạch"
@@ -3733,8 +3858,8 @@ function MaintenancePageContent() {
                                       <th style={{ width: '50px' }} className="align-middle text-center">#</th>
                                       <th className="align-middle">
                                         <div className="d-flex align-items-center gap-2">
-                                          <span>Thiết Bị ({group.totalDevices})</span>
-                                          {group.canModifyDevices && isUserAdmin && (
+                                          <span>{group.hasDevices ? `Thiết Bị (${group.totalDevices})` : `Công Việc (${group.totalDevices})`}</span>
+                                          {group.canModifyDevices && isUserAdmin && group.hasDevices && (
                                             <div className="d-flex gap-1 ms-2">
                                               <button
                                                 className="btn btn-outline-success p-0 d-flex align-items-center justify-content-center"
@@ -3789,7 +3914,7 @@ function MaintenancePageContent() {
                                         <tr key={plan.id}>
                                           <td className="align-middle text-muted small">{index + 1}</td>
                                           <td className="align-middle">
-                                            <strong>{plan.deviceName || `Thiết bị #${plan.deviceId}`}</strong>
+                                            <strong>{plan.deviceName || (plan.deviceId ? `Thiết bị #${plan.deviceId}` : (plan.title || 'Công việc định kỳ'))}</strong>
                                           </td>
                                           <td className="text-end">
                                             {plan.isActive ? (
@@ -3803,12 +3928,15 @@ function MaintenancePageContent() {
                                                         onClick={() => {
                                                           const mockEvent: any = {
                                                             id: 0,
-                                                            title: plan.title || `Bảo trì - ${plan.deviceName}`,
-                                                            deviceId: plan.deviceId,
-                                                            deviceName: plan.deviceName,
+                                                            title: plan.title || (plan.deviceName ? `Bảo trì - ${plan.deviceName}` : 'Bảo trì định kỳ'),
+                                                            deviceId: plan.deviceId || null,
+                                                            deviceName: plan.deviceName || plan.title || 'Công việc định kỳ',
                                                             eventTypeId: plan.eventTypeId || 0,
                                                             maintenanceBatchId: group.batchId !== 'no-batch' ? group.batchId : null,
                                                             status: 'planned',
+                                                            metadata: {
+                                                              maintenancePlanId: plan.id,
+                                                            },
                                                           };
                                                           setSelectedEvent(mockEvent);
                                                           setSelectedPlan(plan);
@@ -4190,7 +4318,7 @@ function MaintenancePageContent() {
                             <thead>
                               <tr>
                                 <th>Ngày Bảo Trì</th>
-                                <th>Số Thiết Bị</th>
+                                <th>Số Lượng TB / CV</th>
                                 <th>Hoàn Thành</th>
                                 <th>Loại Bảo Trì</th>
                                 <th>Nhà Cung Cấp</th>
@@ -4324,7 +4452,7 @@ function MaintenancePageContent() {
                             </div>
                             <div className="col-md-6">
                               <div className="mb-2">
-                                <small className="text-muted">Tổng số thiết bị:</small>
+                                <small className="text-muted">Tổng số thiết bị / công việc:</small>
                                 <div><span className="badge bg-info">{roundDetail.totalDevices}</span></div>
                               </div>
                               <div className="mb-2">
@@ -4359,7 +4487,7 @@ function MaintenancePageContent() {
                         <div className="card-header">
                           <h6 className="mb-0">
                             <i className="fas fa-list me-2"></i>
-                            Chi Tiết Thiết Bị
+                            Chi Tiết Thiết Bị / Công Việc
                           </h6>
                         </div>
                         <div className="card-body p-0">
@@ -4368,7 +4496,7 @@ function MaintenancePageContent() {
                               <thead className="table-light">
                                 <tr>
                                   <th className="col-stt">STT</th>
-                                  <th>Tên Thiết Bị</th>
+                                  <th>Tên Thiết Bị / Công Việc</th>
                                   <th>Serial</th>
                                   <th>Loại Sự Kiện</th>
                                   <th>Ngày Bảo Trì</th>
@@ -4392,7 +4520,7 @@ function MaintenancePageContent() {
                                     return (
                                       <tr key={event.id}>
                                         <td className="col-stt">{index + 1}</td>
-                                        <td><strong>{event.deviceName || '-'}</strong></td>
+                                        <td><strong>{event.deviceName || event.title || 'Công việc định kỳ'}</strong></td>
                                         <td>{event.deviceSerial || '-'}</td>
                                         <td>{event.eventTypeName || '-'}</td>
                                         <td>{maintenanceDate ? formatDateDisplay(maintenanceDate) : '-'}</td>
@@ -4585,11 +4713,11 @@ function MaintenancePageContent() {
                 </div>
                 <div className="modal-body">
                   <div className="mb-3">
-                    <label className="form-label">Thiết Bị</label>
+                    <label className="form-label">{selectedPlan.deviceId ? 'Thiết Bị' : 'Công Việc'}</label>
                     <input
                       type="text"
                       className="form-control"
-                      value={selectedPlan.deviceName || `Thiết bị #${selectedPlan.deviceId}`}
+                      value={selectedPlan.deviceName || (selectedPlan.deviceId ? `Thiết bị #${selectedPlan.deviceId}` : (selectedPlan.title || 'Công việc định kỳ'))}
                       disabled
                     />
                   </div>
@@ -4668,11 +4796,11 @@ function MaintenancePageContent() {
                 </div>
                 <div className="modal-body">
                   <div className="mb-3">
-                    <label className="form-label">Thiết Bị</label>
+                    <label className="form-label">{selectedPlan.deviceId ? 'Thiết Bị' : 'Công Việc'}</label>
                     <input
                       type="text"
                       className="form-control"
-                      value={selectedPlan.deviceName || `Thiết bị #${selectedPlan.deviceId}`}
+                      value={selectedPlan.deviceName || (selectedPlan.deviceId ? `Thiết bị #${selectedPlan.deviceId}` : (selectedPlan.title || 'Công việc định kỳ'))}
                       disabled
                     />
                   </div>
@@ -4762,9 +4890,108 @@ function MaintenancePageContent() {
 
           const firstPlan = selectedGroup.plans[0];
 
+          // Collect and deduplicate reschedule histories from all plans in group
+          const allRescheduleHistories: any[] = [];
+          const seenReschedule = new Set<string>();
+          selectedGroup.plans.forEach((p: any) => {
+            const historyList = p.metadata?.rescheduleHistory;
+            if (Array.isArray(historyList)) {
+              historyList.forEach((h: any) => {
+                const key = `${h.rescheduledAt}_${h.fromDate}_${h.toDate}_${h.reason}`;
+                if (!seenReschedule.has(key)) {
+                  seenReschedule.add(key);
+                  allRescheduleHistories.push(h);
+                }
+              });
+            }
+          });
+          allRescheduleHistories.sort((a, b) => new Date(b.rescheduledAt).getTime() - new Date(a.rescheduledAt).getTime());
+
+          // Aggregate raw events into maintenance rounds (đợt bảo trì tổng hợp)
+          const roundMap: Record<string, {
+            key: string;
+            roundDate: string;
+            staffNames: Set<string>;
+            statuses: Set<string>;
+            notesList: string[];
+            relatedReportId: number | null;
+            devices: Array<{
+              deviceId: number | null;
+              deviceName: string;
+              notes: string | null;
+              status: string;
+            }>;
+            deviceKeys: Set<string>;
+          }> = {};
+
+          viewPlanHistoryEvents.forEach((event: any) => {
+            const rDate = event.endDate || event.eventDate || event.startDate || (event.createdAt ? event.createdAt.split('T')[0] : '');
+            const rKey = event.relatedReportId
+              ? `report_${event.relatedReportId}`
+              : `date_${rDate || 'unknown'}_${event.maintenanceBatchId || 'batch'}`;
+
+            if (!roundMap[rKey]) {
+              roundMap[rKey] = {
+                key: rKey,
+                roundDate: rDate,
+                staffNames: new Set<string>(),
+                statuses: new Set<string>(),
+                notesList: [],
+                relatedReportId: event.relatedReportId || null,
+                devices: [],
+                deviceKeys: new Set<string>(),
+              };
+            }
+
+            const r = roundMap[rKey];
+            if (!r.roundDate && rDate) r.roundDate = rDate;
+            if (event.staffName) r.staffNames.add(event.staffName);
+            if (event.status) r.statuses.add(event.status);
+
+            const noteText = event.notes ? event.notes.trim() : (event.description ? event.description.trim() : '');
+            if (noteText && !r.notesList.includes(noteText)) {
+              r.notesList.push(noteText);
+            }
+
+            const devName = event.deviceName || event.title || 'Công việc định kỳ';
+            const devKey = `${event.deviceId || devName}`;
+            if (!r.deviceKeys.has(devKey)) {
+              r.deviceKeys.add(devKey);
+              r.devices.push({
+                deviceId: event.deviceId,
+                deviceName: devName,
+                notes: event.notes || null,
+                status: event.status,
+              });
+            }
+          });
+
+          const maintenanceHistoryRounds = Object.values(roundMap)
+            .map(r => {
+              let overallStatus = 'completed';
+              if (r.statuses.has('in_progress')) overallStatus = 'in_progress';
+              else if (r.statuses.has('planned') && !r.statuses.has('completed')) overallStatus = 'planned';
+
+              return {
+                key: r.key,
+                roundDate: r.roundDate,
+                staffName: Array.from(r.staffNames).join(', ') || '-',
+                status: overallStatus,
+                notes: r.notesList.join('; ') || '-',
+                relatedReportId: r.relatedReportId,
+                devices: r.devices,
+              };
+            })
+            .sort((a, b) => {
+              const timeA = a.roundDate ? new Date(a.roundDate).getTime() : 0;
+              const timeB = b.roundDate ? new Date(b.roundDate).getTime() : 0;
+              return timeB - timeA;
+            });
+
           return (
-            <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-              <div className="modal-dialog">
+            <>
+              <div className="modal show d-block" tabIndex={-1} style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+              <div className="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
                 <div className="modal-content">
                   <div className="modal-header py-2">
                     <h6 className="modal-title mb-0">Chi tiết kế hoạch</h6>
@@ -4774,144 +5001,363 @@ function MaintenancePageContent() {
                       onClick={() => {
                         setShowViewPlanModal(false);
                         setSelectedGroup(null);
+                        setViewPlanHistoryEvents([]);
+                        setShowPlanDevicesModal(false);
+                        setViewingRoundDevices(null);
+                        setPlanDeviceSearch('');
+                        setRoundDeviceSearch('');
                       }}
                     ></button>
                   </div>
                   <div className="modal-body py-3">
-                    {/* Tiêu đề */}
-                    <div className="mb-3">
-                      <div className="text-muted small mb-1">Tên kế hoạch bảo trì</div>
-                      <div className="h5 fw-bold text-primary mb-0">{getShortTitle(selectedGroup.title)}</div>
-                    </div>
+                    {/* Khối thông tin kế hoạch tinh gọn */}
+                    <div className="card bg-light border-0 mb-3 shadow-none">
+                      <div className="card-body p-3">
+                        {/* Hàng 1: Tiêu đề + Badges thông tin cốt lõi */}
+                        <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                          <div className="d-flex align-items-center flex-wrap gap-2">
+                            <h6 className="fw-bold text-primary mb-0">{getShortTitle(selectedGroup.title)}</h6>
 
-                    {/* Mô tả */}
-                    {firstPlan?.description && (
-                      <div className="mb-3">
-                        <div className="text-muted small mb-1">Mô tả</div>
-                        <div>{firstPlan.description}</div>
-                      </div>
-                    )}
+                            {/* Loại bảo trì */}
+                            {firstPlan?.metadata?.maintenanceType && (
+                              <span
+                                className={`badge ${firstPlan.metadata.maintenanceType === 'internal' ? 'bg-primary' : 'bg-info'} py-1 px-2`}
+                                style={{ fontSize: '0.72rem' }}
+                              >
+                                {firstPlan.metadata.maintenanceType === 'internal' ? 'Nội Bộ' : 'Thuê Ngoài'}
+                              </span>
+                            )}
 
-                    {/* Thông tin chính */}
-                    <div className="row g-2 mb-3">
-                      <div className="col-4">
-                        <div className="text-muted small mb-1">Thiết bị</div>
-                        <div className="fw-bold">{totalDevices}</div>
-                      </div>
-                      <div className="col-4">
-                        <div className="text-muted small mb-1">Hoạt động</div>
-                        <span className="badge bg-success">{activeCount}</span>
-                      </div>
-                      {inactiveCount > 0 && (
-                        <div className="col-4">
-                          <div className="text-muted small mb-1">Đã hủy</div>
-                          <span className="badge bg-secondary">{inactiveCount}</span>
-                        </div>
-                      )}
-                    </div>
+                            {/* Chu kỳ */}
+                            {firstPlan?.intervalValue && (
+                              <span className="badge bg-white text-dark border py-1 px-2" style={{ fontSize: '0.72rem' }}>
+                                <i className="far fa-clock me-1 text-muted"></i>
+                                {firstPlan.intervalValue} {firstPlan.intervalUnit === 'day' ? 'ngày' : firstPlan.intervalUnit === 'week' ? 'tuần' : firstPlan.intervalUnit === 'month' ? 'tháng' : 'năm'}
+                              </span>
+                            )}
 
-                    {/* Thông tin bảo trì */}
-                    <div className="row g-2 mb-3">
-                      {firstPlan?.metadata?.maintenanceType && (
-                        <div className="col-6">
-                          <div className="text-muted small mb-1">Loại bảo trì</div>
-                          {firstPlan.metadata.maintenanceType === 'internal' ? (
-                            <span className="badge bg-primary">Nội Bộ</span>
-                          ) : (
-                            <span className="badge bg-info">Thuê Ngoài</span>
+                            {/* Số lượng */}
+                            <span
+                              className="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 py-1 px-2"
+                              style={{ fontSize: '0.72rem' }}
+                            >
+                              <i className="fas fa-check-circle me-1"></i>
+                              {activeCount} {selectedGroup.plans.some(p => Boolean(p.deviceId)) ? 'thiết bị' : 'công việc'}
+                            </span>
+                            {inactiveCount > 0 && (
+                              <span
+                                className="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 py-1 px-2"
+                                style={{ fontSize: '0.72rem' }}
+                              >
+                                {inactiveCount} đã hủy
+                              </span>
+                            )}
+
+                            {/* Nút xem danh sách thiết bị ở popup riêng */}
+                            {selectedGroup.plans.some(p => Boolean(p.deviceId)) && (
+                              <button
+                                type="button"
+                                className="btn btn-xs btn-outline-primary py-0 px-2 rounded-pill d-inline-flex align-items-center gap-1 text-nowrap"
+                                style={{ fontSize: '0.72rem', height: '22px', whiteSpace: 'nowrap' }}
+                                onClick={() => {
+                                  setShowPlanDevicesModal(true);
+                                  setPlanDeviceSearch('');
+                                }}
+                                title="Xem danh sách thiết bị ở cửa sổ riêng"
+                              >
+                                <i className="fas fa-cubes"></i>
+                                <span>Xem thiết bị</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Batch ID */}
+                          {selectedGroup.batchId !== 'no-batch' && (
+                            <span className="badge bg-secondary bg-opacity-10 text-secondary border font-monospace py-1" style={{ fontSize: '0.7rem' }}>
+                              ID: {selectedGroup.batchId}
+                            </span>
                           )}
                         </div>
-                      )}
 
-                      {firstPlan?.intervalValue && (
-                        <div className="col-6">
-                          <div className="text-muted small mb-1">Chu kỳ</div>
-                          <div>
-                            {firstPlan.intervalValue} {firstPlan.intervalUnit === 'day' ? 'ngày' : firstPlan.intervalUnit === 'week' ? 'tuần' : firstPlan.intervalUnit === 'month' ? 'tháng' : 'năm'}
-                          </div>
-                        </div>
-                      )}
-
-                      {firstPlan?.metadata?.maintenanceProvider && (
-                        <div className="col-12">
-                          <div className="text-muted small mb-1">Nhà cung cấp</div>
-                          <div>{firstPlan.metadata.maintenanceProvider}</div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Lịch trình */}
-                    {(lastMaintenanceDate || nextMaintenanceDate) && (
-                      <div className="row g-2">
-                        {lastMaintenanceDate && (
-                          <div className="col-6">
-                            <div className="text-muted small mb-1">BT trước</div>
-                            <div className="text-success small">
-                              {formatDateDisplay(lastMaintenanceDate)}
-                            </div>
+                        {/* Hàng 2: Mô tả (nếu có) */}
+                        {firstPlan?.description && (
+                          <div className="text-muted small mt-2 mb-0" style={{ fontSize: '0.825rem', lineHeight: '1.4' }}>
+                            <i className="fas fa-info-circle me-1 opacity-75"></i>
+                            {firstPlan.description}
                           </div>
                         )}
 
-                        {nextMaintenanceDate && (() => {
-                          const daysUntilDue = maintenanceDaysBetween(nextMaintenanceDate);
-                          return (
-                            <div className="col-6">
-                              <div className="text-muted small mb-1">BT sắp đến</div>
-                              <div className="small">
-                                <span className={getDaysUntilDueColor(daysUntilDue)}>
-                                  {formatDateDisplay(nextMaintenanceDate)}
-                                </span>
-                                <span className={`ms-2 small ${getDaysUntilDueColor(daysUntilDue)}`}>
-                                  ({daysUntilDue > 0 ? `Còn ${daysUntilDue} ngày` : daysUntilDue === 0 ? 'Hôm nay' : `Quá ${Math.abs(daysUntilDue)} ngày`})
-                                </span>
+                        {/* Hàng 4: Lịch trình & Nhà cung cấp */}
+                        {(nextMaintenanceDate || lastMaintenanceDate || firstPlan?.metadata?.maintenanceProvider) && (
+                          <div className="d-flex align-items-center flex-wrap gap-3 mt-2 pt-2 border-top small" style={{ fontSize: '0.8rem' }}>
+                            {nextMaintenanceDate && (() => {
+                              const daysUntilDue = maintenanceDaysBetween(nextMaintenanceDate);
+                              return (
+                                <div className="d-flex align-items-center gap-1.5">
+                                  <span className="text-muted">BT sắp đến:</span>
+                                  <span className={`fw-semibold ${getDaysUntilDueColor(daysUntilDue)}`}>
+                                    {formatDateDisplay(nextMaintenanceDate)}
+                                  </span>
+                                  <span
+                                    className={`badge ms-1 ${
+                                      daysUntilDue < 0
+                                        ? 'bg-danger'
+                                        : daysUntilDue === 0
+                                        ? 'bg-warning text-dark'
+                                        : 'bg-info bg-opacity-10 text-info border border-info border-opacity-25'
+                                    }`}
+                                    style={{ fontSize: '0.7rem' }}
+                                  >
+                                    {daysUntilDue > 0 ? `Còn ${daysUntilDue} ngày` : daysUntilDue === 0 ? 'Hôm nay' : `Quá ${Math.abs(daysUntilDue)} ngày`}
+                                  </span>
+                                </div>
+                              );
+                            })()}
+
+                            {lastMaintenanceDate && (
+                              <div className="d-flex align-items-center gap-1.5">
+                                <span className="text-muted">BT trước:</span>
+                                <span className="fw-semibold text-success">{formatDateDisplay(lastMaintenanceDate)}</span>
                               </div>
+                            )}
+
+                            {firstPlan?.metadata?.maintenanceProvider && (
+                              <div className="d-flex align-items-center gap-1.5">
+                                <span className="text-muted">Đơn vị:</span>
+                                <span className="fw-semibold text-dark">{firstPlan.metadata.maintenanceProvider}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Thanh điều khiển các Tab Lịch sử (có thể đóng / mở) */}
+                    <div>
+                      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                        <div className="d-flex align-items-center gap-2 flex-wrap">
+                          {/* Nút Tab Lịch sử bảo trì */}
+                          <button
+                            type="button"
+                            className={`btn btn-sm ${openMaintenanceTab ? 'btn-primary shadow-sm' : 'btn-outline-primary'} rounded-pill px-3 py-1 d-flex align-items-center gap-1`}
+                            onClick={() => setOpenMaintenanceTab(prev => !prev)}
+                            style={{ fontSize: '0.8rem', fontWeight: openMaintenanceTab ? 600 : 400 }}
+                          >
+                            <i className="fas fa-tools"></i>
+                            <span>Lịch sử bảo trì</span>
+                            <span className={`badge ${openMaintenanceTab ? 'bg-light text-primary' : 'bg-primary text-white'} ms-1`}>
+                              {loadingViewPlanHistory ? '...' : maintenanceHistoryRounds.length}
+                            </span>
+                            <i className={`fas fa-chevron-${openMaintenanceTab ? 'up' : 'down'} ms-1`} style={{ fontSize: '0.7rem' }}></i>
+                          </button>
+
+                          {/* Nút Tab Lịch sử dời lịch */}
+                          {(currentUser?.roles?.includes('SuperAdmin') || isUserAdmin) && (
+                            <button
+                              type="button"
+                              className={`btn btn-sm ${openRescheduleTab ? 'btn-secondary text-white shadow-sm' : 'btn-outline-secondary'} rounded-pill px-3 py-1 d-flex align-items-center gap-1`}
+                              onClick={() => setOpenRescheduleTab(prev => !prev)}
+                              style={{ fontSize: '0.8rem', fontWeight: openRescheduleTab ? 600 : 400 }}
+                            >
+                              <i className="fas fa-history"></i>
+                              <span>Lịch sử dời lịch</span>
+                              <span className={`badge ${openRescheduleTab ? 'bg-light text-secondary' : 'bg-secondary text-white'} ms-1`}>
+                                {allRescheduleHistories.length}
+                              </span>
+                              <i className={`fas fa-chevron-${openRescheduleTab ? 'up' : 'down'} ms-1`} style={{ fontSize: '0.7rem' }}></i>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Thu gọn tất cả các tab */}
+                        {(openMaintenanceTab || openRescheduleTab) && (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-link text-decoration-none text-muted py-0 px-1"
+                            onClick={() => {
+                              setOpenMaintenanceTab(false);
+                              setOpenRescheduleTab(false);
+                            }}
+                            title="Đóng tất cả các tab lịch sử"
+                            style={{ fontSize: '0.8rem' }}
+                          >
+                            <i className="fas fa-times me-1"></i>Thu gọn tất cả
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Tab Nội dung 1: Lịch sử bảo trì */}
+                      {openMaintenanceTab && (
+                        <div className="card border mb-3 shadow-sm">
+                          <div 
+                            className="card-header bg-primary bg-opacity-10 d-flex justify-content-between align-items-center py-2 px-3"
+                            style={{ cursor: 'pointer', userSelect: 'none' }}
+                            onClick={() => setOpenMaintenanceTab(prev => !prev)}
+                          >
+                            <div className="fw-bold small text-primary d-flex align-items-center gap-2">
+                              <i className="fas fa-tools"></i>
+                              <span>Lịch sử các đợt bảo trì ({maintenanceHistoryRounds.length})</span>
                             </div>
-                          );
-                        })()}
-                      </div>
-                    )}
+                            <div className="d-flex align-items-center gap-1 text-primary small">
+                              <span style={{ fontSize: '0.75rem' }}>Đóng tab</span>
+                              <i className="fas fa-chevron-up" style={{ fontSize: '0.75rem' }}></i>
+                            </div>
+                          </div>
+                          <div className="card-body p-0">
+                            {loadingViewPlanHistory ? (
+                              <div className="text-center py-4">
+                                <div className="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                <span className="ms-2 text-muted small">Đang tải lịch sử bảo trì...</span>
+                              </div>
+                            ) : maintenanceHistoryRounds.length === 0 ? (
+                              <div className="text-center py-3 text-muted small">
+                                <i className="fas fa-inbox me-1"></i> Chưa có đợt bảo trì nào được ghi nhận
+                              </div>
+                            ) : (
+                              <div className="table-responsive" style={{ maxHeight: '320px' }}>
+                                <table className="table table-sm table-hover table-bordered mb-0" style={{ fontSize: '0.8rem' }}>
+                                  <thead className="table-light sticky-top">
+                                    <tr>
+                                      <th className="text-center" style={{ width: '40px' }}>#</th>
+                                      <th style={{ width: '105px' }}>Ngày bảo trì</th>
+                                      <th style={{ minWidth: '135px', whiteSpace: 'nowrap' }}>Thiết bị / Công việc</th>
+                                      <th>Người thực hiện</th>
+                                      <th style={{ width: '110px' }}>Trạng thái</th>
+                                      <th>Ghi chú</th>
+                                      <th className="text-center" style={{ width: '90px' }}>Báo cáo CV</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {maintenanceHistoryRounds.map((round: any, idx: number) => {
+                                      const statusBadgeClass = round.status === 'completed'
+                                        ? 'bg-success bg-opacity-10 text-success border border-success border-opacity-25'
+                                        : round.status === 'in_progress'
+                                        ? 'bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25'
+                                        : 'bg-warning bg-opacity-25 text-dark border border-warning border-opacity-50';
+                                      const statusText = round.status === 'completed'
+                                        ? 'Hoàn thành'
+                                        : round.status === 'in_progress'
+                                        ? 'Đang xử lý'
+                                        : 'Kế hoạch';
 
-                    {/* Batch ID */}
-                    {selectedGroup.batchId !== 'no-batch' && (
-                      <div className="mt-3 pt-3 border-top">
-                        <div className="text-muted small mb-1">Batch ID</div>
-                        <span className="badge bg-secondary small">{selectedGroup.batchId}</span>
-                      </div>
-                    )}
+                                      return (
+                                        <tr key={round.key || idx}>
+                                          <td className="text-center text-muted small">{idx + 1}</td>
+                                          <td className="fw-semibold">{formatDateDisplay(round.roundDate) || '-'}</td>
+                                          <td>
+                                            {round.devices.length > 1 ? (
+                                              <div className="d-flex align-items-center gap-1.5 text-nowrap">
+                                                <span className="fw-semibold text-dark text-nowrap">
+                                                  {round.devices.length} thiết bị
+                                                </span>
+                                                <button
+                                                  type="button"
+                                                  className="btn btn-xs btn-outline-primary py-0 px-2 rounded-pill d-inline-flex align-items-center gap-1 text-nowrap flex-shrink-0"
+                                                  style={{ fontSize: '0.72rem', height: '22px', lineHeight: '20px', whiteSpace: 'nowrap' }}
+                                                  onClick={() => {
+                                                    setViewingRoundDevices(round);
+                                                    setRoundDeviceSearch('');
+                                                  }}
+                                                  title="Xem danh sách thiết bị trong đợt này"
+                                                >
+                                                  <i className="fas fa-eye" style={{ fontSize: '0.68rem' }}></i>
+                                                  <span>Xem</span>
+                                                </button>
+                                              </div>
+                                            ) : (
+                                              <span className="fw-medium text-dark text-nowrap">
+                                                {round.devices[0]?.deviceName || 'Công việc định kỳ'}
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td>{round.staffName || '-'}</td>
+                                          <td>
+                                            <span className={`badge ${statusBadgeClass} fw-normal`} style={{ fontSize: '0.75rem' }}>
+                                              {statusText}
+                                            </span>
+                                          </td>
+                                          <td>
+                                            <small className="text-muted text-break">{round.notes || '-'}</small>
+                                          </td>
+                                          <td className="text-center">
+                                            {round.relatedReportId ? (
+                                              <button
+                                                type="button"
+                                                className="btn btn-sm btn-link p-0 text-decoration-none"
+                                                onClick={() => handleQuickViewReport(round.relatedReportId)}
+                                                title="Xem chi tiết báo cáo công việc"
+                                              >
+                                                <span className="badge bg-light text-primary border border-primary border-opacity-25" style={{ fontSize: '0.75rem' }}>
+                                                  CV-{round.relatedReportId}
+                                                </span>
+                                              </button>
+                                            ) : '-'}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
 
-                    {/* Lịch sử dời lịch */}
-                    {currentUser?.roles?.includes('SuperAdmin') && firstPlan?.metadata?.rescheduleHistory && firstPlan.metadata.rescheduleHistory.length > 0 && (
-                      <div className="mt-3 pt-3 border-top">
-                        <div className="text-muted small mb-2 fw-bold">
-                          <i className="fas fa-history me-1"></i>
-                          Lịch sử dời lịch (SuperAdmin)
+                      {/* Tab Nội dung 2: Lịch sử dời lịch */}
+                      {openRescheduleTab && (currentUser?.roles?.includes('SuperAdmin') || isUserAdmin) && (
+                        <div className="card border mb-3 shadow-sm">
+                          <div 
+                            className="card-header bg-secondary bg-opacity-10 d-flex justify-content-between align-items-center py-2 px-3"
+                            style={{ cursor: 'pointer', userSelect: 'none' }}
+                            onClick={() => setOpenRescheduleTab(prev => !prev)}
+                          >
+                            <div className="fw-bold small text-secondary d-flex align-items-center gap-2">
+                              <i className="fas fa-history"></i>
+                              <span>Lịch sử dời lịch ({allRescheduleHistories.length})</span>
+                            </div>
+                            <div className="d-flex align-items-center gap-1 text-secondary small">
+                              <span style={{ fontSize: '0.75rem' }}>Đóng tab</span>
+                              <i className="fas fa-chevron-up" style={{ fontSize: '0.75rem' }}></i>
+                            </div>
+                          </div>
+                          <div className="card-body p-0">
+                            {allRescheduleHistories.length === 0 ? (
+                              <div className="text-center py-3 text-muted small">
+                                <i className="fas fa-inbox me-1"></i> Không có lịch sử dời lịch nào
+                              </div>
+                            ) : (
+                              <div className="table-responsive" style={{ maxHeight: '250px' }}>
+                                <table className="table table-sm table-hover table-bordered mb-0" style={{ fontSize: '0.8rem' }}>
+                                  <thead className="table-light sticky-top">
+                                    <tr>
+                                      <th className="text-center" style={{ width: '40px' }}>#</th>
+                                      <th>Thời gian</th>
+                                      <th>Từ ngày</th>
+                                      <th>Đến ngày</th>
+                                      <th>Người dời</th>
+                                      <th>Lý do</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {allRescheduleHistories.map((history: any, index: number) => (
+                                      <tr key={index}>
+                                        <td className="text-center text-muted small">{index + 1}</td>
+                                        <td>{formatDateDisplay(history.rescheduledAt)}</td>
+                                        <td>{history.fromDate ? formatDateDisplay(history.fromDate) : '-'}</td>
+                                        <td>{history.toDate ? formatDateDisplay(history.toDate) : '-'}</td>
+                                        <td className="text-break">{history.rescheduledBy}</td>
+                                        <td>{history.reason}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="table-responsive">
-                          <table className="table table-sm table-bordered mb-0" style={{ fontSize: '0.8rem' }}>
-                            <thead className="table-light">
-                              <tr>
-                                <th>Thời gian</th>
-                                <th>Từ ngày</th>
-                                <th>Đến ngày</th>
-                                <th>Người dời</th>
-                                <th>Lý do</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {firstPlan.metadata.rescheduleHistory.map((history: any, index: number) => (
-                                <tr key={index}>
-                                  <td>{formatDateDisplay(history.rescheduledAt)}</td>
-                                  <td>{history.fromDate ? formatDateDisplay(history.fromDate) : '-'}</td>
-                                  <td>{history.toDate ? formatDateDisplay(history.toDate) : '-'}</td>
-                                  <td>{history.rescheduledBy}</td>
-                                  <td>{history.reason}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                   <div className="modal-footer py-2">
                     {isUserAdmin && (
@@ -4933,6 +5379,11 @@ function MaintenancePageContent() {
                       onClick={() => {
                         setShowViewPlanModal(false);
                         setSelectedGroup(null);
+                        setViewPlanHistoryEvents([]);
+                        setShowPlanDevicesModal(false);
+                        setViewingRoundDevices(null);
+                        setPlanDeviceSearch('');
+                        setRoundDeviceSearch('');
                       }}
                     >
                       Đóng
@@ -4940,9 +5391,285 @@ function MaintenancePageContent() {
                   </div>
                 </div>
               </div>
+
             </div>
-          );
-        })()}
+
+              {/* Modal popup riêng xem danh sách thiết bị của kế hoạch */}
+            {showPlanDevicesModal && selectedGroup && (() => {
+              const activePlansWithDevice = selectedGroup.plans.filter(p => Boolean(p.deviceId));
+              const filteredPlans = activePlansWithDevice.filter(p => {
+                if (!planDeviceSearch.trim()) return true;
+                const name = (p.deviceName || p.title || '').toLowerCase();
+                return name.includes(planDeviceSearch.toLowerCase().trim());
+              });
+
+              return (
+                <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1065 }}>
+                  <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable" style={{ maxWidth: '520px' }}>
+                    <div className="modal-content shadow-lg border-0">
+                      <div className="modal-header py-2.5 bg-light border-bottom">
+                        <h6 className="modal-title fw-bold text-dark mb-0 d-flex align-items-center gap-2" style={{ fontSize: '0.95rem' }}>
+                          <i className="fas fa-cubes text-primary"></i>
+                          <span>Danh sách thiết bị ({activePlansWithDevice.length})</span>
+                        </h6>
+                        <button
+                          type="button"
+                          className="btn-close"
+                          aria-label="Close"
+                          onClick={() => {
+                            setShowPlanDevicesModal(false);
+                            setPlanDeviceSearch('');
+                          }}
+                        ></button>
+                      </div>
+                      <div className="modal-body p-3">
+                        <div className="mb-2 text-muted small fw-medium text-truncate">
+                          {getShortTitle(selectedGroup.title)}
+                        </div>
+
+                        {/* Ô tìm kiếm thiết bị với autofocus */}
+                        <div className="mb-2.5">
+                          <div className="input-group input-group-sm">
+                            <span className="input-group-text bg-white border-end-0 text-muted">
+                              <i className="fas fa-search"></i>
+                            </span>
+                            <input
+                              ref={planSearchInputRef}
+                              type="text"
+                              className="form-control border-start-0 ps-0"
+                              placeholder="Tìm kiếm theo tên thiết bị..."
+                              value={planDeviceSearch}
+                              onChange={(e) => setPlanDeviceSearch(e.target.value)}
+                              autoFocus
+                            />
+                            {planDeviceSearch && (
+                              <button
+                                className="btn btn-outline-secondary border-start-0"
+                                type="button"
+                                onClick={() => setPlanDeviceSearch('')}
+                              >
+                                <i className="fas fa-times"></i>
+                              </button>
+                            )}
+                          </div>
+                          {planDeviceSearch && (
+                            <div className="text-muted mt-1" style={{ fontSize: '0.75rem' }}>
+                              Tìm thấy {filteredPlans.length} / {activePlansWithDevice.length} thiết bị
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Bảng danh sách thiết bị gọn gàng, sticky header, cuộn mượt */}
+                        <div className="border rounded" style={{ maxHeight: '340px', overflowY: 'auto' }}>
+                          {filteredPlans.length === 0 ? (
+                            <div className="text-center py-4 text-muted small">
+                              <i className="fas fa-search me-1 opacity-50"></i> Không tìm thấy thiết bị nào phù hợp
+                            </div>
+                          ) : (
+                            <table className="table table-sm table-hover mb-0 align-middle" style={{ fontSize: '0.8rem' }}>
+                              <thead className="table-light sticky-top" style={{ zIndex: 1 }}>
+                                <tr>
+                                  <th className="text-center" style={{ width: '40px', padding: '6px 8px' }}>#</th>
+                                  <th style={{ padding: '6px 8px' }}>Tên thiết bị</th>
+                                  <th className="text-end" style={{ width: '100px', padding: '6px 8px' }}>Trạng thái</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {filteredPlans.map((p, idx) => (
+                                  <tr key={p.id || idx}>
+                                    <td className="text-center text-muted small" style={{ padding: '6px 8px' }}>{idx + 1}</td>
+                                    <td className="fw-medium text-dark text-break" style={{ padding: '6px 8px' }}>
+                                      {p.deviceName || p.title}
+                                    </td>
+                                    <td className="text-end text-nowrap" style={{ padding: '6px 8px' }}>
+                                      <span
+                                        className={`badge ${
+                                          p.isActive
+                                            ? 'bg-success bg-opacity-10 text-success border border-success border-opacity-25'
+                                            : 'bg-secondary bg-opacity-10 text-secondary border'
+                                        }`}
+                                        style={{ fontSize: '0.72rem' }}
+                                      >
+                                        {p.isActive ? 'Hoạt động' : 'Đã hủy'}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      </div>
+                      <div className="modal-footer py-2 bg-light">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-secondary"
+                          onClick={() => {
+                            setShowPlanDevicesModal(false);
+                            setPlanDeviceSearch('');
+                          }}
+                        >
+                          Đóng
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Modal riêng để xem danh sách thiết bị trong đợt bảo trì */}
+            {viewingRoundDevices && (() => {
+              const filteredRoundDevices = viewingRoundDevices.devices.filter((dev: any) => {
+                if (!roundDeviceSearch.trim()) return true;
+                const name = (dev.deviceName || '').toLowerCase();
+                return name.includes(roundDeviceSearch.toLowerCase().trim());
+              });
+
+              return (
+                <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1065 }}>
+                  <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable" style={{ maxWidth: '560px' }}>
+                    <div className="modal-content shadow-lg border-0">
+                      <div className="modal-header py-2.5 bg-light border-bottom">
+                        <h6 className="modal-title fw-bold text-dark mb-0 d-flex align-items-center gap-2" style={{ fontSize: '0.95rem' }}>
+                          <i className="fas fa-boxes text-primary"></i>
+                          <span>Thiết bị đợt bảo trì ({formatDateDisplay(viewingRoundDevices.roundDate)})</span>
+                        </h6>
+                        <button
+                          type="button"
+                          className="btn-close"
+                          aria-label="Close"
+                          onClick={() => {
+                            setViewingRoundDevices(null);
+                            setRoundDeviceSearch('');
+                          }}
+                        ></button>
+                      </div>
+                      <div className="modal-body p-3">
+                        <div className="d-flex align-items-center justify-content-between mb-2 pb-2 border-bottom small">
+                          <div>
+                            <span className="text-muted me-1">Người thực hiện:</span>
+                            <strong className="text-dark">{viewingRoundDevices.staffName || '-'}</strong>
+                          </div>
+                          {viewingRoundDevices.relatedReportId && (
+                            <div>
+                              <span className="text-muted me-1">Báo cáo:</span>
+                              <span className="badge bg-light text-dark border">CV-{viewingRoundDevices.relatedReportId}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Ô tìm kiếm thiết bị với autofocus */}
+                        <div className="mb-2.5">
+                          <div className="input-group input-group-sm">
+                            <span className="input-group-text bg-white border-end-0 text-muted">
+                              <i className="fas fa-search"></i>
+                            </span>
+                            <input
+                              ref={roundSearchInputRef}
+                              type="text"
+                              className="form-control border-start-0 ps-0"
+                              placeholder="Tìm kiếm theo tên thiết bị..."
+                              value={roundDeviceSearch}
+                              onChange={(e) => setRoundDeviceSearch(e.target.value)}
+                              autoFocus
+                            />
+                            {roundDeviceSearch && (
+                              <button
+                                className="btn btn-outline-secondary border-start-0"
+                                type="button"
+                                onClick={() => setRoundDeviceSearch('')}
+                              >
+                                <i className="fas fa-times"></i>
+                              </button>
+                            )}
+                          </div>
+                          {roundDeviceSearch && (
+                            <div className="text-muted mt-1" style={{ fontSize: '0.75rem' }}>
+                              Tìm thấy {filteredRoundDevices.length} / {viewingRoundDevices.devices.length} thiết bị
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Bảng danh sách thiết bị gọn gàng, sticky header, cuộn mượt */}
+                        <div className="border rounded" style={{ maxHeight: '340px', overflowY: 'auto' }}>
+                          {filteredRoundDevices.length === 0 ? (
+                            <div className="text-center py-4 text-muted small">
+                              <i className="fas fa-search me-1 opacity-50"></i> Không tìm thấy thiết bị nào phù hợp
+                            </div>
+                          ) : (
+                            <table className="table table-sm table-hover mb-0 align-middle" style={{ fontSize: '0.8rem' }}>
+                              <thead className="table-light sticky-top" style={{ zIndex: 1 }}>
+                                <tr>
+                                  <th className="text-center" style={{ width: '40px', padding: '6px 8px' }}>#</th>
+                                  <th style={{ padding: '6px 8px' }}>Tên thiết bị</th>
+                                  <th style={{ width: '130px', padding: '6px 8px' }}>Ghi chú</th>
+                                  <th className="text-end" style={{ width: '95px', padding: '6px 8px' }}>Trạng thái</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {filteredRoundDevices.map((dev: any, idx: number) => (
+                                  <tr key={idx}>
+                                    <td className="text-center text-muted small" style={{ padding: '6px 8px' }}>{idx + 1}</td>
+                                    <td className="fw-medium text-dark text-break" style={{ padding: '6px 8px' }}>
+                                      {dev.deviceName || '-'}
+                                    </td>
+                                    <td className="text-muted small text-break" style={{ fontSize: '0.74rem', padding: '6px 8px' }}>
+                                      {dev.notes || '-'}
+                                    </td>
+                                    <td className="text-end text-nowrap" style={{ padding: '6px 8px' }}>
+                                      <span
+                                        className={`badge ${
+                                          dev.status === 'completed'
+                                            ? 'bg-success bg-opacity-10 text-success border border-success border-opacity-25'
+                                            : 'bg-secondary bg-opacity-10 text-secondary border'
+                                        }`}
+                                        style={{ fontSize: '0.72rem' }}
+                                      >
+                                        {dev.status === 'completed' ? 'Hoàn thành' : dev.status || 'Kế hoạch'}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      </div>
+                      <div className="modal-footer py-2 bg-light d-flex justify-content-between align-items-center">
+                        {viewingRoundDevices.relatedReportId ? (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-primary"
+                            onClick={() => {
+                              const repId = viewingRoundDevices.relatedReportId;
+                              setViewingRoundDevices(null);
+                              setRoundDeviceSearch('');
+                              handleQuickViewReport(repId);
+                            }}
+                          >
+                            <i className="fas fa-file-alt me-1"></i>Xem báo cáo CV-{viewingRoundDevices.relatedReportId}
+                          </button>
+                        ) : <div />}
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-secondary"
+                          onClick={() => {
+                            setViewingRoundDevices(null);
+                            setRoundDeviceSearch('');
+                          }}
+                        >
+                          Đóng
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </>
+        );
+      })()}
 
         {/* Edit Batch Modal */}
         {showEditIntervalModal && selectedGroupForInterval && (
@@ -5992,14 +6719,14 @@ function MaintenancePageContent() {
                 <div className="modal-body">
                   <div className="alert alert-info mb-3">
                     <i className="fas fa-info-circle me-2"></i>
-                    Xác nhận bắt đầu bảo trì cho thiết bị này.
+                    Xác nhận bắt đầu thực hiện cho {selectedEvent.deviceId ? 'thiết bị' : 'công việc'} này.
                   </div>
                   <div className="mb-3">
-                    <label className="form-label">Thiết Bị</label>
+                    <label className="form-label">{selectedEvent.deviceId ? 'Thiết Bị' : 'Công Việc'}</label>
                     <input
                       type="text"
                       className="form-control"
-                      value={selectedEvent.deviceName || `Thiết bị #${selectedEvent.deviceId}`}
+                      value={selectedEvent.deviceName || (selectedEvent.deviceId ? `Thiết bị #${selectedEvent.deviceId}` : (selectedEvent.title || 'Công việc định kỳ'))}
                       disabled
                     />
                   </div>
@@ -6089,11 +6816,11 @@ function MaintenancePageContent() {
                 </div>
                 <div className="modal-body">
                   <div className="mb-3">
-                    <label className="form-label">Thiết Bị</label>
+                    <label className="form-label">{selectedEvent.deviceId ? 'Thiết Bị' : 'Công Việc'}</label>
                     <input
                       type="text"
                       className="form-control"
-                      value={selectedEvent.deviceName || `Thiết bị #${selectedEvent.deviceId}`}
+                      value={selectedEvent.deviceName || (selectedEvent.deviceId ? `Thiết bị #${selectedEvent.deviceId}` : (selectedEvent.title || 'Công việc định kỳ'))}
                       disabled
                     />
                   </div>

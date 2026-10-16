@@ -34,7 +34,7 @@ export class WorkPlanService {
 
       await client.query('COMMIT');
       archiveSchemaReady = true;
-    } catch (error) {
+    } catch (error: any) {
       await client.query('ROLLBACK');
       throw error;
     } finally {
@@ -387,7 +387,7 @@ export class WorkPlanService {
       const damageReportId = await this.implementWithClient(client, id, staffId, userId);
       await client.query('COMMIT');
       return damageReportId;
-    } catch (error) {
+    } catch (error: any) {
       await client.query('ROLLBACK');
       throw error;
     } finally {
@@ -416,9 +416,9 @@ export class WorkPlanService {
         const reportId = await this.implementWithClient(client, row.ID, null, userId);
         await client.query('COMMIT');
         if (reportId) implementedCount += 1;
-      } catch (error) {
+      } catch (error: any) {
         await client.query('ROLLBACK');
-        throw error;
+        console.error('Failed to implement work plan item ' + row.ID + ':', error?.message || error);
       } finally {
         client.release();
       }

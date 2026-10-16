@@ -17,6 +17,9 @@ export async function GET(
     }
 
     const { batchId } = params;
+    const { searchParams } = new URL(request.url);
+    const planIdsParam = searchParams.get('planIds') || searchParams.get('planId');
+    const planIdList = planIdsParam ? planIdsParam.split(',').map(s => s.trim()).filter(Boolean) : [];
 
     if (!batchId) {
       return NextResponse.json(
@@ -25,36 +28,69 @@ export async function GET(
       );
     }
 
-    // Get all events with the same maintenanceBatchId
-    const result = await pool.query(
+    // Get all events with the same maintenanceBatchId or planId
+    const query = batchId === 'no-batch' && planIdList.length > 0
+      ? `
+        SELECT 
+          e."ID" as id,
+          e."Title" as title,
+          e."DeviceID" as "deviceId",
+          d."Name" as "deviceName",
+          e."EventTypeID" as "eventTypeId",
+          et."Name" as "eventTypeName",
+          e."Description" as description,
+          e."Status" as status,
+          e."EventDate" as "eventDate",
+          e."StartDate" as "startDate",
+          e."EndDate" as "endDate",
+          e."StaffID" as "staffId",
+          s."Name" as "staffName",
+          e."Metadata" as metadata,
+          e."RelatedReportID" as "relatedReportId",
+          e."Notes" as notes,
+          e."CreatedAt" as "createdAt",
+          e."UpdatedAt" as "updatedAt"
+        FROM "Event" e
+        LEFT JOIN "Device" d ON e."DeviceID" = d."ID"
+        LEFT JOIN "EventType" et ON e."EventTypeID" = et."ID"
+        LEFT JOIN "Staff" s ON e."StaffID" = s."ID"
+        WHERE (e."Metadata"->>'maintenancePlanId') = ANY($1::text[])
+        ORDER BY COALESCE(e."EndDate", e."EventDate", e."StartDate") DESC, e."CreatedAt" DESC
       `
-      SELECT 
-        e."ID" as id,
-        e."Title" as title,
-        e."DeviceID" as "deviceId",
-        d."Name" as "deviceName",
-        e."EventTypeID" as "eventTypeId",
-        et."Name" as "eventTypeName",
-        e."Description" as description,
-        e."Status" as status,
-        e."EventDate" as "eventDate",
-        e."StartDate" as "startDate",
-        e."EndDate" as "endDate",
-        e."StaffID" as "staffId",
-        s."Name" as "staffName",
-        e."Metadata" as metadata,
-        e."RelatedReportID" as "relatedReportId",
-        e."CreatedAt" as "createdAt",
-        e."UpdatedAt" as "updatedAt"
-      FROM "Event" e
-      LEFT JOIN "Device" d ON e."DeviceID" = d."ID"
-      LEFT JOIN "EventType" et ON e."EventTypeID" = et."ID"
-      LEFT JOIN "Staff" s ON e."StaffID" = s."ID"
-      WHERE e."Metadata"::text LIKE $1
-      ORDER BY e."EventDate" DESC, e."CreatedAt" DESC
-      `,
-      [`%${batchId}%`]
-    );
+      : `
+        SELECT 
+          e."ID" as id,
+          e."Title" as title,
+          e."DeviceID" as "deviceId",
+          d."Name" as "deviceName",
+          e."EventTypeID" as "eventTypeId",
+          et."Name" as "eventTypeName",
+          e."Description" as description,
+          e."Status" as status,
+          e."EventDate" as "eventDate",
+          e."StartDate" as "startDate",
+          e."EndDate" as "endDate",
+          e."StaffID" as "staffId",
+          s."Name" as "staffName",
+          e."Metadata" as metadata,
+          e."RelatedReportID" as "relatedReportId",
+          e."Notes" as notes,
+          e."CreatedAt" as "createdAt",
+          e."UpdatedAt" as "updatedAt"
+        FROM "Event" e
+        LEFT JOIN "Device" d ON e."DeviceID" = d."ID"
+        LEFT JOIN "EventType" et ON e."EventTypeID" = et."ID"
+        LEFT JOIN "Staff" s ON e."StaffID" = s."ID"
+        WHERE e."Metadata"::text LIKE $1
+           OR (e."Metadata"->>'maintenancePlanId') = ANY($2::text[])
+        ORDER BY COALESCE(e."EndDate", e."EventDate", e."StartDate") DESC, e."CreatedAt" DESC
+      `;
+
+    const queryParams = batchId === 'no-batch' && planIdList.length > 0
+      ? [planIdList]
+      : [`%${batchId}%`, planIdList.length > 0 ? planIdList : ['__none__']];
+
+    const result = await pool.query(query, queryParams);
 
     const events = result.rows
       .map((row: any) => {
@@ -71,8 +107,14 @@ export async function GET(
           }
         }
 
-        // Filter by exact batchId match
-        if (!metadata || metadata.maintenanceBatchId !== batchId) {
+        if (!metadata) {
+          return null;
+        }
+
+        // Filter by exact batchId match or planId match
+        const matchesBatch = metadata.maintenanceBatchId === batchId;
+        const matchesPlan = metadata.maintenancePlanId && planIdList.includes(String(metadata.maintenancePlanId));
+        if (!matchesBatch && !matchesPlan) {
           return null;
         }
 
@@ -80,7 +122,7 @@ export async function GET(
           id: row.id,
           title: row.title,
           deviceId: row.deviceId,
-          deviceName: row.deviceName,
+          deviceName: row.deviceName || row.title || 'Công việc định kỳ',
           eventTypeId: row.eventTypeId,
           eventTypeName: row.eventTypeName,
           description: row.description,
@@ -94,6 +136,7 @@ export async function GET(
           maintenanceType: metadata.maintenanceType || null,
           maintenanceProvider: metadata.maintenanceProvider || null,
           relatedReportId: row.relatedReportId || null,
+          notes: row.notes || null,
           createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
           updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString() : null,
         };

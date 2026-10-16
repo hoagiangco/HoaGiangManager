@@ -34,6 +34,21 @@ export async function PUT(
 
     await userService.setLockStatus(params.id, locked);
 
+    try {
+      const { logAudit } = await import('@/lib/services/auditService');
+      await logAudit(
+        null,
+        user.userId,
+        'UPDATE',
+        'Users',
+        params.id,
+        { isLocked: !locked, targetEmail: targetUser?.email },
+        { isLocked: locked, targetEmail: targetUser?.email }
+      );
+    } catch (auditErr) {
+      console.error('Audit log error on user lock/unlock:', auditErr);
+    }
+
     return NextResponse.json({
       status: true,
     });
@@ -45,14 +60,3 @@ export async function PUT(
     );
   }
 }
-
-
-
-
-
-
-
-
-
-
-

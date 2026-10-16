@@ -46,21 +46,21 @@ export async function PUT(req: NextRequest) {
       (Array.isArray(cells) && cells.length > 0 ? cells[0].weekStartDate : undefined) ||
       '';
 
-    if (cells && Array.isArray(cells) && cells.length > 0) {
-      await svc.upsertBatch(cells, authorization.user.userId);
-    }
-    
-    if (weeklyNote !== undefined && targetWeekStart) {
-      await svc.setWeeklyNote(targetWeekStart, weeklyNote);
+    if (!targetWeekStart) {
+      return NextResponse.json({ status: false, error: 'Thiếu thông tin tuần (weekStart)' }, { status: 400 });
     }
 
-    if (approvedImageUrl !== undefined && targetWeekStart) {
-      await svc.setApprovedImage(targetWeekStart, approvedImageUrl, authorization.user.email);
-    }
-
-    if ((creatorSignatureUrl !== undefined || creatorName !== undefined) && targetWeekStart) {
-      await svc.setCreatorSignature(targetWeekStart, creatorSignatureUrl, creatorName);
-    }
+    // Atomic transaction for the entire weekly schedule update with week boundary verification
+    await svc.saveCompleteWeek({
+      weekStart: targetWeekStart,
+      cells,
+      weeklyNote,
+      approvedImageUrl,
+      creatorSignatureUrl,
+      creatorName,
+      userId: authorization.user.userId,
+      userEmail: authorization.user.email,
+    });
 
     try {
       const { logAudit } = await import('@/lib/services/auditService');
@@ -69,12 +69,18 @@ export async function PUT(req: NextRequest) {
         authorization.user.userId,
         'UPDATE',
         'WeeklySchedule',
-        targetWeekStart || 'WeeklySchedule',
-        { action: 'Update Weekly Schedule' },
-        { weekStart: targetWeekStart, cellsCount: cells?.length || 0 }
+        targetWeekStart,
+        null,
+        {
+          weekStart: targetWeekStart,
+          cellsCount: Array.isArray(cells) ? cells.length : 0,
+          hasWeeklyNote: weeklyNote !== undefined,
+          hasApprovedImage: !!approvedImageUrl,
+          hasSignature: !!creatorSignatureUrl
+        }
       );
-    } catch (auditError) {
-      console.error('Audit log failed for WeeklySchedule:', auditError);
+    } catch (auditErr) {
+      console.error('Audit log error on weekly schedule save:', auditErr);
     }
 
     return NextResponse.json({ status: true });

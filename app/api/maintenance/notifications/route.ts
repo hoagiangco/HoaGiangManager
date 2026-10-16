@@ -2,6 +2,7 @@ import { maintenanceToday, calculateNextDueDay } from '@/lib/utils/maintenanceSc
 import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import { authenticate } from '@/lib/auth/middleware';
+import { isAdmin as checkIsAdmin } from '@/lib/auth/permissions';
 import pool from '@/lib/db';
 
 export async function GET(request: NextRequest) {
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     const today = maintenanceToday();
     const nextMonth = calculateNextDueDay(today, 30, 'day');
 
-    const isAdmin = user.roles && user.roles.includes('Admin');
+    const isAdmin = checkIsAdmin(user.roles);
     const userId = user.userId;
 
     const summaryResult = await pool.query(

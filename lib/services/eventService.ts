@@ -283,9 +283,9 @@ export class EventService {
         ]
       );
 
-      if ((event.status || EventStatus.Completed) === EventStatus.Completed && event.deviceId) {
+      if ((event.status || EventStatus.Completed) === EventStatus.Completed && (event.deviceId || event.metadata?.maintenancePlanId || event.metadata?.maintenanceBatchId)) {
         await advanceMaintenanceSchedule({ batchId: event.metadata?.maintenanceBatchId,
-          planId: event.metadata?.maintenancePlanId, deviceId: event.deviceId }, client);
+          planId: event.metadata?.maintenancePlanId, deviceId: event.deviceId || null }, client);
       }
       await client.query('COMMIT');
       return result.rows[0].ID;
@@ -351,9 +351,9 @@ export class EventService {
         ]
       );
 
-      if (oldStatus !== event.status && event.status === EventStatus.Completed && event.deviceId) {
+      if (oldStatus !== event.status && event.status === EventStatus.Completed && (event.deviceId || event.metadata?.maintenancePlanId || event.metadata?.maintenanceBatchId)) {
         await advanceMaintenanceSchedule({ batchId: event.metadata?.maintenanceBatchId,
-          planId: event.metadata?.maintenancePlanId, deviceId: event.deviceId }, client);
+          planId: event.metadata?.maintenancePlanId, deviceId: event.deviceId || null }, client);
       }
       await client.query('COMMIT');
     } catch (error) {

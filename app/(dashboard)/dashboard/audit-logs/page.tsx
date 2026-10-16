@@ -54,7 +54,6 @@ export default function AuditLogsPage() {
                 <option value="WorkPlans">Bảo trì/Kế hoạch (WorkPlans)</option>
                 <option value="Events">Sự kiện (Events)</option>
                 <option value="DeviceReminderPlans">Lịch bảo trì (ReminderPlans)</option>
-                <option value="WeeklySchedule">Lịch tuần (WeeklySchedule)</option>
                 <option value="Users">Người dùng (Users)</option>
                 <option value="Staff">Nhân sự (Staff)</option>
                 <option value="Departments">Phòng ban (Departments)</option>

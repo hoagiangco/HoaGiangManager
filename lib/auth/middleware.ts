@@ -11,45 +11,101 @@ interface AuthenticateOptions {
   allowPasswordChangeRequired?: boolean;
 }
 
+export interface AuthenticateResult {
+  user: JWTPayload | null;
+  error: string | null;
+  statusCode?: number;
+}
+
 export async function authenticate(
   request: NextRequest,
   options: AuthenticateOptions = {}
-): Promise<{ user: JWTPayload | null; error: string | null }> {
+): Promise<AuthenticateResult> {
   try {
     const authHeader = request.headers.get('authorization');
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return { user: null, error: 'No token provided' };
+      return { user: null, error: 'No token provided', statusCode: 401 };
     }
 
     const token = authHeader.substring(7);
-    const payload = verifyToken(token);
-
-    // Verify user still exists and get roles
-    const userResult = await pool.query(
-      `SELECT u."Id", u."Email", u."NormalizedEmail", u."MustChangePassword"
-       FROM "AspNetUsers" u
-       WHERE u."Id" = $1`,
-      [payload.userId]
-    );
-
-    if (userResult.rows.length === 0) {
-      return { user: null, error: 'User not found' };
+    let payload: JWTPayload;
+    try {
+      payload = verifyToken(token);
+    } catch {
+      return { user: null, error: 'Invalid token', statusCode: 401 };
     }
 
-    const mustChangePassword = Boolean(userResult.rows[0].MustChangePassword);
+    // Verify user still exists, check lockout status and security stamp
+    let userResult;
+    try {
+      userResult = await pool.query(
+        `SELECT u."Id", u."Email", u."NormalizedEmail", u."MustChangePassword",
+                u."LockoutEnabled", u."LockoutEnd", u."SecurityStamp"
+         FROM "AspNetUsers" u
+         WHERE u."Id" = $1`,
+        [payload.userId]
+      );
+    } catch (dbErr: any) {
+      console.error('Authentication database query error:', dbErr.message || dbErr);
+      return {
+        user: null,
+        error: 'Lỗi kết nối cơ sở dữ liệu khi xác thực người dùng',
+        statusCode: 503,
+      };
+    }
+
+    if (userResult.rows.length === 0) {
+      return { user: null, error: 'User not found', statusCode: 401 };
+    }
+
+    const userRow = userResult.rows[0];
+
+    // Check account lockout
+    if (userRow.LockoutEnabled && userRow.LockoutEnd) {
+      const lockoutEnd = new Date(userRow.LockoutEnd);
+      if (!Number.isNaN(lockoutEnd.getTime()) && lockoutEnd.getTime() > Date.now()) {
+        return {
+          user: null,
+          error: 'Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.',
+          statusCode: 403,
+        };
+      }
+    }
+
+    // Check SecurityStamp: if token carries a securityStamp, it must match the database.
+    // When password is changed/reset, SecurityStamp is regenerated, invalidating old tokens.
+    if (payload.securityStamp && userRow.SecurityStamp && payload.securityStamp !== userRow.SecurityStamp) {
+      return {
+        user: null,
+        error: 'Phiên đăng nhập đã hết hạn do mật khẩu đã thay đổi. Vui lòng đăng nhập lại.',
+        statusCode: 401,
+      };
+    }
+
+    const mustChangePassword = Boolean(userRow.MustChangePassword);
     if (mustChangePassword && !options.allowPasswordChangeRequired) {
-      return { user: null, error: 'PASSWORD_CHANGE_REQUIRED' };
+      return { user: null, error: 'PASSWORD_CHANGE_REQUIRED', statusCode: 401 };
     }
 
     // Get user roles
-    const rolesResult = await pool.query(
-      `SELECT r."Name"
-       FROM "AspNetRoles" r
-       INNER JOIN "AspNetUserRoles" ur ON r."Id" = ur."RoleId"
-       WHERE ur."UserId" = $1`,
-      [payload.userId]
-    );
+    let rolesResult;
+    try {
+      rolesResult = await pool.query(
+        `SELECT r."Name"
+         FROM "AspNetRoles" r
+         INNER JOIN "AspNetUserRoles" ur ON r."Id" = ur."RoleId"
+         WHERE ur."UserId" = $1`,
+        [payload.userId]
+      );
+    } catch (dbErr: any) {
+      console.error('Authentication roles query error:', dbErr.message || dbErr);
+      return {
+        user: null,
+        error: 'Lỗi kết nối cơ sở dữ liệu khi xác thực quyền người dùng',
+        statusCode: 503,
+      };
+    }
 
     const roles = rolesResult.rows.map(row => row.Name);
 
@@ -59,12 +115,13 @@ export async function authenticate(
         email: payload.email,
         roles,
         mustChangePassword,
+        securityStamp: userRow.SecurityStamp || undefined,
       },
-      error: null
+      error: null,
     };
   } catch (error: any) {
     console.error('Authentication error:', error.message || error);
-    return { user: null, error: error.message || 'Invalid token' };
+    return { user: null, error: error.message || 'Invalid token', statusCode: 401 };
   }
 }
 
@@ -72,12 +129,13 @@ export function requireAuth(
   roles?: string[]
 ): (request: NextRequest) => Promise<NextResponse | { user: JWTPayload }> {
   return async (request: NextRequest) => {
-    const { user, error } = await authenticate(request);
+    const authResult = await authenticate(request);
+    const { user, error, statusCode } = authResult;
 
     if (!user) {
       return NextResponse.json(
         { error: error || 'Unauthorized' },
-        { status: 401 }
+        { status: statusCode || 401 }
       );
     }
 
@@ -108,14 +166,15 @@ export async function requirePermission(
   request: NextRequest,
   permission: Permission
 ): Promise<PermissionCheckResult> {
-  const { user, error } = await authenticate(request);
+  const authResult = await authenticate(request);
+  const { user, error, statusCode } = authResult;
 
   if (!user) {
     return {
       authorized: false,
       response: NextResponse.json(
         { status: false, error: error || 'Unauthorized' },
-        { status: 401 }
+        { status: statusCode || 401 }
       ),
     };
   }
@@ -132,4 +191,3 @@ export async function requirePermission(
 
   return { authorized: true, user };
 }
-

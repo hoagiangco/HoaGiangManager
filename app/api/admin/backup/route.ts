@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/auth/middleware';
 import { BackupService } from '@/lib/services/backupService';
+import { isAdmin, isSuperAdmin } from '@/lib/auth/permissions';
 
 /**
  * GET /api/admin/backup
@@ -9,8 +10,11 @@ import { BackupService } from '@/lib/services/backupService';
 export async function GET(request: NextRequest) {
   try {
     const authResult = await authenticate(request);
-    if (!authResult.user || !authResult.user.roles.includes('Admin')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!authResult.user) {
+      return NextResponse.json({ error: authResult.error || 'Unauthorized' }, { status: 401 });
+    }
+    if (!isAdmin(authResult.user.roles)) {
+      return NextResponse.json({ error: 'Forbidden: Chỉ quản trị viên mới có quyền xem bản sao lưu' }, { status: 403 });
     }
 
     const backups = await BackupService.listBackups();
@@ -27,11 +31,30 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const authResult = await authenticate(request);
-    if (!authResult.user || !authResult.user.roles.includes('Admin')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!authResult.user) {
+      return NextResponse.json({ error: authResult.error || 'Unauthorized' }, { status: 401 });
+    }
+    if (!isAdmin(authResult.user.roles)) {
+      return NextResponse.json({ error: 'Forbidden: Chỉ quản trị viên mới có quyền tạo bản sao lưu' }, { status: 403 });
     }
 
     const result = await BackupService.createBackup();
+
+    try {
+      const { logAudit } = await import('@/lib/services/auditService');
+      await logAudit(
+        null,
+        authResult.user.userId,
+        'CREATE',
+        'Backups',
+        result.localPath || result.blobUrl || 'backup',
+        null,
+        result
+      );
+    } catch (auditErr) {
+      console.error('Audit log error on backup create:', auditErr);
+    }
+
     return NextResponse.json({ 
       status: true, 
       message: 'Backup created successfully',
@@ -49,8 +72,11 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const authResult = await authenticate(request);
-    if (!authResult.user || !authResult.user.roles.includes('SuperAdmin')) {
-      return NextResponse.json({ error: 'Unauthorized. Only SuperAdmin can delete backups.' }, { status: 401 });
+    if (!authResult.user) {
+      return NextResponse.json({ error: authResult.error || 'Unauthorized' }, { status: 401 });
+    }
+    if (!isSuperAdmin(authResult.user.roles)) {
+      return NextResponse.json({ error: 'Forbidden: Chỉ SuperAdmin mới có quyền xóa bản sao lưu' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -62,6 +88,22 @@ export async function DELETE(request: NextRequest) {
     }
 
     await BackupService.deleteBackup(name, url);
+
+    try {
+      const { logAudit } = await import('@/lib/services/auditService');
+      await logAudit(
+        null,
+        authResult.user.userId,
+        'DELETE',
+        'Backups',
+        name,
+        { name, url },
+        null
+      );
+    } catch (auditErr) {
+      console.error('Audit log error on backup delete:', auditErr);
+    }
+
     return NextResponse.json({ status: true, message: 'Backup deleted successfully' });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -69,14 +111,17 @@ export async function DELETE(request: NextRequest) {
 }
 
 /**
- * POST /api/admin/backup/restore
+ * PATCH /api/admin/backup
  * Restores a backup
  */
 export async function PATCH(request: NextRequest) {
   try {
     const authResult = await authenticate(request);
-    if (!authResult.user || !authResult.user.roles.includes('Admin')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!authResult.user) {
+      return NextResponse.json({ error: authResult.error || 'Unauthorized' }, { status: 401 });
+    }
+    if (!isAdmin(authResult.user.roles)) {
+      return NextResponse.json({ error: 'Forbidden: Chỉ quản trị viên mới có quyền phục hồi dữ liệu' }, { status: 403 });
     }
 
     const { name, url } = await request.json();
@@ -86,6 +131,22 @@ export async function PATCH(request: NextRequest) {
     }
 
     await BackupService.restoreBackup(name, url);
+
+    try {
+      const { logAudit } = await import('@/lib/services/auditService');
+      await logAudit(
+        null,
+        authResult.user.userId,
+        'UPDATE',
+        'Database',
+        name,
+        null,
+        { action: 'RESTORE', backupName: name, url }
+      );
+    } catch (auditErr) {
+      console.error('Audit log error on database restore:', auditErr);
+    }
+
     return NextResponse.json({ status: true, message: 'Database restored successfully' });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

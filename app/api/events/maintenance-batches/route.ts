@@ -226,9 +226,9 @@ export async function GET(request: NextRequest) {
     const batches = Array.from(batchMap.values()).map((batch) => {
       const totalActive = batch.totalDevices - batch.cancelled;
 
-      // Count unique devices that have completed events for this batch
+      // Count unique devices / tasks that have completed events for this batch
       // This prevents counting multiple maintenance rounds as > 100%
-      const uniqueCompletedDevices = new Set<number>();
+      const uniqueCompletedItems = new Set<any>();
       eventsResult.rows.forEach((row: any) => {
         let metadata: Record<string, any> | null = null;
         if (row.metadata) {
@@ -245,16 +245,17 @@ export async function GET(request: NextRequest) {
 
         if (metadata?.maintenanceBatchId === batch.batchId &&
           String(row.status).toLowerCase() === EventStatus.Completed.toLowerCase()) {
-          // Only count events with deviceId (maintenance events should have deviceId)
           const eventDeviceId = row.deviceId;
           if (eventDeviceId && typeof eventDeviceId === 'number') {
-            uniqueCompletedDevices.add(eventDeviceId);
+            uniqueCompletedItems.add(eventDeviceId);
+          } else {
+            uniqueCompletedItems.add(metadata?.maintenancePlanId ? `plan-${metadata.maintenancePlanId}` : `event-${row.id}`);
           }
         }
       });
 
-      // Use unique completed devices count, capped at totalActive
-      const completedCount = Math.min(uniqueCompletedDevices.size, totalActive);
+      // Use unique completed items count, capped at totalActive
+      const completedCount = Math.min(uniqueCompletedItems.size, totalActive);
 
       // Calculate percentage: completed devices / total active devices
       batch.progressPercentage =

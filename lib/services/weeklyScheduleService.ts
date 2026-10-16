@@ -475,4 +475,122 @@ export class WeeklyScheduleService {
 
     return Object.values(deptMap);
   }
+
+  /**
+   * Saves weekly schedule cells, notes, approvals and signatures in a single atomic transaction.
+   * Enforces week boundary consistency across all cells.
+   */
+  async saveCompleteWeek(params: {
+    weekStart: string;
+    cells?: WeeklyScheduleCell[];
+    weeklyNote?: string;
+    approvedImageUrl?: string | null;
+    creatorSignatureUrl?: string | null;
+    creatorName?: string | null;
+    userId: string;
+    userEmail?: string;
+  }): Promise<void> {
+    await this.ensureSchema();
+    const monday = WeeklyScheduleService.getMondayOf(params.weekStart);
+    if (!monday) {
+      throw new Error('Ngày bắt đầu tuần không hợp lệ.');
+    }
+
+    // Verify cell week boundaries
+    if (params.cells && Array.isArray(params.cells)) {
+      for (const cell of params.cells) {
+        const cellMonday = WeeklyScheduleService.getMondayOf(cell.weekStartDate);
+        if (cellMonday !== monday) {
+          throw new Error(`Ô lịch (${cell.weekStartDate}) không thuộc tuần đang lưu (${monday}).`);
+        }
+      }
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Upsert cells if provided
+      if (params.cells && Array.isArray(params.cells) && params.cells.length > 0) {
+        for (const cell of params.cells) {
+          await client.query(
+            `INSERT INTO "WeeklySchedule"
+               ("WeekStartDate", "StaffID", "DayOfWeek", "Content", "Note", "CreatedBy", "UpdatedAt")
+             VALUES ($1, $2, $3, $4, $5, $6, NOW())
+             ON CONFLICT ("WeekStartDate", "StaffID", "DayOfWeek")
+             DO UPDATE SET
+               "Content"   = EXCLUDED."Content",
+               "Note"      = EXCLUDED."Note",
+               "UpdatedAt" = NOW()`,
+            [
+              monday,
+              cell.staffId,
+              cell.dayOfWeek,
+              cell.content,
+              cell.note ?? null,
+              params.userId ?? null,
+            ]
+          );
+        }
+      }
+
+      // 2. Upsert WeeklyNote / Metadata in the same transaction
+      const noteFields: string[] = ['"WeekStartDate" = EXCLUDED."WeekStartDate"', '"UpdatedAt" = NOW()'];
+      const insertCols: string[] = ['"WeekStartDate"', '"UpdatedAt"'];
+      const insertVals: any[] = [monday, new Date()];
+
+      if (params.weeklyNote !== undefined) {
+        insertCols.push('"Note"');
+        insertVals.push(params.weeklyNote);
+        noteFields.push('"Note" = EXCLUDED."Note"');
+      }
+
+      if (params.approvedImageUrl !== undefined) {
+        insertCols.push('"ApprovedImageUrl"', '"ApprovedAt"', '"ApprovedBy"');
+        insertVals.push(
+          params.approvedImageUrl || null,
+          params.approvedImageUrl ? new Date() : null,
+          params.approvedImageUrl ? (params.userEmail || null) : null
+        );
+        noteFields.push(
+          '"ApprovedImageUrl" = EXCLUDED."ApprovedImageUrl"',
+          '"ApprovedAt" = EXCLUDED."ApprovedAt"',
+          '"ApprovedBy" = EXCLUDED."ApprovedBy"'
+        );
+      }
+
+      if (params.creatorSignatureUrl !== undefined || params.creatorName !== undefined) {
+        if (params.creatorSignatureUrl !== undefined) {
+          insertCols.push('"CreatorSignatureUrl"', '"CreatorSignedAt"');
+          insertVals.push(params.creatorSignatureUrl || null, params.creatorSignatureUrl ? new Date() : null);
+          noteFields.push(
+            '"CreatorSignatureUrl" = EXCLUDED."CreatorSignatureUrl"',
+            '"CreatorSignedAt" = EXCLUDED."CreatorSignedAt"'
+          );
+        }
+        if (params.creatorName !== undefined) {
+          insertCols.push('"CreatorName"');
+          insertVals.push(params.creatorName || null);
+          noteFields.push('"CreatorName" = EXCLUDED."CreatorName"');
+        }
+      }
+
+      if (insertCols.length > 2) {
+        const placeholders = insertVals.map((_, i) => `$${i + 1}`).join(', ');
+        await client.query(
+          `INSERT INTO "WeeklyScheduleNote" (${insertCols.join(', ')})
+           VALUES (${placeholders})
+           ON CONFLICT ("WeekStartDate") DO UPDATE SET ${noteFields.join(', ')}`,
+          insertVals
+        );
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
 }

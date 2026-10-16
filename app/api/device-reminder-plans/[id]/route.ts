@@ -101,10 +101,16 @@ export async function PUT(
       );
     }
 
-    const deviceId = Number(payload.deviceId);
-    if (!deviceId || Number.isNaN(deviceId)) {
+    const deviceId = payload.deviceId ? Number(payload.deviceId) : null;
+    if (payload.deviceId && (Number.isNaN(deviceId) || deviceId! <= 0)) {
       return NextResponse.json(
-        { status: false, error: 'Vui lòng chọn thiết bị' },
+        { status: false, error: 'Thiết bị không hợp lệ' },
+        { status: 400 }
+      );
+    }
+    if (!deviceId && (!payload.title || !String(payload.title).trim())) {
+      return NextResponse.json(
+        { status: false, error: 'Vui lòng nhập tên công việc định kỳ' },
         { status: 400 }
       );
     }

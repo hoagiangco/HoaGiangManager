@@ -102,8 +102,8 @@ export async function GET(
         return {
           'ID': row.id,
           'Ngày bảo trì': formatDateDisplay(maintenanceDate) || '',
-          'Tên thiết bị': row.deviceName || 'N/A',
-          'Số Serial': row.deviceSerial || '',
+          'Tên thiết bị': row.deviceName || row.title || 'Công việc định kỳ',
+          'Số Serial': row.deviceSerial || '-',
           'Loại bảo trì': row.eventTypeName || 'N/A',
           'Kiểu lập lịch': scheduleTypeVal,
           'Nội dung bảo trì': maintenanceContent || row.description || '',

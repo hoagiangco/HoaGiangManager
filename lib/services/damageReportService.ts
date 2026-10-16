@@ -5,6 +5,7 @@ import { DamageReport, DamageReportVM, DamageReportStatus, DamageReportPriority,
 import { EventService } from './eventService';
 import { NotificationService, NotificationType, NotificationCategory } from './notificationService';
 import { getVNNow } from '../utils/dateFormat';
+import { maintenanceDay } from '../utils/maintenanceScheduler';
 
 export class DamageReportService {
   private async ensureHistorySequence(client?: PoolClient): Promise<void> {
@@ -1111,7 +1112,7 @@ export class DamageReportService {
         }
         
         // Recalculate device status based on ALL reports
-        await this.syncDeviceStatus(deviceId, client);
+        await this.syncDeviceStatus(deviceId, client, finalDeviceStatus);
       }
 
       await client.query('COMMIT');
@@ -1530,6 +1531,7 @@ export class DamageReportService {
     status: DamageReportStatus, 
     userId: string | null | undefined,
     options?: {
+      previousStatus?: DamageReportStatus;
       handlerId?: number | null;
       handlingDate?: Date | null;
       handlerNotes?: string | null;
@@ -1656,7 +1658,8 @@ export class DamageReportService {
        SET "Status" = $1, "UpdatedAt" = CURRENT_TIMESTAMP ${startDateUpdate} ${endDateUpdate} ${notesUpdateClause3} ${eventTypeUpdateClause3} ${titleUpdateClause3} ${descriptionUpdateClause3},
            "RelatedReportID" = $2
        WHERE ("Metadata"::text LIKE $3 OR ("Metadata"->>'maintenanceBatchId') = $4)
-         AND "RelatedReportID" IS NULL`,
+         AND "RelatedReportID" IS NULL
+         AND "Status" IN ('planned', 'in_progress')`,
       updateParams3
     );
 
@@ -1687,18 +1690,22 @@ export class DamageReportService {
     );
     const plans = plansResult.rows || [];
 
-    // 5. Re-check device IDs that now have events for this report (after update in step 3)
-    const finalHasEventDeviceIdsRes = await pool.query(
-      `SELECT "DeviceID" FROM "Event" WHERE "RelatedReportID" = $1`,
+    // 5. Re-check device IDs and plan IDs that now have events for this report (after update in step 3)
+    const finalHasEventRes = await pool.query(
+      `SELECT "DeviceID", "Metadata"->>'maintenancePlanId' as "planId" FROM "Event" WHERE "RelatedReportID" = $1`,
       [reportId]
     );
-    const finalHasEventDeviceIds = new Set(finalHasEventDeviceIdsRes.rows.map(r => r.DeviceID));
+    const finalHasEventDeviceIds = new Set(finalHasEventRes.rows.map(r => r.DeviceID).filter(Boolean));
+    const finalHasEventPlanIds = new Set(finalHasEventRes.rows.map(r => r.planId).filter(Boolean));
 
-    // 6. Create missing events for devices in the batch that still have no event for this report
-    const missingPlans = plans.filter(p => !finalHasEventDeviceIds.has(p.deviceId));
+    // 6. Create missing events for devices/tasks in the batch that still have no event for this report
+    const missingPlans = plans.filter(p => {
+      if (p.deviceId) return !finalHasEventDeviceIds.has(p.deviceId);
+      return !finalHasEventPlanIds.has(String(p.id));
+    });
     
-    // Deduplicate missingPlans by deviceId to prevent duplicate events if plans contains duplicates
-    const uniqueMissingPlans = Array.from(new Map(missingPlans.map((p: any) => [p.deviceId, p])).values());
+    // Deduplicate missingPlans by plan id to prevent duplicate events
+    const uniqueMissingPlans = Array.from(new Map(missingPlans.map((p: any) => [p.id, p])).values());
 
     if (uniqueMissingPlans.length > 0) {
       const metadata: any = {
@@ -1730,11 +1737,17 @@ export class DamageReportService {
         // Truncate to 200 chars max to fit Event.Notes varchar(200) constraint
         eventNotes = eventNotes.substring(0, 200);
 
+        const planMetadata = {
+          ...metadata,
+          maintenancePlanId: plan.id,
+          scheduledDueDate: plan.nextDueDate ? maintenanceDay(plan.nextDueDate) : undefined,
+        };
+
         return eventService.create({
           title: options?.eventTitle || (plan.deviceName 
             ? `Bảo trì định kỳ - ${plan.deviceName}` 
             : `Bảo trì định kỳ - ${plan.title || options?.damageContent || report.DamageContent || 'Bảo trì'}`),
-          deviceId: plan.deviceId,
+          deviceId: plan.deviceId || null,
           eventTypeId: options?.eventTypeId || plan.eventTypeId || 1,
           description: options?.eventDescription || options?.damageContent || report.DamageContent || plan.title || '',
           notes: eventNotes,
@@ -1744,7 +1757,7 @@ export class DamageReportService {
           endDate: (s === DamageReportStatus.Completed || s === DamageReportStatus.Cancelled || s === DamageReportStatus.Rejected) ? now : null,
           staffId: options?.handlerId || report.HandlerID || null,
           relatedReportId: reportId,
-          metadata,
+          metadata: planMetadata,
           createdBy: userId,
           createdAt: now,
           updatedBy: userId || null,
@@ -1761,7 +1774,9 @@ export class DamageReportService {
     //   Anchor vào StartFrom để tránh trôi lịch. Nếu cron đã bump rồi (NextDueDate > hôm nay), bỏ qua.
     if (s === DamageReportStatus.Completed) {
       // Keep the configured calendar, irrespective of the report's completion date.
-      await advanceMaintenanceSchedule({ batchId });
+      if (options?.previousStatus !== DamageReportStatus.Completed) {
+        await advanceMaintenanceSchedule({ batchId });
+      }
 
       // Notify about maintenance completion
       try {
@@ -1785,7 +1800,7 @@ export class DamageReportService {
   }
 
   // Centralized robust sync method
-  private async syncDeviceStatus(deviceId: any, clientToUse?: any): Promise<void> {
+  private async syncDeviceStatus(deviceId: any, clientToUse?: any, finalDeviceStatusOverride?: any): Promise<void> {
     if (!deviceId) return;
     const deviceIdNum = parseInt(deviceId.toString());
     if (isNaN(deviceIdNum)) return;
@@ -1795,17 +1810,17 @@ export class DamageReportService {
     try {
       // Find ALL active reports for this device to determine the most critical status
       // We query for Pending (1), Assigned (2), and InProgress (3)
-      // Using ::text and numeric IN for maximum compatibility with different column types
+      // Exclude soft-deleted reports if column exists
       const res = await dbClient.query(
         `SELECT CAST("Status"::text AS INTEGER) as status
          FROM "DamageReport" 
-         WHERE "DeviceID" = $1 AND "Status"::text IN ('1', '2', '3')`,
+         WHERE "DeviceID" = $1 AND "Status"::text IN ('1', '2', '3') AND ("IsDeleted" = false OR "IsDeleted" IS NULL)`,
         [deviceIdNum]
       );
 
       const activeStatuses = res.rows.map((r: any) => r.status);
       
-      let newStatus: number = DeviceStatus.DangSuDung; // Default (1)
+      let newStatus: number;
       
       if (activeStatuses.includes(DamageReportStatus.InProgress)) {
         // Any report is InProgress (3) -> Device is Under Repair (2)
@@ -1813,6 +1828,18 @@ export class DamageReportService {
       } else if (activeStatuses.length > 0) {
         // No InProgress, but some are Pending (1) or Assigned (2) -> Device has Damage (5)
         newStatus = DeviceStatus.CoHuHong;
+      } else if (finalDeviceStatusOverride !== undefined && finalDeviceStatusOverride !== null && !isNaN(Number(finalDeviceStatusOverride))) {
+        // Respect explicit user choice on report completion when no other active reports exist
+        newStatus = Number(finalDeviceStatusOverride);
+      } else {
+        // Check current device status in DB: preserve terminal/admin statuses (HuHong or NgungSuDung)
+        const currentDevRes = await dbClient.query(`SELECT "Status" FROM "Device" WHERE "ID" = $1`, [deviceIdNum]);
+        const currentDevStatus = currentDevRes.rows[0]?.Status ? Number(currentDevRes.rows[0].Status) : DeviceStatus.DangSuDung;
+        if (currentDevStatus === DeviceStatus.HuHong || currentDevStatus === DeviceStatus.DaThanhLy) {
+          newStatus = currentDevStatus;
+        } else {
+          newStatus = DeviceStatus.DangSuDung;
+        }
       }
 
       await dbClient.query(

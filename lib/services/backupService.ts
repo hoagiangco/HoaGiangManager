@@ -168,16 +168,50 @@ export class BackupService {
   }
 
   /**
+   * Validates backup filename to prevent directory traversal and injection
+   */
+  private static validateBackupName(name: string): string {
+    const cleanName = path.basename(name);
+    if (!cleanName || cleanName !== name || !/^[a-zA-Z0-9_\-\.]+$/.test(cleanName)) {
+      throw new Error('Tên bản sao lưu không hợp lệ');
+    }
+    if (!cleanName.endsWith('.dump') && !cleanName.endsWith('.sql') && !cleanName.endsWith('.bak')) {
+      throw new Error('Định dạng bản sao lưu không được hỗ trợ');
+    }
+    return cleanName;
+  }
+
+  /**
+   * Validates restore URL to ensure it originates only from trusted storage
+   */
+  private static validateRestoreUrl(url: string): void {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      try {
+        const parsed = new URL(url);
+        const hostname = parsed.hostname.toLowerCase();
+        if (!hostname.endsWith('.blob.vercel-storage.com') && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+          throw new Error('URL phục hồi không thuộc nguồn lưu trữ tin cậy');
+        }
+      } catch (err: any) {
+        throw new Error(`URL phục hồi không hợp lệ: ${err.message}`);
+      }
+    }
+  }
+
+  /**
    * Deletes a backup
    */
   static async deleteBackup(name: string, url: string): Promise<void> {
+    const safeName = this.validateBackupName(name);
+
     // 1. Delete from Blob if it's a blob URL
-    if (url.includes('public.blob.vercel-storage.com')) {
+    if (url && url.includes('public.blob.vercel-storage.com')) {
+      this.validateRestoreUrl(url);
       await del(url);
     }
 
     // 2. Delete from local if it exists
-    const localPath = path.join(this.backupDir, name);
+    const localPath = path.join(this.backupDir, safeName);
     if (fs.existsSync(localPath)) {
       fs.unlinkSync(localPath);
     }
@@ -192,14 +226,18 @@ export class BackupService {
       throw new Error('DATABASE_URL is not defined');
     }
 
-    let restorePath = path.join(this.backupDir, name);
+    const safeName = this.validateBackupName(name);
+    this.validateRestoreUrl(url);
+
+    let restorePath = path.join(this.backupDir, safeName);
 
     try {
-      // 1. Create a safety backup first
+      // 1. Create a safety backup first - MUST succeed before proceeding
       try {
+        console.log('Creating safety backup before restore...');
         await this.createBackup();
-      } catch (e) {
-        console.warn('Failed to create safety backup before restore, proceeding anyway...');
+      } catch (e: any) {
+        throw new Error(`Không thể tạo bản sao lưu an toàn trước khi phục hồi: ${e.message}. Quá trình phục hồi đã bị dừng để đảm bảo an toàn dữ liệu.`);
       }
 
       // 2. Download from blob if needed

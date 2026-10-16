@@ -149,8 +149,8 @@ export class DeviceReminderPlanService {
       RETURNING "ID"
       `,
       [
-        plan.deviceId,
-        plan.reminderType,
+        plan.deviceId || null,
+        plan.reminderType || 'maintenance',
         plan.eventTypeId || null,
         plan.title || null,
         plan.description || null,
@@ -196,8 +196,8 @@ export class DeviceReminderPlanService {
       WHERE "ID" = $16
       `,
       [
-        plan.deviceId,
-        plan.reminderType,
+        plan.deviceId || null,
+        plan.reminderType || 'maintenance',
         plan.eventTypeId || null,
         plan.title || null,
         plan.description || null,

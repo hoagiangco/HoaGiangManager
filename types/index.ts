@@ -272,7 +272,7 @@ export interface DeviceHistorySummary {
 
 export interface DeviceReminderPlan {
   id: number;
-  deviceId: number;
+  deviceId?: number | null;
   reminderType: EventCategory | 'custom';
   eventTypeId?: number | null;
   title?: string | null;

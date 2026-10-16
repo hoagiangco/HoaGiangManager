@@ -67,7 +67,15 @@ export async function POST(request: NextRequest) {
     const deviceService = new DeviceService();
     let devices: any[] = [];
 
-    if (deviceIds && Array.isArray(deviceIds) && deviceIds.length > 0) {
+    const isTaskMode = body.selectionType === 'task' || body.noDevice === true || (!deviceIds?.length && !categoryId);
+    if (isTaskMode) {
+      if (!title || !String(title).trim()) {
+        return NextResponse.json(
+          { status: false, error: 'Vui lòng nhập tên công việc định kỳ' },
+          { status: 400 }
+        );
+      }
+    } else if (deviceIds && Array.isArray(deviceIds) && deviceIds.length > 0) {
       // Get devices by IDs (priority)
       devices = await deviceService.getDevicesByIds(deviceIds);
     } else if (categoryId && categoryId > 0) {
@@ -75,12 +83,12 @@ export async function POST(request: NextRequest) {
       devices = await deviceService.getDeviceByCategory(categoryId);
     } else {
       return NextResponse.json(
-        { status: false, error: 'Phải cung cấp deviceIds hoặc categoryId' },
+        { status: false, error: 'Phải cung cấp deviceIds, categoryId hoặc tên công việc' },
         { status: 400 }
       );
     }
 
-    if (devices.length === 0) {
+    if (!isTaskMode && devices.length === 0) {
       return NextResponse.json(
         { status: false, error: 'Không tìm thấy thiết bị nào' },
         { status: 400 }
@@ -116,12 +124,12 @@ export async function POST(request: NextRequest) {
     const reminderPlanService = new DeviceReminderPlanService();
     const createdPlanIds: number[] = [];
 
-    for (const device of devices) {
+    if (isTaskMode) {
       const plan: Omit<DeviceReminderPlan, 'id'> = {
-        deviceId: device.id,
+        deviceId: null,
         reminderType: (metadata?.reminderType || 'maintenance') as EventCategory | 'custom',
         eventTypeId,
-        title: title || `Bảo trì định kỳ - ${device.name}`,
+        title: title.trim(),
         description: description || null,
         intervalValue,
         intervalUnit,
@@ -140,6 +148,32 @@ export async function POST(request: NextRequest) {
 
       const planId = await reminderPlanService.create(plan);
       createdPlanIds.push(planId);
+    } else {
+      for (const device of devices) {
+        const plan: Omit<DeviceReminderPlan, 'id'> = {
+          deviceId: device.id,
+          reminderType: (metadata?.reminderType || 'maintenance') as EventCategory | 'custom',
+          eventTypeId,
+          title: title || `Bảo trì định kỳ - ${device.name}`,
+          description: description || null,
+          intervalValue,
+          intervalUnit,
+          cronExpression: null,
+          startFrom: startFromDate,
+          endAt: parseDate(endAt),
+          nextDueDate,
+          lastTriggeredAt: null,
+          isActive: true,
+          metadata: planMetadata,
+          createdBy: (user as any).email || null,
+          createdAt: new Date(),
+          updatedBy: (user as any).email || null,
+          updatedAt: new Date(),
+        };
+
+        const planId = await reminderPlanService.create(plan);
+        createdPlanIds.push(planId);
+      }
     }
 
     return NextResponse.json({

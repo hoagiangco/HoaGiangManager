@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
         p."Metadata" as metadata,
         p."IsActive" as "isActive"
       FROM "DeviceReminderPlan" p
-      INNER JOIN "Device" d ON p."DeviceID" = d."ID"
+      LEFT JOIN "Device" d ON p."DeviceID" = d."ID"
       WHERE p."IsActive" = true
         AND p."NextDueDate" IS NOT NULL
         AND p."NextDueDate"::date >= $1::date
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
       return {
         id: row.id,
         deviceId: row.deviceId,
-        deviceName: row.deviceName,
+        deviceName: row.deviceName || row.title || 'Công việc định kỳ',
         nextDueDate: nextDueDate,
         daysUntilDue,
         title: row.title,

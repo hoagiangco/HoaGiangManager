@@ -52,6 +52,27 @@ export async function POST(request: NextRequest) {
       createdBy: user.userId
     });
 
+    try {
+      const { logAudit } = await import('@/lib/services/auditService');
+      await logAudit(
+        null,
+        user.userId,
+        'CREATE',
+        'SparePartTransaction',
+        id.toString(),
+        null,
+        {
+          sparePartId: data.sparePartId,
+          type: data.type,
+          quantity: data.quantity,
+          note: data.note,
+          relatedReportId: data.relatedReportId
+        }
+      );
+    } catch (auditErr) {
+      console.error('Audit log error on spare part transaction create:', auditErr);
+    }
+
     return NextResponse.json({ status: true, data: { id } });
   } catch (error: any) {
     console.error('Create transaction error:', error);
