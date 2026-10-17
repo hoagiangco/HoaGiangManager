@@ -29,6 +29,13 @@ import 'react-quill/dist/quill.snow.css';
 function DevicesPageContent() {
   // Control mobile filter visibility
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      setViewMode('card');
+    }
+  }, []);
   const [devices, setDevices] = useState<DeviceVM[]>([]);
   const [allDevices, setAllDevices] = useState<DeviceVM[]>([]); // Store all devices from API
   const [loading, setLoading] = useState(true);
@@ -418,17 +425,26 @@ const handleDelete = async () => {
     }
   };
 
-  const handleViewHistory = async () => {
-    if (selectedIds.length === 0) {
-      toast.warning('Vui lòng chọn thiết bị để xem lịch sử!');
-      return;
-    }
-    if (selectedIds.length > 1) {
-      toast.warning('Vui lòng chỉ chọn 1 thiết bị duy nhất để xem lịch sử!');
+  const handleViewHistory = async (specificId?: number | React.MouseEvent) => {
+    const numericId = typeof specificId === 'number' ? specificId : null;
+    const targetId = numericId ?? (selectedIds.length === 1 ? selectedIds[0] : null);
+    if (!targetId) {
+      if (selectedIds.length === 0) {
+        toast.warning('Vui lòng chọn thiết bị để xem lịch sử!');
+        return;
+      }
+      if (selectedIds.length > 1) {
+        toast.warning('Vui lòng chỉ chọn 1 thiết bị duy nhất để xem lịch sử!');
+        return;
+      }
       return;
     }
 
-    const deviceId = selectedIds[0];
+    if (numericId) {
+      setSelectedIds([numericId]);
+    }
+
+    const deviceId = targetId;
     setShowHistoryModal(true);
     setHistoryLoading(true);
     setHistoryData(null);
@@ -1064,6 +1080,26 @@ const handleDelete = async () => {
               >
                 <i className="fas fa-sync-alt"></i>
               </button>
+              <div className="btn-group btn-group-sm ms-1" role="group" aria-label="Chế độ hiển thị">
+                <button
+                  type="button"
+                  className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                  onClick={() => setViewMode('table')}
+                  title="Chế độ bảng"
+                  aria-label="Chế độ bảng"
+                >
+                  <i className="fas fa-table"></i>
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${viewMode === 'card' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                  onClick={() => setViewMode('card')}
+                  title="Chế độ thẻ (tiện di động)"
+                  aria-label="Chế độ thẻ"
+                >
+                  <i className="fas fa-th-large"></i>
+                </button>
+              </div>
             </div>
           </div>
           
@@ -1216,245 +1252,392 @@ const handleDelete = async () => {
             <ActiveFilterChips chips={deviceFilterChips} onClearAll={handleClearAllDeviceFilters} />
           </div>
           <div className="card-body p-0 p-md-3" style={{ padding: 0 }}>
-          {/* Scroll hint for mobile */}
-
-          <div className="table-scroll-hint mb-1 text-center" style={{ fontSize: '0.8rem', color: '#6c757d' }}>
-            <i className="fas fa-arrows-alt-h me-1"></i> Cuộn ngang để xem thêm
-          </div>
-          <div 
-            className="table-responsive" 
-            id="devices-table-responsive"
-            style={{
-              overflowX: 'auto',
-              overflowY: 'visible',
-              WebkitOverflowScrolling: 'touch',
-              position: 'relative',
-              width: '100%',
-              display: 'block',
-              scrollBehavior: 'smooth',
-              touchAction: 'pan-x',
-              minHeight: '600px',
-              maxWidth: '100%'
-            }}
-          >
-            <table 
-              className="table table-striped table-hover mb-0 table-sticky-header" 
-              style={{ 
-                tableLayout: 'auto',
-                marginBottom: 0,
-                display: 'table',
-                width: 'max-content',
-                minWidth: 'max-content'
-              }}
-            >
-              <thead className="table-dark dashboard-table-header" style={{ backgroundColor: '#2c3e50' }}>
-                <tr style={{ fontWeight: '600', color: '#ffffff', fontSize: '0.8rem' }}>
-                  <th style={{ width: '90px', textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.length === currentDevices.length && currentDevices.length > 0 && selectedIds.length > 0}
-                      onChange={handleSelectAll}
-                      style={{ transform: 'scale(1.2)', cursor: 'pointer' }}
-                    />
-                  </th>
-                  <th 
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('name')}
-                  >
-                    <div className="d-flex align-items-center gap-2">
-                      <span>Tên thiết bị</span>
-                      {getSortIcon('name')}
-                    </div>
-                  </th>
-                  <th 
-                    style={{ cursor: 'pointer', userSelect: 'none', minWidth: '180px' }}
-                    onClick={() => handleSort('serial')}
-                  >
-                    <div className="d-flex align-items-center gap-2">
-                      <span>Serial/mã nhận dạng</span>
-                      {getSortIcon('serial')}
-                    </div>
-                  </th>
-                  <th 
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('warrantyDate')}
-                  >
-                    <div className="d-flex align-items-center gap-2">
-                      <span>Bảo hành đến</span>
-                      {getSortIcon('warrantyDate')}
-                    </div>
-                  </th>
-                  <th 
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('useDate')}
-                  >
-                    <div className="d-flex align-items-center gap-2">
-                      <span>Ngày sử dụng</span>
-                      {getSortIcon('useDate')}
-                    </div>
-                  </th>
-                  <th 
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('category')}
-                  >
-                    <div className="d-flex align-items-center gap-2">
-                      <span>Danh mục</span>
-                      {getSortIcon('category')}
-                    </div>
-                  </th>
-                  <th 
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('department')}
-                  >
-                    <div className="d-flex align-items-center gap-2">
-                      <span>Phòng ban</span>
-                      {getSortIcon('department')}
-                    </div>
-                  </th>
-                  <th style={{ minWidth: '120px' }}>Vị trí</th>
-                  <th 
-                    style={{ minWidth: '150px', cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('status')}
-                  >
-                    <div className="d-flex align-items-center gap-2">
-                      <span>Trạng thái</span>
-                      {getSortIcon('status')}
-                    </div>
-                  </th>
-                  <th style={{ minWidth: '180px' }}>Tình trạng báo cáo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={9} className="text-center py-4">
-                      <Loading />
-                    </td>
-                  </tr>
-                ) : currentDevices.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="text-center py-4">
-                      <span className="text-muted">Không có dữ liệu</span>
-                    </td>
-                  </tr>
-                ) : (
-                  currentDevices.map((device) => (
-                    <tr key={device.id} style={{ fontSize: '0.8rem', verticalAlign: 'middle' }}>
-                      <td style={{ padding: '0.3rem 0.4rem', width: '90px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center' }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.includes(device.id)}
-                            onChange={() => handleCheckboxChange(device.id)}
-                            style={{ transform: 'scale(1.15)', cursor: 'pointer', flexShrink: 0 }}
-                          />
-                          <div style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '6px',
-                            overflow: 'hidden',
-                            backgroundColor: '#f8fafc',
-                            flexShrink: 0
-                          }}>
-                            <button
-                              type="button"
-                              title="Xem nhanh"
-                              onClick={(e) => { e.stopPropagation(); handleQuickViewDevice(device.id); }}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                padding: '3px 6px',
-                                cursor: 'pointer',
-                                color: '#2563eb',
-                                fontSize: '0.72rem',
-                                lineHeight: 1,
-                                display: 'flex',
+{viewMode === 'table' ? (
+            <>
+              {/* Scroll hint for mobile */}
+              <div className="table-scroll-hint mb-1 text-center" style={{ fontSize: '0.8rem', color: '#6c757d' }}>
+                <i className="fas fa-arrows-alt-h me-1"></i> Cuộn ngang để xem thêm
+              </div>
+              <div 
+                className="table-responsive" 
+                id="devices-table-responsive"
+                style={{
+                  overflowX: 'auto',
+                  overflowY: 'visible',
+                  WebkitOverflowScrolling: 'touch',
+                  position: 'relative',
+                  width: '100%',
+                  display: 'block',
+                  scrollBehavior: 'smooth',
+                  touchAction: 'pan-x',
+                  minHeight: '600px',
+                  maxWidth: '100%'
+                }}
+              >
+                <table 
+                  className="table table-striped table-hover mb-0 table-sticky-header" 
+                  style={{ 
+                    tableLayout: 'auto',
+                    marginBottom: 0,
+                    display: 'table',
+                    width: 'max-content',
+                    minWidth: 'max-content'
+                  }}
+                >
+                  <thead className="table-dark dashboard-table-header" style={{ backgroundColor: '#2c3e50' }}>
+                    <tr style={{ fontWeight: '600', color: '#ffffff', fontSize: '0.8rem' }}>
+                      <th style={{ width: '90px', textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.length === currentDevices.length && currentDevices.length > 0 && selectedIds.length > 0}
+                          onChange={handleSelectAll}
+                          style={{ transform: 'scale(1.2)', cursor: 'pointer' }}
+                        />
+                      </th>
+                      <th 
+                        style={{ cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => handleSort('name')}
+                      >
+                        <div className="d-flex align-items-center gap-2">
+                          <span>Tên thiết bị</span>
+                          {getSortIcon('name')}
+                        </div>
+                      </th>
+                      <th 
+                        style={{ cursor: 'pointer', userSelect: 'none', minWidth: '180px' }}
+                        onClick={() => handleSort('serial')}
+                      >
+                        <div className="d-flex align-items-center gap-2">
+                          <span>Serial/mã nhận dạng</span>
+                          {getSortIcon('serial')}
+                        </div>
+                      </th>
+                      <th 
+                        style={{ cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => handleSort('warrantyDate')}
+                      >
+                        <div className="d-flex align-items-center gap-2">
+                          <span>Bảo hành đến</span>
+                          {getSortIcon('warrantyDate')}
+                        </div>
+                      </th>
+                      <th 
+                        style={{ cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => handleSort('useDate')}
+                      >
+                        <div className="d-flex align-items-center gap-2">
+                          <span>Ngày sử dụng</span>
+                          {getSortIcon('useDate')}
+                        </div>
+                      </th>
+                      <th 
+                        style={{ cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => handleSort('category')}
+                      >
+                        <div className="d-flex align-items-center gap-2">
+                          <span>Danh mục</span>
+                          {getSortIcon('category')}
+                        </div>
+                      </th>
+                      <th 
+                        style={{ cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => handleSort('department')}
+                      >
+                        <div className="d-flex align-items-center gap-2">
+                          <span>Phòng ban</span>
+                          {getSortIcon('department')}
+                        </div>
+                      </th>
+                      <th style={{ minWidth: '120px' }}>Vị trí</th>
+                      <th 
+                        style={{ minWidth: '150px', cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => handleSort('status')}
+                      >
+                        <div className="d-flex align-items-center gap-2">
+                          <span>Trạng thái</span>
+                          {getSortIcon('status')}
+                        </div>
+                      </th>
+                      <th style={{ minWidth: '180px' }}>Tình trạng báo cáo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <tr>
+                        <td colSpan={9} className="text-center py-4">
+                          <Loading />
+                        </td>
+                      </tr>
+                    ) : currentDevices.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="text-center py-4">
+                          <span className="text-muted">Không có dữ liệu</span>
+                        </td>
+                      </tr>
+                    ) : (
+                      currentDevices.map((device) => (
+                        <tr key={device.id} style={{ fontSize: '0.8rem', verticalAlign: 'middle' }}>
+                          <td style={{ padding: '0.3rem 0.4rem', width: '90px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center' }}>
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.includes(device.id)}
+                                onChange={() => handleCheckboxChange(device.id)}
+                                style={{ transform: 'scale(1.15)', cursor: 'pointer', flexShrink: 0 }}
+                              />
+                              <div style={{
+                                display: 'inline-flex',
                                 alignItems: 'center',
-                                transition: 'background 0.12s'
-                              }}
-                              onMouseEnter={e => (e.currentTarget.style.background = '#eff6ff')}
-                              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-                            >
-                              <i className="fas fa-eye"></i>
-                            </button>
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '6px',
+                                overflow: 'hidden',
+                                backgroundColor: '#f8fafc',
+                                flexShrink: 0
+                              }}>
+                                <button
+                                  type="button"
+                                  title="Xem nhanh"
+                                  onClick={(e) => { e.stopPropagation(); handleQuickViewDevice(device.id); }}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: '3px 6px',
+                                    cursor: 'pointer',
+                                    color: '#2563eb',
+                                    fontSize: '0.72rem',
+                                    lineHeight: 1,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    transition: 'background 0.12s'
+                                  }}
+                                  onMouseEnter={e => (e.currentTarget.style.background = '#eff6ff')}
+                                  onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                                >
+                                  <i className="fas fa-eye"></i>
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <div className="fw-medium">{device.name}</div>
+                            {device.supplierName && (
+                              <div className="small text-muted mt-1">
+                                <i className="fas fa-store me-1"></i>
+                                {device.supplierName}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ wordBreak: 'break-all', minWidth: '150px' }}>{device.serial || '-'}</td>
+                          <td>
+                            {device.warrantyDate
+                              ? formatDateDisplay(device.warrantyDate)
+                              : '-'}
+                          </td>
+                          <td>
+                            {device.useDate
+                              ? formatDateDisplay(device.useDate)
+                              : '-'}
+                          </td>
+                          <td>{device.deviceCategoryName}</td>
+                          <td>{device.departmentName}</td>
+                          <td>
+                            {device.locationName ? (
+                              <>
+                                <i className="fas fa-map-marker-alt text-muted me-1" style={{ fontSize: '0.75rem' }}></i>
+                                {device.parentLocationName ? (
+                                  <span className="text-muted small">
+                                    {device.parentLocationName} &gt;{' '}
+                                  </span>
+                                ) : null}
+                                <span>{device.locationName}</span>
+                              </>
+                            ) : (
+                              <span className="text-muted">-</span>
+                            )}
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>{getStatusBadge(device.status)}</td>
+                          <td>
+                            {device.lastReportId ? (
+                              <div 
+                                className="d-flex flex-column gap-1" 
+                                style={{ cursor: 'pointer', maxWidth: '250px' }}
+                                onClick={() => handleQuickViewReport(device.lastReportId!)}
+                              >
+                                <div className="d-flex align-items-center gap-1">
+                                  <span className={getReportStatusBadgeClass(device.lastReportStatus!)} style={{ fontSize: '0.65rem' }}>
+                                    {device.lastReportStatus === DamageReportStatus.Pending ? 'Chờ xử lý' :
+                                     device.lastReportStatus === DamageReportStatus.Assigned ? 'Đã phân công' :
+                                     device.lastReportStatus === DamageReportStatus.InProgress ? 'Đang xử lý' :
+                                     device.lastReportStatus === DamageReportStatus.Completed ? 'Hoàn thành' :
+                                     device.lastReportStatus === DamageReportStatus.Cancelled ? 'Hủy' :
+                                     device.lastReportStatus === DamageReportStatus.Rejected ? 'Từ chối' : 'KĐ'}
+                                  </span>
+                                  <small className="text-muted" style={{ fontSize: '0.7rem' }}>#{device.lastReportId}</small>
+                                </div>
+                                <div 
+                                  className="text-truncate small text-primary" 
+                                  style={{ fontSize: '0.75rem', textDecoration: 'underline' }}
+                                  title={device.lastReportContent || ''}
+                                >
+                                  {device.lastReportContent || 'Xem chi tiết'}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-muted small">Chưa có báo cáo</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <div className="p-3">
+              {loading ? (
+                <div className="text-center py-5">
+                  <Loading />
+                </div>
+              ) : currentDevices.length === 0 ? (
+                <div className="text-center py-5 text-muted">
+                  Không có dữ liệu thiết bị
+                </div>
+              ) : (
+                <div className="row g-3">
+                  {currentDevices.map((device) => {
+                    const isSelected = selectedIds.includes(device.id);
+                    return (
+                      <div key={device.id} className="col-12 col-md-6 col-xl-4">
+                        <div 
+                          className={`card h-100 shadow-sm border ${isSelected ? 'border-primary shadow' : 'border-light-subtle'}`}
+                          style={{ 
+                            borderRadius: '10px', 
+                            backgroundColor: isSelected ? 'rgba(13, 110, 253, 0.04)' : '#ffffff',
+                            transition: 'all 0.15s ease-in-out' 
+                          }}
+                        >
+                          <div className="card-body p-3 d-flex flex-column justify-content-between">
+                            <div>
+                              {/* Top row: Checkbox, Name, Status Badge */}
+                              <div className="d-flex align-items-start justify-content-between gap-2 mb-2">
+                                <div className="d-flex align-items-start gap-2 flex-grow-1">
+                                  <input
+                                    type="checkbox"
+                                    className="form-check-input mt-1"
+                                    checked={isSelected}
+                                    onChange={() => handleCheckboxChange(device.id)}
+                                    style={{ transform: 'scale(1.15)', cursor: 'pointer' }}
+                                    aria-label={`Chọn thiết bị ${device.name}`}
+                                  />
+                                  <div>
+                                    <div className="fw-bold text-dark" style={{ fontSize: '0.95rem' }}>{device.name}</div>
+                                    {device.supplierName && (
+                                      <div className="small text-muted">
+                                        <i className="fas fa-store me-1"></i>{device.supplierName}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex-shrink-0">
+                                  {getStatusBadge(device.status)}
+                                </div>
+                              </div>
+
+                              {/* Metadata info */}
+                              <div className="small text-secondary d-flex flex-column gap-1 my-2 ps-4">
+                                {device.serial && (
+                                  <div>
+                                    <span className="fw-semibold text-dark"><i className="fas fa-barcode me-1 text-muted"></i>Serial:</span>{' '}
+                                    <span className="badge bg-light text-dark border font-monospace">{device.serial}</span>
+                                  </div>
+                                )}
+                                <div>
+                                  <span className="fw-semibold text-dark"><i className="fas fa-folder me-1 text-muted"></i>Danh mục:</span>{' '}
+                                  {device.deviceCategoryName || '-'}
+                                </div>
+                                <div>
+                                  <span className="fw-semibold text-dark"><i className="fas fa-building me-1 text-muted"></i>Phòng ban:</span>{' '}
+                                  {device.departmentName || '-'}
+                                </div>
+                                <div>
+                                  <span className="fw-semibold text-dark"><i className="fas fa-map-marker-alt me-1 text-muted"></i>Vị trí:</span>{' '}
+                                  {device.locationName ? (
+                                    <span>
+                                      {device.parentLocationName ? `${device.parentLocationName} > ` : ''}
+                                      {device.locationName}
+                                    </span>
+                                  ) : '-'}
+                                </div>
+                                <div className="d-flex justify-content-between flex-wrap gap-2 pt-1 border-top mt-1">
+                                  <span>
+                                    <i className="fas fa-calendar-alt me-1 text-muted"></i>Ngày SD:{' '}
+                                    {device.useDate ? formatDateDisplay(device.useDate) : '-'}
+                                  </span>
+                                  <span>
+                                    <i className="fas fa-shield-alt me-1 text-muted"></i>Bảo hành:{' '}
+                                    {device.warrantyDate ? formatDateDisplay(device.warrantyDate) : '-'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Last Report preview */}
+                              {device.lastReportId && (
+                                <div 
+                                  className="p-2 rounded bg-light border mt-2 small"
+                                  onClick={() => handleQuickViewReport(device.lastReportId!)}
+                                  style={{ cursor: 'pointer' }}
+                                >
+                                  <div className="d-flex align-items-center justify-content-between mb-1">
+                                    <span className="text-muted" style={{ fontSize: '0.72rem' }}>
+                                      <i className="fas fa-tools me-1"></i>Sự cố #{device.lastReportId}
+                                    </span>
+                                    <span className={getReportStatusBadgeClass(device.lastReportStatus!)} style={{ fontSize: '0.65rem' }}>
+                                      {device.lastReportStatus === DamageReportStatus.Pending ? 'Chờ xử lý' :
+                                       device.lastReportStatus === DamageReportStatus.Assigned ? 'Đã phân công' :
+                                       device.lastReportStatus === DamageReportStatus.InProgress ? 'Đang xử lý' :
+                                       device.lastReportStatus === DamageReportStatus.Completed ? 'Hoàn thành' :
+                                       device.lastReportStatus === DamageReportStatus.Cancelled ? 'Hủy' :
+                                       device.lastReportStatus === DamageReportStatus.Rejected ? 'Từ chối' : 'KĐ'}
+                                    </span>
+                                  </div>
+                                  <div className="text-truncate text-primary" title={device.lastReportContent || ''}>
+                                    {device.lastReportContent || 'Xem chi tiết sự cố'}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Card footer actions */}
+                            <div className="d-flex justify-content-end gap-2 pt-2 mt-2 border-top">
+                              <button
+                                type="button"
+                                className="btn btn-outline-info btn-sm px-2 py-1"
+                                style={{ fontSize: '0.78rem' }}
+                                onClick={() => handleViewHistory(device.id)}
+                                title="Lịch sử thiết bị"
+                              >
+                                <i className="fas fa-history me-1"></i>Lịch sử
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-outline-primary btn-sm px-2 py-1"
+                                style={{ fontSize: '0.78rem' }}
+                                onClick={() => handleQuickViewDevice(device.id)}
+                                title="Xem chi tiết"
+                              >
+                                <i className="fas fa-eye me-1"></i>Chi tiết
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </td>
-                      <td>
-                        <div className="fw-medium">{device.name}</div>
-                        {device.supplierName && (
-                          <div className="small text-muted mt-1">
-                            <i className="fas fa-store me-1"></i>
-                            {device.supplierName}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ wordBreak: 'break-all', minWidth: '150px' }}>{device.serial || '-'}</td>
-                      <td>
-                        {device.warrantyDate
-                          ? formatDateDisplay(device.warrantyDate)
-                          : '-'}
-                      </td>
-                      <td>
-                        {device.useDate
-                          ? formatDateDisplay(device.useDate)
-                          : '-'}
-                      </td>
-                      <td>{device.deviceCategoryName}</td>
-                      <td>{device.departmentName}</td>
-                      <td>
-                        {device.locationName ? (
-                          <>
-                            <i className="fas fa-map-marker-alt text-muted me-1" style={{ fontSize: '0.75rem' }}></i>
-                            {device.parentLocationName ? (
-                              <span className="text-muted small">
-                                {device.parentLocationName} &gt;{' '}
-                              </span>
-                            ) : null}
-                            <span>{device.locationName}</span>
-                          </>
-                        ) : (
-                          <span className="text-muted">-</span>
-                        )}
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>{getStatusBadge(device.status)}</td>
-                      <td>
-                        {device.lastReportId ? (
-                          <div 
-                            className="d-flex flex-column gap-1" 
-                            style={{ cursor: 'pointer', maxWidth: '250px' }}
-                            onClick={() => handleQuickViewReport(device.lastReportId!)}
-                          >
-                            <div className="d-flex align-items-center gap-1">
-                              <span className={getReportStatusBadgeClass(device.lastReportStatus!)} style={{ fontSize: '0.65rem' }}>
-                                {device.lastReportStatus === DamageReportStatus.Pending ? 'Chờ xử lý' :
-                                 device.lastReportStatus === DamageReportStatus.Assigned ? 'Đã phân công' :
-                                 device.lastReportStatus === DamageReportStatus.InProgress ? 'Đang xử lý' :
-                                 device.lastReportStatus === DamageReportStatus.Completed ? 'Hoàn thành' :
-                                 device.lastReportStatus === DamageReportStatus.Cancelled ? 'Hủy' :
-                                 device.lastReportStatus === DamageReportStatus.Rejected ? 'Từ chối' : 'KĐ'}
-                              </span>
-                              <small className="text-muted" style={{ fontSize: '0.7rem' }}>#{device.lastReportId}</small>
-                            </div>
-                            <div 
-                              className="text-truncate small text-primary" 
-                              style={{ fontSize: '0.75rem', textDecoration: 'underline' }}
-                              title={device.lastReportContent || ''}
-                            >
-                              {device.lastReportContent || 'Xem chi tiết'}
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-muted small">Chưa có báo cáo</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
           
         </div>
         {/* Pagination Sticky Footer */}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { PushNotificationManager } from '@/components/PushNotificationManager';
+import MobileQuickActionFAB from '@/components/MobileQuickActionFAB';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import 'react-toastify/dist/ReactToastify.css';
@@ -315,6 +316,7 @@ export default function DashboardLayout({
         <main className="page-content">
           {children}
         </main>
+        <MobileQuickActionFAB />
       </div>
     </div>
   );
