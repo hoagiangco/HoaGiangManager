@@ -10,6 +10,7 @@ import Loading from '@/components/Loading';
 import SparePartModal from '@/components/SparePartModal';
 import SparePartTransactionModal from '@/components/SparePartTransactionModal';
 import AdminRoute from '@/components/AdminRoute';
+import ActiveFilterChips, { FilterChipItem } from '@/components/ActiveFilterChips';
 import { toast } from 'react-toastify';
 import api from '@/lib/utils/api';
 
@@ -74,6 +75,30 @@ export default function SparePartsPage() {
     return () => window.removeEventListener('afterprint', afterPrint);
   }, []);
 
+  const activeChips: FilterChipItem[] = [];
+  if (search.trim()) {
+    activeChips.push({
+      id: 'search',
+      label: 'Tìm kiếm',
+      value: search.trim(),
+      onClear: () => { setSearchKeyword(''); setPage(1); }
+    });
+  }
+  if (categoryId > 0) {
+    const cat = categories.find((c: SparePartCategory) => c.id === categoryId);
+    activeChips.push({
+      id: 'category',
+      label: 'Danh mục',
+      value: cat ? cat.name : `ID ${categoryId}`,
+      onClear: () => { setCategoryId(0); setPage(1); }
+    });
+  }
+  const handleClearAllFilters = () => {
+    setSearchKeyword('');
+    setCategoryId(0);
+    setPage(1);
+  };
+
   return (
     <AdminRoute>
       <div className={`container-fluid px-3 py-2 main-content-wrapper ${isPrintingReport ? 'printing-item' : ''}`}>
@@ -123,6 +148,16 @@ export default function SparePartsPage() {
                     value={search}
                     onChange={(e) => { setSearchKeyword(e.target.value); setPage(1); }}
                   />
+                  {search && (
+                    <button
+                      className="btn btn-link btn-sm text-muted text-decoration-none py-0 px-2"
+                      onClick={() => { setSearchKeyword(''); setPage(1); }}
+                      type="button"
+                      title="Xóa tìm kiếm"
+                    >
+                      <i className="fas fa-times"></i>
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="col-md-3">
@@ -149,20 +184,32 @@ export default function SparePartsPage() {
                   <option value={100}>100 dòng</option>
                 </select>
               </div>
-              <div className="col-md-2">
-                 <button className="btn btn-outline-dark btn-sm w-100 rounded-2" onClick={() => mutate()}>
+              <div className="col-md-2 d-flex gap-1">
+                 <button className="btn btn-outline-dark btn-sm flex-grow-1 rounded-2" onClick={() => mutate()} title="Tải lại dữ liệu">
                    <i className="fas fa-sync-alt me-1"></i> Tải lại
                  </button>
+                 {(search.trim() || categoryId > 0) && (
+                   <button 
+                     className="btn btn-outline-danger btn-sm rounded-2" 
+                     onClick={handleClearAllFilters}
+                     title="Xóa tất cả bộ lọc"
+                   >
+                     <i className="fas fa-times"></i>
+                   </button>
+                 )}
               </div>
             </div>
           </div>
         </div>
 
+        {/* Active Filter Chips */}
+        <ActiveFilterChips chips={activeChips} onClearAll={handleClearAllFilters} />
+
         {/* Ultra-Dense Table */}
         <div className="card shadow-sm border-0 rounded-3 overflow-hidden border">
           <div className="card-body p-0">
-            <div className="table-responsive">
-              <table className="table table-sm table-hover align-middle mb-0 custom-dense-table">
+            <div className="table-responsive table-sticky-container">
+              <table className="table table-sm table-hover align-middle mb-0 custom-dense-table table-sticky-header">
                 <thead className="bg-dark text-white">
                   <tr>
                     <th className="px-3 py-2 text-uppercase small-font" style={{ width: '40px' }}>ID</th>

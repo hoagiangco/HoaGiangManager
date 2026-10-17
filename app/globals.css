@@ -2016,4 +2016,72 @@ a {
 .table.table-hover tbody tr:hover th,
 .dr-desktop-table tbody tr:hover td {
   background-color: rgba(59, 130, 246, 0.05) !important;
-}
+}
+
+/* ================================================================
+   UI/UX Enhancements: Sticky Table Header & Filter Chips
+   ================================================================ */
+
+/* Sticky Table Container & Headers */
+.table-sticky-container {
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  position: relative;
+}
+
+.table-sticky-header thead th,
+.table-sticky-container thead th {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 12 !important;
+  background-color: #f8fafc;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.table-sticky-header thead.bg-dark th,
+.table-sticky-container thead.bg-dark th,
+.table-sticky-header thead.table-dark th,
+.dr-desktop-table.table-sticky-header thead th {
+  background-color: #212529 !important;
+  color: #ffffff !important;
+}
+
+/* Filter Chip Badges */
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  background-color: #e9ecef;
+  color: #495057;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  border: 1px solid #dee2e6;
+  gap: 0.35rem;
+  transition: all 0.15s ease-in-out;
+}
+
+.filter-chip:hover {
+  background-color: #dee2e6;
+  color: #212529;
+}
+
+.filter-chip-remove {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  background-color: rgba(0, 0, 0, 0.12);
+  color: #495057;
+  font-size: 0.65rem;
+  line-height: 1;
+}
+
+.filter-chip-remove:hover {
+  background-color: #dc3545;
+  color: #ffffff;
+}
+

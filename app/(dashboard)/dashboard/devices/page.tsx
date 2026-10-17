@@ -17,6 +17,7 @@ import AdminRoute from '@/components/AdminRoute';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
 import SearchableSelect from '@/components/SearchableSelect';
 import Loading from '@/components/Loading';
+import ActiveFilterChips, { FilterChipItem } from '@/components/ActiveFilterChips';
 import { Supplier } from '@/types/supplier';
 import Select from 'react-select';
 
@@ -929,6 +930,67 @@ const handleDelete = async () => {
     }
   `;
 
+  const deviceFilterChips: FilterChipItem[] = [];
+  if (searchKeyword.trim()) {
+    deviceFilterChips.push({
+      id: "search",
+      label: "Từ khóa",
+      value: searchKeyword.trim(),
+      onClear: () => { setSearchKeyword(""); setCurrentPage(1); }
+    });
+  }
+  if (selectedCategory > 0) {
+    const cat = categories.find((c: any) => c.id === selectedCategory);
+    deviceFilterChips.push({
+      id: "category",
+      label: "Danh mục",
+      value: cat ? cat.name : `ID: ${selectedCategory}`,
+      onClear: () => { setSelectedCategory(0); setCurrentPage(1); }
+    });
+  }
+  if (selectedDepartment > 0) {
+    const dept = departments.find((d: any) => d.id === selectedDepartment);
+    deviceFilterChips.push({
+      id: "department",
+      label: "Phòng ban",
+      value: dept ? dept.name : `ID: ${selectedDepartment}`,
+      onClear: () => { setSelectedDepartment(0); setCurrentPage(1); }
+    });
+  }
+  if (selectedLocation > 0) {
+    const loc = locations.find((l: any) => l.id === selectedLocation);
+    deviceFilterChips.push({
+      id: "location",
+      label: "Vị trí",
+      value: loc ? loc.name : `ID: ${selectedLocation}`,
+      onClear: () => { setSelectedLocation(0); setCurrentPage(1); }
+    });
+  }
+  if (selectedStatus > 0) {
+    const statusMap: Record<number, string> = {
+      [DeviceStatus.DangSuDung]: "Đang sử dụng",
+      [DeviceStatus.DangSuaChua]: "Đang xử lý",
+      [DeviceStatus.CoHuHong]: "Chờ xử lý",
+      [DeviceStatus.HuHong]: "Lỗi/Ngừng hoạt động",
+      [DeviceStatus.DaThanhLy]: "Đã thanh lý",
+    };
+    deviceFilterChips.push({
+      id: "status",
+      label: "Trạng thái",
+      value: statusMap[selectedStatus] || `Mã: ${selectedStatus}`,
+      onClear: () => { setSelectedStatus(0); setCurrentPage(1); }
+    });
+  }
+
+  const handleClearAllDeviceFilters = () => {
+    setSelectedCategory(0);
+    setSelectedDepartment(0);
+    setSelectedLocation(0);
+    setSelectedStatus(0);
+    setSearchKeyword("");
+    setCurrentPage(1);
+  };
+
   return (
     <div className="container-fluid" style={{ marginLeft: 0, marginRight: 0, paddingLeft: 0, paddingRight: 0 }}>
       <style>{headerStyle}</style>
@@ -1150,7 +1212,10 @@ const handleDelete = async () => {
             </div>
           </div>
         </div>
-        <div className="card-body p-0 p-md-3" style={{ padding: 0 }}>
+        <div className="px-3 pt-2">
+            <ActiveFilterChips chips={deviceFilterChips} onClearAll={handleClearAllDeviceFilters} />
+          </div>
+          <div className="card-body p-0 p-md-3" style={{ padding: 0 }}>
           {/* Scroll hint for mobile */}
 
           <div className="table-scroll-hint mb-1 text-center" style={{ fontSize: '0.8rem', color: '#6c757d' }}>
@@ -1173,7 +1238,7 @@ const handleDelete = async () => {
             }}
           >
             <table 
-              className="table table-striped table-hover mb-0" 
+              className="table table-striped table-hover mb-0 table-sticky-header" 
               style={{ 
                 tableLayout: 'auto',
                 marginBottom: 0,
@@ -2156,4 +2221,3 @@ export default function DevicesPage() {
     </AdminRoute>
   );
 }
-

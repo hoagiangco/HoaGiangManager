@@ -16,6 +16,8 @@ import { safeLocalStorage } from '@/lib/utils/localStorage';
 import QuickViewReportModal from '@/components/QuickViewReportModal';
 import Loading from '@/components/Loading';
 import HandlerNotesEditor, { parseTimeline, getLatestNoteContent } from '@/components/HandlerNotesEditor';
+import ActiveFilterChips, { FilterChipItem } from '@/components/ActiveFilterChips';
+import useUnsavedChangesWarning from '@/lib/hooks/useUnsavedChangesWarning';
 
 // Handler Notes Editor component removed and moved to components/HandlerNotesEditor.tsx
 
@@ -2075,6 +2077,94 @@ export default function DamageReportsPage() {
   // Open Export Modal
 
 
+  // Warn user if leaving while editing handler notes
+  useUnsavedChangesWarning(Boolean(editingNoteReportId));
+
+  const activeReportChips: FilterChipItem[] = [];
+  if (searchKeyword.trim()) {
+    activeReportChips.push({
+      id: "search",
+      label: "Tìm kiếm",
+      value: searchKeyword.trim(),
+      onClear: () => { setSearchKeyword(""); setSearchInputValue(""); setCurrentPage(1); }
+    });
+  }
+  if (selectedStatus !== 0 && selectedStatus !== "0") {
+    let statusText = "";
+    if (selectedStatus === "1,2") statusText = "Chưa hoàn thành";
+    else if (selectedStatus === DamageReportStatus.Pending || selectedStatus === 1) statusText = "Chờ xử lý";
+    else if (selectedStatus === DamageReportStatus.Assigned || selectedStatus === 2) statusText = "Đã phân công";
+    else if (selectedStatus === DamageReportStatus.InProgress || selectedStatus === 3) statusText = "Đang xử lý";
+    else if (selectedStatus === DamageReportStatus.Completed || selectedStatus === 4) statusText = "Đã hoàn thành";
+    else if (selectedStatus === DamageReportStatus.Cancelled || selectedStatus === 5) statusText = "Đã hủy";
+    activeReportChips.push({
+      id: "status",
+      label: "Trạng thái",
+      value: statusText || String(selectedStatus),
+      onClear: () => { setSelectedStatus(0); setCurrentPage(1); }
+    });
+  }
+  if (selectedPriority > 0) {
+    const priorityLabels: Record<number, string> = {
+      [DamageReportPriority.Low]: "Thấp",
+      [DamageReportPriority.Normal]: "Bình thường",
+      [DamageReportPriority.High]: "Cao",
+      [DamageReportPriority.Urgent]: "Khẩn cấp",
+    };
+    activeReportChips.push({
+      id: "priority",
+      label: "Mức độ",
+      value: priorityLabels[selectedPriority] || `Mức ${selectedPriority}`,
+      onClear: () => { setSelectedPriority(0); setCurrentPage(1); }
+    });
+  }
+  if (selectedDepartment > 0) {
+    const dept = departments.find((d: any) => d.id === selectedDepartment);
+    activeReportChips.push({
+      id: "department",
+      label: "Phòng ban",
+      value: dept ? dept.name : `ID: ${selectedDepartment}`,
+      onClear: () => { setSelectedDepartment(0); setCurrentPage(1); }
+    });
+  }
+  if (myWorkFilter) {
+    activeReportChips.push({
+      id: "myWork",
+      label: "Lọc nhanh",
+      value: "Việc của tôi",
+      onClear: () => { setMyWorkFilter(false); setCurrentPage(1); }
+    });
+  }
+  if (myReportFilter) {
+    activeReportChips.push({
+      id: "myReport",
+      label: "Lọc nhanh",
+      value: "Tôi báo cáo",
+      onClear: () => { setMyReportFilter(false); setCurrentPage(1); }
+    });
+  }
+  if (showDeletedFilter) {
+    activeReportChips.push({
+      id: "deleted",
+      label: "Thùng rác",
+      value: "Đã xóa",
+      onClear: () => { setShowDeletedFilter(false); setCurrentPage(1); }
+    });
+  }
+
+  const handleClearAllReportFilters = () => {
+    setSearchKeyword("");
+    setSearchInputValue("");
+    setSelectedStatus(0);
+    setSelectedPriority(0);
+    setSelectedDepartment(0);
+    setSelectedDevice(0);
+    setMyWorkFilter(false);
+    setMyReportFilter(false);
+    setShowDeletedFilter(false);
+    setCurrentPage(1);
+  };
+
   const __view = (
     <div className="container-fluid mobile-sticky-container px-md-1 pb-md-3 pt-md-0">
       <style>{headerStyle}</style>
@@ -2383,6 +2473,7 @@ export default function DamageReportsPage() {
               </div>
             </div>
           </div>
+          <ActiveFilterChips chips={activeReportChips} onClearAll={handleClearAllReportFilters} />
           <div className="d-flex justify-content-between align-items-center" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
             <div className="d-flex align-items-center gap-2" style={{ flexWrap: 'nowrap', flexShrink: 0 }}>
               <div className="d-flex align-items-center gap-1" style={{ flexWrap: 'nowrap' }}>
@@ -2459,7 +2550,7 @@ export default function DamageReportsPage() {
                   position: 'relative'
                 }}
               >
-                <table className="table align-middle dr-desktop-table" style={{ marginBottom: 0, minWidth: '1200px', borderCollapse: 'collapse' }}>
+                <table className="table align-middle dr-desktop-table table-sticky-header" style={{ marginBottom: 0, minWidth: '1200px', borderCollapse: 'collapse' }}>
                   <thead className="sticky-top dashboard-table-header" style={{ zIndex: 5, position: 'sticky', top: 0 }}>
                     <tr style={{ fontWeight: '600', color: '#ffffff', fontSize: '0.75rem', letterSpacing: '0.03em' }}>
                       <th style={{ width: '110px', textAlign: 'center', padding: '0.6rem 0.5rem' }}>

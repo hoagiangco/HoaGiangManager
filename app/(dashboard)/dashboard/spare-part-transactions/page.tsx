@@ -8,6 +8,7 @@ import { fetcher } from '@/lib/utils/swr-fetcher';
 import { SparePartTransactionVM, SparePartTransactionType } from '@/types';
 import Loading from '@/components/Loading';
 import AdminRoute from '@/components/AdminRoute';
+import ActiveFilterChips, { FilterChipItem } from '@/components/ActiveFilterChips';
 import { formatDateTime } from '@/lib/utils/dateFormat';
 import api from '@/lib/utils/api';
 import { toast } from 'react-toastify';
@@ -77,6 +78,41 @@ export default function SparePartTransactionsPage() {
     return () => window.removeEventListener('afterprint', afterPrint);
   }, []);
 
+  const activeChips: FilterChipItem[] = [];
+  if (type) {
+    activeChips.push({
+      id: 'type',
+      label: 'Loại phiếu',
+      value: type === 'IN' ? 'Phiếu Nhập (+)' : 'Phiếu Xuất (-)',
+      onClear: () => { setType(''); setPage(1); }
+    });
+  }
+  if (startDate) {
+    activeChips.push({
+      id: 'startDate',
+      label: 'Từ ngày',
+      value: startDate,
+      onClear: () => { setStartDate(''); setPage(1); }
+    });
+  }
+  if (endDate) {
+    activeChips.push({
+      id: 'endDate',
+      label: 'Đến ngày',
+      value: endDate,
+      onClear: () => { setEndDate(''); setPage(1); }
+    });
+  }
+
+  const handleClearAllFilters = () => {
+    setType('');
+    setStartDate('');
+    setEndDate('');
+    setPage(1);
+  };
+
+  const hasActiveFilters = Boolean(type || startDate || endDate);
+
   return (
     <AdminRoute>
       <div className={`container-fluid px-3 py-2 main-content-wrapper ${printItem || isPrintingReport ? 'printing-item' : ''}`}>
@@ -124,20 +160,33 @@ export default function SparePartTransactionsPage() {
                   <option value={100}>100 dòng</option>
                 </select>
               </div>
-              <div className="col-md-2">
-                <button className="btn btn-primary btn-sm w-100 fw-bold shadow-sm" onClick={() => setPage(1)}>
+              <div className="col-md-2 d-flex gap-1">
+                <button className="btn btn-primary btn-sm flex-grow-1 fw-bold shadow-sm" onClick={() => setPage(1)}>
                   <i className="fas fa-search me-1"></i> Tra cứu
                 </button>
+                {hasActiveFilters && (
+                  <button
+                    className="btn btn-outline-danger btn-sm shadow-sm"
+                    onClick={handleClearAllFilters}
+                    title="Xóa tất cả bộ lọc"
+                    type="button"
+                  >
+                    <i className="fas fa-times"></i>
+                  </button>
+                )}
               </div>
             </div>
           </div>
         </div>
 
+        {/* Active Filter Chips */}
+        <ActiveFilterChips chips={activeChips} onClearAll={handleClearAllFilters} />
+
         {/* Table */}
         <div className="card shadow-sm border-0 rounded-3 overflow-hidden border">
           <div className="card-body p-0">
-            <div className="table-responsive">
-              <table className="table table-sm table-hover align-middle mb-0 custom-dense-table">
+            <div className="table-responsive table-sticky-container">
+              <table className="table table-sm table-hover align-middle mb-0 custom-dense-table table-sticky-header">
                 <thead className="bg-dark text-white">
                   <tr>
                     <th className="px-3 py-2 text-uppercase small-font" style={{ width: '90px' }}>Số Phiếu</th>
