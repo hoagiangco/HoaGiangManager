@@ -2084,4 +2084,28 @@ a {
   background-color: #dc3545;
   color: #ffffff;
 }
+
+/* Skeleton Loading Animation */
+@keyframes skeleton-pulse {
+  0% {
+    opacity: 0.95;
+    background-color: #e2e8f0;
+  }
+  50% {
+    opacity: 0.45;
+    background-color: #cbd5e1;
+  }
+  100% {
+    opacity: 0.95;
+    background-color: #e2e8f0;
+  }
+}
+
+.skeleton-box {
+  display: inline-block;
+  position: relative;
+  overflow: hidden;
+  border-radius: 4px;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
 

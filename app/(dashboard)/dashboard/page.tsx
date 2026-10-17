@@ -49,6 +49,7 @@ interface PendingReportsNotifications {
 }
 
 import Loading from '@/components/Loading';
+import { SkeletonStatCard } from '@/components/SkeletonLoading';
 
 export default function DashboardPage() {
   const { user, isAdmin } = useAuth();
