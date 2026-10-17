@@ -18,6 +18,7 @@ import QuickViewReportModal from '@/components/QuickViewReportModal';
 import SearchableSelect from '@/components/SearchableSelect';
 import Loading from '@/components/Loading';
 import ActiveFilterChips, { FilterChipItem } from '@/components/ActiveFilterChips';
+import BatchActionBar from '@/components/BatchActionBar';
 import { Supplier } from '@/types/supplier';
 import Select from 'react-select';
 
@@ -36,6 +37,7 @@ function DevicesPageContent() {
       setViewMode('card');
     }
   }, []);
+
   const [devices, setDevices] = useState<DeviceVM[]>([]);
   const [allDevices, setAllDevices] = useState<DeviceVM[]>([]); // Store all devices from API
   const [loading, setLoading] = useState(true);
@@ -81,6 +83,82 @@ function DevicesPageContent() {
   const [showHtmlSource, setShowHtmlSource] = useState(false);
   const [htmlSource, setHtmlSource] = useState('');
   const [quillValue, setQuillValue] = useState(''); // Separate state for ReactQuill
+
+  // URL Query Sync: Initialize from URL params on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const cat = urlParams.get('category');
+    const dept = urlParams.get('department');
+    const loc = urlParams.get('location');
+    const st = urlParams.get('status');
+    const kw = urlParams.get('search');
+    const vm = urlParams.get('view');
+    const pg = urlParams.get('page');
+
+    if (cat && !isNaN(Number(cat))) setSelectedCategory(Number(cat));
+    if (dept && !isNaN(Number(dept))) setSelectedDepartment(Number(dept));
+    if (loc && !isNaN(Number(loc))) setSelectedLocation(Number(loc));
+    if (st && !isNaN(Number(st))) setSelectedStatus(Number(st) as DeviceStatus);
+    if (kw) setSearchKeyword(kw);
+    if (vm === 'card' || vm === 'table') setViewMode(vm);
+    if (pg && !isNaN(Number(pg))) setCurrentPage(Math.max(1, Number(pg)));
+  }, []);
+
+  // URL Query Sync: Update URL when filter or view changes
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const setOrDelete = (key: string, val: string | number | undefined) => {
+      if (val === undefined || val === 0 || val === '0' || val === '') {
+        url.searchParams.delete(key);
+      } else {
+        url.searchParams.set(key, String(val));
+      }
+    };
+    setOrDelete('category', selectedCategory);
+    setOrDelete('department', selectedDepartment);
+    setOrDelete('location', selectedLocation);
+    setOrDelete('status', selectedStatus);
+    setOrDelete('search', searchKeyword.trim());
+    if (viewMode === 'card') {
+      url.searchParams.set('view', 'card');
+    } else {
+      url.searchParams.delete('view');
+    }
+    if (currentPage > 1) {
+      url.searchParams.set('page', String(currentPage));
+    } else {
+      url.searchParams.delete('page');
+    }
+    window.history.replaceState({}, '', url.toString());
+  }, [selectedCategory, selectedDepartment, selectedLocation, selectedStatus, searchKeyword, viewMode, currentPage]);
+
+  const handleExportSelectedDevices = async () => {
+    try {
+      toast.info('Đang chuẩn bị file Excel...');
+      const params = new URLSearchParams();
+      if (selectedIds.length > 0) {
+        params.append('ids', selectedIds.join(','));
+      }
+      const response = await api.get(`/devices/export?${params.toString()}`, { responseType: 'blob' });
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `danh_sach_thiet_bi_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success(`Đã xuất ${selectedIds.length > 0 ? selectedIds.length : 'tất cả'} thiết bị ra file Excel!`);
+    } catch (error) {
+      console.error(error);
+      toast.error('Lỗi khi xuất file Excel');
+    }
+  };
   
   // File Manager state
   const [showFileManager, setShowFileManager] = useState(false);
@@ -2391,6 +2469,49 @@ const handleDelete = async () => {
         reportId={selectedReportId || 0}
         onClose={() => setShowQuickView(false)}
       />
+
+      <BatchActionBar
+        selectedCount={selectedIds.length}
+        onClearSelection={() => setSelectedIds([])}
+      >
+        <button
+          type="button"
+          className="btn btn-sm btn-outline-light rounded-pill px-3"
+          onClick={handleExportSelectedDevices}
+          title="Xuất file Excel các thiết bị đã chọn"
+        >
+          <i className="fas fa-file-excel text-success me-1"></i>
+          <span className="d-none d-sm-inline">Xuất </span>Excel ({selectedIds.length})
+        </button>
+        {selectedIds.length === 1 && (
+          <>
+            <button
+              type="button"
+              className="btn btn-sm btn-warning rounded-pill px-3 text-white"
+              onClick={handleTransfer}
+              title="Luân chuyển vị trí thiết bị"
+            >
+              <i className="fas fa-exchange-alt me-1"></i>Luân chuyển
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-info rounded-pill px-3 text-white"
+              onClick={() => handleViewHistory()}
+              title="Xem lịch sử thiết bị"
+            >
+              <i className="fas fa-history me-1"></i>Lịch sử
+            </button>
+          </>
+        )}
+        <button
+          type="button"
+          className="btn btn-sm btn-danger rounded-pill px-3"
+          onClick={handleDelete}
+          title="Xóa các thiết bị đã chọn"
+        >
+          <i className="fas fa-trash me-1"></i>Xóa ({selectedIds.length})
+        </button>
+      </BatchActionBar>
 
       
     </div>

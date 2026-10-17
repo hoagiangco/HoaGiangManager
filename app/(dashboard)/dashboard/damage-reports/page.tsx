@@ -17,6 +17,7 @@ import QuickViewReportModal from '@/components/QuickViewReportModal';
 import Loading from '@/components/Loading';
 import HandlerNotesEditor, { parseTimeline, getLatestNoteContent } from '@/components/HandlerNotesEditor';
 import ActiveFilterChips, { FilterChipItem } from '@/components/ActiveFilterChips';
+import BatchActionBar from '@/components/BatchActionBar';
 import useUnsavedChangesWarning from '@/lib/hooks/useUnsavedChangesWarning';
 
 // Handler Notes Editor component removed and moved to components/HandlerNotesEditor.tsx
@@ -335,6 +336,65 @@ export default function DamageReportsPage() {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // URL Query Sync: Initialize from URL params on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const st = urlParams.get('status');
+    const pr = urlParams.get('priority');
+    const dept = urlParams.get('department');
+    const dev = urlParams.get('device');
+    const kw = urlParams.get('search');
+    const mw = urlParams.get('myWork');
+    const mr = urlParams.get('myReport');
+    const vm = urlParams.get('view');
+    const pg = urlParams.get('page');
+
+    if (st && st !== '0') setSelectedStatus(isNaN(Number(st)) ? st : Number(st));
+    if (pr && !isNaN(Number(pr))) setSelectedPriority(Number(pr) as DamageReportPriority);
+    if (dept && !isNaN(Number(dept))) setSelectedDepartment(Number(dept));
+    if (dev && !isNaN(Number(dev))) setSelectedDevice(Number(dev));
+    if (kw) {
+      setSearchKeyword(kw);
+      setSearchInputValue(kw);
+    }
+    if (mw === 'true') setMyWorkFilter(true);
+    if (mr === 'true') setMyReportFilter(true);
+    if (vm === 'card' || vm === 'table') setViewMode(vm);
+    if (pg && !isNaN(Number(pg))) setCurrentPage(Math.max(1, Number(pg)));
+  }, []);
+
+  // URL Query Sync: Update URL when filter or view changes
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const setOrDelete = (key: string, val: string | number | boolean | undefined) => {
+      if (val === undefined || val === 0 || val === '0' || val === '' || val === false) {
+        url.searchParams.delete(key);
+      } else {
+        url.searchParams.set(key, String(val));
+      }
+    };
+    setOrDelete('status', selectedStatus);
+    setOrDelete('priority', selectedPriority);
+    setOrDelete('department', selectedDepartment);
+    setOrDelete('device', selectedDevice);
+    setOrDelete('search', searchKeyword.trim());
+    setOrDelete('myWork', myWorkFilter);
+    setOrDelete('myReport', myReportFilter);
+    if (viewMode === 'card') {
+      url.searchParams.set('view', 'card');
+    } else {
+      url.searchParams.delete('view');
+    }
+    if (currentPage > 1) {
+      url.searchParams.set('page', String(currentPage));
+    } else {
+      url.searchParams.delete('page');
+    }
+    window.history.replaceState({}, '', url.toString());
+  }, [selectedStatus, selectedPriority, selectedDepartment, selectedDevice, searchKeyword, myWorkFilter, myReportFilter, viewMode, currentPage]);
 
   // Sort state
   const [sortField, setSortField] = useState<string>('reportDate');
@@ -4826,6 +4886,67 @@ export default function DamageReportsPage() {
           </div>
         </div>
       )}
+
+      <BatchActionBar
+        selectedCount={selectedIds.length}
+        onClearSelection={() => setSelectedIds([])}
+      >
+        {showDeletedFilter ? (
+          <>
+            <button
+              type="button"
+              className="btn btn-sm btn-success rounded-pill px-3"
+              onClick={() => handleRestore(selectedIds)}
+              title="Khôi phục các báo cáo đã chọn"
+            >
+              <i className="fas fa-trash-restore me-1"></i>Khôi phục ({selectedIds.length})
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-danger rounded-pill px-3"
+              onClick={handleDelete}
+              title="Xóa vĩnh viễn các báo cáo đã chọn"
+            >
+              <i className="fas fa-trash me-1"></i>Xóa vĩnh viễn ({selectedIds.length})
+            </button>
+          </>
+        ) : (
+          <>
+            {selectedIds.length === 1 && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-info rounded-pill px-3 text-white"
+                  onClick={() => openQuickView(selectedIds[0])}
+                  title="Xem nhanh báo cáo"
+                >
+                  <i className="fas fa-eye me-1"></i>Xem nhanh
+                </button>
+                {(userPermissions.canEdit || (allReports.find(r => r.id === selectedIds[0])?.handlerId === currentUserStaffId || allReports.find(r => r.id === selectedIds[0])?.reporterId === currentUserStaffId)) && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-warning rounded-pill px-3 text-white"
+                    onClick={handleEdit}
+                    title="Sửa báo cáo"
+                  >
+                    <i className="fas fa-edit me-1"></i>Sửa
+                  </button>
+                )}
+              </>
+            )}
+            {(isAdmin(currentUser?.roles) || userPermissions.canDelete) && (
+              <button
+                type="button"
+                className="btn btn-sm btn-danger rounded-pill px-3"
+                onClick={handleDelete}
+                title="Xóa các báo cáo đã chọn"
+              >
+                <i className="fas fa-trash me-1"></i>Xóa ({selectedIds.length})
+              </button>
+            )}
+          </>
+        )}
+      </BatchActionBar>
     </div>
   );
 

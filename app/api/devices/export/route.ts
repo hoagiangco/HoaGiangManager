@@ -76,6 +76,15 @@ export async function GET(request: NextRequest) {
       paramIndex++;
     }
 
+    const idsParam = searchParams.get('ids');
+    if (idsParam) {
+      const ids = idsParam.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+      if (ids.length > 0) {
+        query += ` AND d."ID" = ANY($${paramIndex++}::int[])`;
+        params.push(ids);
+      }
+    }
+
     query += ` ORDER BY d."Name" ASC`;
 
     const result = await pool.query(query, params);
