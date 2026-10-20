@@ -2120,4 +2120,15 @@ a {
   border-radius: 4px;
   animation: skeleton-pulse 1.4s ease-in-out infinite;
 }
-
+
+
+/* DatePicker Popper Z-Index Fix for Modals & Full Width */
+.react-datepicker-popper {
+  z-index: 9999 !important;
+}
+.react-datepicker-wrapper {
+  width: 100% !important;
+}
+.react-datepicker__input-container {
+  width: 100% !important;
+}

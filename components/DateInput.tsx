@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, forwardRef } from 'react';
 import dynamic from 'next/dynamic';
-import { formatDateInput } from '@/lib/utils/dateFormat';
+import { formatDateInput, formatDateDisplay } from '@/lib/utils/dateFormat';
 
 const noop = () => {};
 
@@ -11,24 +11,13 @@ const DatePicker = dynamic<any>(
   () =>
     Promise.all([
       import('react-datepicker'),
-      import('date-fns/locale/vi')
+      import('date-fns/locale')
     ])
-      .then(([datePickerMod, viLocale]) => {
+      .then(([datePickerMod, localeMod]) => {
         const dp = datePickerMod.default || datePickerMod;
         const { registerLocale } = datePickerMod;
-        if (registerLocale) {
-          registerLocale('vi', viLocale.default || viLocale);
-        }
-        // Polyfill defaultProps on the loaded component to prevent "a.props.onFocus is not a function"
-        if (dp) {
-          (dp as any).defaultProps = {
-            ...((dp as any).defaultProps || {}),
-            onFocus: noop,
-            onBlur: noop,
-            onKeyDown: noop,
-            onClickOutside: noop,
-            onInputClick: noop
-          };
+        if (registerLocale && localeMod.vi) {
+          registerLocale('vi', localeMod.vi);
         }
         return dp;
       })
@@ -161,6 +150,7 @@ export default function DateInput({
   };
 
   const formattedDateString = dateValue ? formatDateInput(dateValue) : '';
+  const formattedDisplayString = dateValue ? formatDateDisplay(dateValue) : '';
 
   const nativeInputFallback = (
     <div className="position-relative w-100">
@@ -186,7 +176,7 @@ export default function DateInput({
         <input
           type="text"
           className={`${className} pe-4`}
-          value={formattedDateString}
+          value={formattedDisplayString}
           placeholder={placeholder}
           disabled={disabled}
           required={required}
@@ -198,12 +188,37 @@ export default function DateInput({
     );
   }
 
+  // Custom Input component that forwards refs and all events from DatePicker
+  const CustomInput = forwardRef<HTMLInputElement, any>((inputProps, ref) => (
+    <input
+      ref={ref}
+      {...inputProps}
+      className={`${className} pe-4`}
+      style={style ? { ...inputProps.style, ...style } : inputProps.style}
+      placeholder={placeholder}
+      disabled={disabled}
+      required={required}
+    />
+  ));
+  CustomInput.displayName = 'CustomInput';
+
   return (
     <DatePickerErrorBoundary fallback={nativeInputFallback}>
       <div className="position-relative w-100">
         <DatePicker
           selected={dateValue}
           onChange={handleChange}
+          onFocus={noop}
+          onBlur={noop}
+          onKeyDown={noop}
+          onInputClick={noop}
+          onClickOutside={noop}
+          onSelect={noop}
+          onCalendarOpen={noop}
+          onCalendarClose={noop}
+          onDropdownFocus={noop}
+          onInputError={noop}
+          onChangeRaw={noop}
           dateFormat="dd/MM/yyyy"
           className={`${className} pe-4`}
           disabled={disabled}
@@ -216,21 +231,8 @@ export default function DateInput({
           dropdownMode="select"
           locale="vi"
           wrapperClassName="w-100"
-          onFocus={noop}
-          onBlur={noop}
-          onKeyDown={noop}
-          onClickOutside={noop}
-          onInputClick={noop}
-          customInput={
-            <input 
-              style={style} 
-              onFocus={noop}
-              onBlur={noop}
-              onKeyDown={noop}
-              onClick={noop}
-              onChange={noop}
-            />
-          }
+          portalId="root-portal"
+          customInput={<CustomInput />}
         />
         <i className="fas fa-calendar-alt position-absolute end-0 top-50 translate-middle-y me-2 text-muted" style={{ pointerEvents: 'none', fontSize: '0.85rem' }}></i>
       </div>

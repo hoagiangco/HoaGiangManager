@@ -213,7 +213,6 @@ function MaintenancePageContent() {
   const [viewingRoundDevices, setViewingRoundDevices] = useState<any | null>(null);
   const [planDeviceSearch, setPlanDeviceSearch] = useState('');
   const [roundDeviceSearch, setRoundDeviceSearch] = useState('');
-  const [openActionDropdownBatchId, setOpenActionDropdownBatchId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const planSearchInputRef = useRef<HTMLInputElement>(null);
   const roundSearchInputRef = useRef<HTMLInputElement>(null);
@@ -3952,9 +3951,9 @@ function MaintenancePageContent() {
                                 {/* Divider mỏng trên mobile trước hàng nút thao tác */}
                                 <div className="d-lg-none my-1 border-top border-secondary border-opacity-10 w-100"></div>
 
-                                {/* Bên phải: Hàng nút thao tác tinh gọn */}
+                                {/* Bên phải: Hàng nút thao tác tinh gọn, responsive */}
                                 <div
-                                  className="d-flex align-items-center justify-content-start justify-content-lg-end gap-2 flex-shrink-0"
+                                  className="d-flex align-items-center justify-content-start justify-content-lg-end flex-wrap gap-2 flex-shrink-0"
                                   style={{ gap: '8px' }}
                                   onClick={(e) => e.stopPropagation()}
                                 >
@@ -3980,8 +3979,8 @@ function MaintenancePageContent() {
                                       return (
                                         <button
                                           type="button"
-                                          className="btn btn-sm btn-success d-inline-flex align-items-center gap-1.5 shadow-sm px-3"
-                                          style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px' }}
+                                          className="btn btn-sm btn-success d-inline-flex align-items-center justify-content-center shadow-sm px-2 px-md-3"
+                                          style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px', minWidth: '31px' }}
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             setSelectedGroup(group);
@@ -3995,7 +3994,7 @@ function MaintenancePageContent() {
                                           title="Ghi nhận hoàn thành tất cả"
                                         >
                                           <i className="fas fa-check-double"></i>
-                                          <span>Hoàn thành</span>
+                                          <span className="d-none d-md-inline ms-1">Hoàn thành</span>
                                         </button>
                                       );
                                     }
@@ -4004,8 +4003,8 @@ function MaintenancePageContent() {
                                       return (
                                         <button
                                           type="button"
-                                          className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1.5 shadow-sm px-3"
-                                          style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px' }}
+                                          className="btn btn-sm btn-primary d-inline-flex align-items-center justify-content-center shadow-sm px-2 px-md-3"
+                                          style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px', minWidth: '31px' }}
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             setSelectedGroup(group);
@@ -4019,7 +4018,7 @@ function MaintenancePageContent() {
                                           title="Bắt đầu thực hiện tất cả"
                                         >
                                           <i className="fas fa-play"></i>
-                                          <span>Bắt đầu</span>
+                                          <span className="d-none d-md-inline ms-1">Bắt đầu</span>
                                         </button>
                                       );
                                     }
@@ -4031,8 +4030,8 @@ function MaintenancePageContent() {
                                   {activeTab === 'cancelled' && isUserAdmin && (
                                     <button
                                       type="button"
-                                      className="btn btn-sm btn-outline-success d-inline-flex align-items-center gap-1.5 px-3"
-                                      style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px' }}
+                                      className="btn btn-sm btn-outline-success d-inline-flex align-items-center justify-content-center px-2 px-md-3"
+                                      style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px', minWidth: '31px' }}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         handleBatchRestore(group);
@@ -4040,15 +4039,15 @@ function MaintenancePageContent() {
                                       title="Khôi phục toàn batch về danh sách bảo trì"
                                     >
                                       <i className="fas fa-undo"></i>
-                                      <span>Khôi phục</span>
+                                      <span className="d-none d-md-inline ms-1">Khôi phục</span>
                                     </button>
                                   )}
 
                                   {/* Nút Xem Chi Tiết */}
                                   <button
                                     type="button"
-                                    className="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1.5 px-3"
-                                    style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px' }}
+                                    className="btn btn-sm btn-outline-info d-inline-flex align-items-center justify-content-center px-2 px-md-3"
+                                    style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px', minWidth: '31px' }}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setSelectedGroup({
@@ -4065,123 +4064,97 @@ function MaintenancePageContent() {
                                     title="Xem chi tiết kế hoạch & lịch sử"
                                   >
                                     <i className="fas fa-eye"></i>
-                                    <span>Chi tiết</span>
+                                    <span className="d-none d-md-inline ms-1">Chi tiết</span>
                                   </button>
 
-                                  {/* Menu Thao tác khác (⋮) dành cho Admin */}
-                                  {isUserAdmin && (
-                                    <div className="position-relative d-inline-block" onClick={(e) => e.stopPropagation()}>
+                                  {/* Các nút thao tác dành cho Admin */}
+                                  {isUserAdmin && activeTab !== 'cancelled' && (
+                                    <>
+                                      {/* Sửa lịch */}
                                       <button
                                         type="button"
-                                        className={`btn btn-sm ${openActionDropdownBatchId === group.batchId ? 'btn-secondary text-white' : 'btn-outline-secondary'} d-inline-flex align-items-center justify-content-center`}
-                                        style={{ width: '32px', height: '31px', borderRadius: '6px' }}
+                                        className="btn btn-sm btn-outline-info d-inline-flex align-items-center justify-content-center px-2 px-md-2"
+                                        style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px', minWidth: '31px' }}
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          setOpenActionDropdownBatchId(prev => prev === group.batchId ? null : group.batchId);
+                                          handleOpenEditBatch(group.batchId, group.title);
                                         }}
-                                        title="Thao tác khác"
-                                        aria-expanded={openActionDropdownBatchId === group.batchId}
+                                        title="Sửa thông tin kế hoạch"
                                       >
-                                        <i className="fas fa-ellipsis-v"></i>
+                                        <i className="fas fa-edit"></i>
+                                        <span className="d-none d-md-inline ms-1">Sửa</span>
                                       </button>
 
-                                      {openActionDropdownBatchId === group.batchId && (
-                                        <>
-                                          <div
-                                            className="position-fixed top-0 start-0 w-100 h-100"
-                                            style={{ zIndex: 1040, background: 'transparent' }}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setOpenActionDropdownBatchId(null);
-                                            }}
-                                          />
-                                          <div
-                                            className="dropdown-menu dropdown-menu-end show shadow border-0 py-1"
-                                            style={{
-                                              position: 'absolute',
-                                              right: 0,
-                                              top: '100%',
-                                              marginTop: '4px',
-                                              zIndex: 1050,
-                                              minWidth: '210px',
-                                              borderRadius: '8px',
-                                              boxShadow: '0 4px 16px rgba(0,0,0,0.15)'
-                                            }}
-                                            onClick={(e) => e.stopPropagation()}
-                                          >
-                                            {activeTab === 'cancelled' ? (
-                                              <button
-                                                type="button"
-                                                className="dropdown-item py-2 px-3 small text-danger d-flex align-items-center gap-2"
-                                                onClick={() => {
-                                                  setOpenActionDropdownBatchId(null);
-                                                  handleBatchDelete(group);
-                                                }}
-                                              >
-                                                <i className="fas fa-trash fa-fw"></i>
-                                                <span>Xóa vĩnh viễn batch</span>
-                                              </button>
-                                            ) : (
-                                              <>
-                                                <button
-                                                  type="button"
-                                                  className="dropdown-item py-2 px-3 small d-flex align-items-center gap-2"
-                                                  onClick={() => {
-                                                    setOpenActionDropdownBatchId(null);
-                                                    handleOpenEditBatch(group.batchId, group.title);
-                                                  }}
-                                                >
-                                                  <i className="fas fa-edit text-info fa-fw"></i>
-                                                  <span>Sửa thông tin kế hoạch</span>
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  className="dropdown-item py-2 px-3 small d-flex align-items-center gap-2"
-                                                  onClick={() => {
-                                                    setOpenActionDropdownBatchId(null);
-                                                    setSelectedGroup(group);
-                                                    const earliestDate = group.plans
-                                                      .filter(p => p.isActive && p.nextDueDate)
-                                                      .map(p => p.nextDueDate ? new Date(p.nextDueDate) : null)
-                                                      .filter(d => d !== null)
-                                                      .sort((a, b) => (a?.getTime() || 0) - (b?.getTime() || 0))[0];
-                                                    setBatchRescheduleDate(earliestDate ? formatDateInput(earliestDate) : formatDateInput(new Date()));
-                                                    setShowBatchRescheduleModal(true);
-                                                  }}
-                                                >
-                                                  <i className="fas fa-calendar-alt text-warning fa-fw"></i>
-                                                  <span>Dời lịch bảo trì</span>
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  className="dropdown-item py-2 px-3 small d-flex align-items-center gap-2 text-danger"
-                                                  onClick={() => {
-                                                    setOpenActionDropdownBatchId(null);
-                                                    setSelectedGroup(group);
-                                                    setShowBatchCancelModal(true);
-                                                  }}
-                                                >
-                                                  <i className="fas fa-times-circle fa-fw"></i>
-                                                  <span>Hủy kế hoạch (vào Đã Hủy)</span>
-                                                </button>
-                                                <div className="dropdown-divider my-1"></div>
-                                                <button
-                                                  type="button"
-                                                  className="dropdown-item py-2 px-3 small d-flex align-items-center gap-2 text-danger fw-semibold"
-                                                  onClick={() => {
-                                                    setOpenActionDropdownBatchId(null);
-                                                    handleBatchDelete(group);
-                                                  }}
-                                                >
-                                                  <i className="fas fa-trash fa-fw"></i>
-                                                  <span>Xóa hoàn toàn kế hoạch</span>
-                                                </button>
-                                              </>
-                                            )}
-                                          </div>
-                                        </>
-                                      )}
-                                    </div>
+                                      {/* Dời lịch */}
+                                      <button
+                                        type="button"
+                                        className="btn btn-sm btn-outline-warning d-inline-flex align-items-center justify-content-center px-2 px-md-2"
+                                        style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px', minWidth: '31px' }}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedGroup(group);
+                                          const earliestDate = group.plans
+                                            .filter(p => p.isActive && p.nextDueDate)
+                                            .map(p => p.nextDueDate ? new Date(p.nextDueDate) : null)
+                                            .filter(d => d !== null)
+                                            .sort((a, b) => (a?.getTime() || 0) - (b?.getTime() || 0))[0];
+                                          setBatchRescheduleDate(earliestDate ? formatDateInput(earliestDate) : formatDateInput(new Date()));
+                                          setShowBatchRescheduleModal(true);
+                                        }}
+                                        title="Dời lịch bảo trì"
+                                      >
+                                        <i className="fas fa-calendar-alt"></i>
+                                        <span className="d-none d-md-inline ms-1">Dời lịch</span>
+                                      </button>
+
+                                      {/* Hủy kế hoạch */}
+                                      <button
+                                        type="button"
+                                        className="btn btn-sm btn-outline-danger d-inline-flex align-items-center justify-content-center px-2 px-md-2"
+                                        style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px', minWidth: '31px' }}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedGroup(group);
+                                          setShowBatchCancelModal(true);
+                                        }}
+                                        title="Hủy kế hoạch (chuyển vào Đã Hủy)"
+                                      >
+                                        <i className="fas fa-times"></i>
+                                        <span className="d-none d-md-inline ms-1">Hủy</span>
+                                      </button>
+
+                                      {/* Xóa hoàn toàn */}
+                                      <button
+                                        type="button"
+                                        className="btn btn-sm btn-outline-danger d-inline-flex align-items-center justify-content-center px-2 px-md-2"
+                                        style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px', minWidth: '31px' }}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleBatchDelete(group);
+                                        }}
+                                        title="Xóa hoàn toàn kế hoạch"
+                                      >
+                                        <i className="fas fa-trash"></i>
+                                        <span className="d-none d-md-inline ms-1">Xóa</span>
+                                      </button>
+                                    </>
+                                  )}
+
+                                  {/* Nút Xóa cho Tab Đã Hủy */}
+                                  {isUserAdmin && activeTab === 'cancelled' && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline-danger d-inline-flex align-items-center justify-content-center px-2 px-md-2"
+                                      style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px', minWidth: '31px' }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleBatchDelete(group);
+                                      }}
+                                      title="Xóa vĩnh viễn toàn batch"
+                                    >
+                                      <i className="fas fa-trash"></i>
+                                      <span className="d-none d-md-inline ms-1">Xóa</span>
+                                    </button>
                                   )}
                                 </div>
                               </div>
@@ -4413,9 +4386,17 @@ function MaintenancePageContent() {
                           <span className="badge bg-outline-info text-info border border-info me-2"><i className="fas fa-eye"></i> Chi tiết</span>
                           <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Xem chi tiết & lịch sử</small>
                         </div>
-                        <div className="col-md-auto col-6 d-flex align-items-center">
-                          <span className="badge bg-outline-secondary text-secondary border border-secondary me-2"><i className="fas fa-ellipsis-v"></i></span>
-                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Thao tác khác (Sửa / Dời lịch / Hủy / Xóa)</small>
+                        <div className="col-md-auto col-6 d-flex align-items-center me-3">
+                          <span className="badge bg-outline-info text-info border border-info me-2"><i className="fas fa-edit"></i> Sửa</span>
+                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Sửa kế hoạch</small>
+                        </div>
+                        <div className="col-md-auto col-6 d-flex align-items-center me-3">
+                          <span className="badge bg-outline-warning text-warning border border-warning me-2"><i className="fas fa-calendar-alt"></i> Dời lịch</span>
+                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Dời lịch bảo trì</small>
+                        </div>
+                        <div className="col-md-auto col-6 d-flex align-items-center me-3">
+                          <span className="badge bg-outline-danger text-danger border border-danger me-2"><i className="fas fa-trash"></i> Xóa / Hủy</span>
+                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Hủy/Xóa kế hoạch</small>
                         </div>
                       </div>
                     </div>
