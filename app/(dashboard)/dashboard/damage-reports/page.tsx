@@ -332,8 +332,22 @@ export default function DamageReportsPage() {
 
   // View mode state: 'table' or 'card', default to 'card' on mobile
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
+  const [expandedCardId, setExpandedCardId] = useState<number | null>(null);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [isCardMenuOpen, setIsCardMenuOpen] = useState(false);
+  const cardMenuRef = useRef<HTMLDivElement>(null);
+  const [statusCounts, setStatusCounts] = useState({ total: 0, waiting: 0, inProgress: 0, completed: 0 });
 
-  // Pagination state
+  useEffect(() => {
+    if (selectedStatus === 0 || selectedStatus === '0') {
+      setStatusCounts({
+        total: allReports.length,
+        waiting: allReports.filter(r => r.status === DamageReportStatus.Pending || r.status === DamageReportStatus.Assigned).length,
+        inProgress: allReports.filter(r => r.status === DamageReportStatus.InProgress).length,
+        completed: allReports.filter(r => r.status === DamageReportStatus.Completed).length,
+      });
+    }
+  }, [allReports, selectedStatus]);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
@@ -690,6 +704,10 @@ export default function DamageReportsPage() {
       if (overflowMenuRef.current && !overflowMenuRef.current.contains(event.target as Node)) {
         setIsOverflowMenuOpen(false);
       }
+      // Handle card mobile menu
+      if (cardMenuRef.current && !cardMenuRef.current.contains(event.target as Node)) {
+        setIsCardMenuOpen(false);
+      }
       // Handle reporter dropdown
       if (reporterDropdownRef.current && !reporterDropdownRef.current.contains(event.target as Node)) {
         setIsReporterDropdownOpen(false);
@@ -771,6 +789,16 @@ export default function DamageReportsPage() {
         padding-bottom: env(safe-area-inset-bottom, 8px) !important;
         box-shadow: 0 -2px 10px rgba(0,0,0,0.1) !important;
       }
+    }
+    /* Hide scrollbar for clean mobile horizontal pill scrolling */
+    .mobile-pills-scroll::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+    }
+    .mobile-pills-scroll {
+      -ms-overflow-style: none !important;
+      scrollbar-width: none !important;
     }
     .dashboard-table-header th .text-info.fas {
       color: #0dcaf0 !important;
@@ -1739,6 +1767,38 @@ export default function DamageReportsPage() {
     return priorityMap[priority] || { color: '#ffffff', backgroundColor: '#64748b', borderColor: '#475569' };
   };
 
+  // Helper Soft Badge riêng cho Card View (Giống 100% demo)
+  const getCardStatusBadge = (status: DamageReportStatus) => {
+    switch (status) {
+      case DamageReportStatus.InProgress:
+        return { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe', dot: '#3b82f6', label: 'Đang xử lý' };
+      case DamageReportStatus.Completed:
+        return { bg: '#ecfdf5', color: '#047857', border: '#a7f3d0', dot: '#10b981', label: 'Hoàn thành' };
+      case DamageReportStatus.Cancelled:
+        return { bg: '#f3f4f6', color: '#374151', border: '#d1d5db', dot: '#6b7280', label: 'Đã hủy' };
+      case DamageReportStatus.Rejected:
+        return { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca', dot: '#ef4444', label: 'Từ chối' };
+      case DamageReportStatus.Pending:
+      case DamageReportStatus.Assigned:
+      default:
+        return { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1', dot: '#94a3b8', label: 'Chờ xử lý' };
+    }
+  };
+
+  const getCardPriorityBadge = (priority: DamageReportPriority) => {
+    switch (priority) {
+      case DamageReportPriority.Urgent:
+        return { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca', bar: '#ef4444', label: 'Khẩn cấp' };
+      case DamageReportPriority.High:
+        return { bg: '#fff7ed', color: '#c2410c', border: '#fed7aa', bar: '#f59e0b', label: 'Cao' };
+      case DamageReportPriority.Normal:
+        return { bg: '#ffffff', color: '#64748b', border: '#e2e8f0', bar: '#cbd5e1', label: 'Bình thường' };
+      case DamageReportPriority.Low:
+      default:
+        return { bg: '#f8fafc', color: '#64748b', border: '#e2e8f0', bar: '#cbd5e1', label: 'Thấp' };
+    }
+  };
+
   const canUpdateStatusForReport = (report?: DamageReportVM | null): boolean => {
     if (!report || report.isDeleted) return false;
     if (!userPermissions.canUpdateStatus) return false;
@@ -2230,353 +2290,799 @@ export default function DamageReportsPage() {
       <style>{headerStyle}</style>
       <div className="card mobile-sticky-card shadow-sm border-0" style={{ borderRadius: '12px' }}>
         <div className="card-header border-bottom sticky-top bg-white" style={{ padding: '0.75rem', zIndex: 10 }}>
-          <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap" style={{ gap: '0.5rem' }}>
-            <h4 className="mb-0" style={{ fontSize: 'clamp(1rem, 4vw, 1.5rem)', whiteSpace: 'nowrap' }}>CÔNG VIỆC</h4>
-            <div className="d-flex gap-1 align-items-center flex-wrap" style={{ justifyContent: 'flex-end' }}>
-              {/* Reload - đầu tiên */}
-              <button
-                className="btn btn-outline-secondary btn-sm d-flex align-items-center justify-content-center"
-                onClick={() => {
-                  setSearchKeyword('');
-                  setSearchInputValue('');
-                  setSelectedStatus(0);
-                  setSelectedPriority(0);
-                  setSelectedDepartment(0);
-                  setSelectedDevice(0);
-                  setShowDeletedFilter(false);
-                  if (!isSupervisor(currentUser?.roles)) {
-                    setMyWorkFilter(true);
-                    setMyReportFilter(false);
-                  } else {
-                    setMyWorkFilter(false);
-                    setMyReportFilter(false);
-                  }
-                  setCurrentPage(1);
-                  loadData();
-                  toast.success('Đã tải lại dữ liệu và xóa bộ lọc');
-                }}
-                title="Tải lại dữ liệu"
-                style={{ width: '36px', height: '36px', borderRadius: '8px', padding: 0 }}
-              >
-                <i className="fas fa-sync-alt" style={{ fontSize: '0.8rem' }}></i>
-              </button>
-
-              {/* Filter toggle - mobile only */}
-              <button
-                type="button"
-                className="btn btn-outline-secondary btn-sm d-md-none d-flex align-items-center justify-content-center"
-                onClick={() => setFiltersOpen((s) => !s)}
-                aria-pressed={!filtersOpen}
-                title={filtersOpen ? 'Ẩn bộ lọc' : 'Hiện bộ lọc'}
-                style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
-              >
-                <i className={`fas ${filtersOpen ? 'fa-chevron-up' : 'fa-filter'}`} style={{ fontSize: '0.8rem' }}></i>
-              </button>
-
-              {/* My Work / My Report toggles */}
-              {currentUserStaffId !== null && (
-                <>
-                  <button
-                    className={`btn btn-sm d-flex align-items-center justify-content-center ${myWorkFilter ? 'btn-info' : 'btn-outline-info'}`}
-                    onClick={() => {
-                      setMyWorkFilter(!myWorkFilter);
-                      if (!myWorkFilter) setMyReportFilter(false);
-                    }}
-                    title="Lọc công việc của tôi"
-                    style={{ width: '36px', height: '36px', borderRadius: '8px', padding: 0 }}
-                  >
-                    <i className="fas fa-user-tie" style={{ fontSize: '0.8rem' }}></i>
-                  </button>
-                  <button
-                    className={`btn btn-sm d-flex align-items-center justify-content-center ${myReportFilter ? 'btn-success' : 'btn-outline-success'}`}
-                    onClick={() => {
-                      setMyReportFilter(!myReportFilter);
-                      if (!myReportFilter) setMyWorkFilter(false);
-                    }}
-                    title="Lọc báo cáo của tôi"
-                    style={{ width: '36px', height: '36px', borderRadius: '8px', padding: 0 }}
-                  >
-                    <i className="fas fa-file-alt" style={{ fontSize: '0.8rem' }}></i>
-                  </button>
-                </>
-              )}
-              {isAdmin(currentUser?.roles) && (
+          {/* Desktop Table View Header */}
+          {viewMode === 'table' && (
+            <div className="d-flex justify-content-between align-items-center mb-2 flex-wrap" style={{ gap: '0.5rem' }}>
+              <h4 className="mb-0" style={{ fontSize: 'clamp(1rem, 4vw, 1.5rem)', whiteSpace: 'nowrap' }}>CÔNG VIỆC</h4>
+              <div className="d-flex gap-1 align-items-center flex-wrap" style={{ justifyContent: 'flex-end' }}>
+                {/* Reload - đầu tiên */}
                 <button
-                  className={`btn btn-sm d-flex align-items-center justify-content-center ${showDeletedFilter ? 'btn-secondary' : 'btn-outline-secondary'}`}
-                  onClick={() => { setShowDeletedFilter(!showDeletedFilter); setSelectedIds([]); }}
-                  title={showDeletedFilter ? 'Quay lại danh sách báo cáo' : 'Hiển thị báo cáo đã xóa'}
+                  className="btn btn-outline-secondary btn-sm d-flex align-items-center justify-content-center"
+                  onClick={() => {
+                    handleClearAllReportFilters();
+                    loadData();
+                    toast.success('Đã tải lại dữ liệu và xóa bộ lọc');
+                  }}
+                  title="Tải lại dữ liệu"
                   style={{ width: '36px', height: '36px', borderRadius: '8px', padding: 0 }}
                 >
-                  <i className="fas fa-archive" style={{ fontSize: '0.8rem' }}></i>
+                  <i className="fas fa-sync-alt" style={{ fontSize: '0.8rem' }}></i>
                 </button>
-              )}
 
-              <div className="ms-md-1 d-flex gap-1 align-items-center">
-                {/* Secondary actions */}
-                {(isAdmin(currentUser?.roles) || userPermissions.canEdit || userPermissions.canDelete || (selectedIds.length === 1 && (allReports.find(r => r.id === selectedIds[0])?.handlerId === currentUserStaffId || allReports.find(r => r.id === selectedIds[0])?.reporterId === currentUserStaffId))) && (
-                  <div ref={overflowMenuRef} style={{ position: 'relative' }}>
-                    {/* Desktop: nút inline riêng lẻ */}
-                    <div className="d-none d-md-flex gap-1 align-items-center">
-                      {/* Buttons removed: ColumnDropdown and Export Excel */}
-                      {!showDeletedFilter && (userPermissions.canEdit || (selectedIds.length === 1 && (allReports.find(r => r.id === selectedIds[0])?.handlerId === currentUserStaffId || allReports.find(r => r.id === selectedIds[0])?.reporterId === currentUserStaffId))) && (
-                        <button
-                          className="btn btn-outline-secondary btn-sm d-flex align-items-center justify-content-center"
-                          onClick={handleEdit}
-                          title="Sửa"
-                          style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
-                        >
-                          <i className="fas fa-edit" style={{ fontSize: '0.8rem' }}></i>
-                        </button>
-                      )}
-                      {showDeletedFilter && isAdmin(currentUser?.roles) && (
-                        <button
-                          className="btn btn-outline-success btn-sm d-flex align-items-center justify-content-center"
-                          onClick={() => handleRestore()}
-                          title="Khôi phục"
-                          style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
-                        >
-                          <i className="fas fa-undo" style={{ fontSize: '0.8rem' }}></i>
-                        </button>
-                      )}
-                      {userPermissions.canDelete && (!showDeletedFilter || isSuperAdmin(currentUser?.roles)) && (
-                        <button
-                          className="btn btn-outline-danger btn-sm d-flex align-items-center justify-content-center"
-                          onClick={handleDelete}
-                          title={showDeletedFilter ? 'Xóa vĩnh viễn' : 'Xóa'}
-                          style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
-                        >
-                          <i className="fas fa-trash" style={{ fontSize: '0.8rem' }}></i>
-                        </button>
-                      )}
-                    </div>
-                    {/* Mobile: dropdown ⋮ */}
-                    <div className="d-md-none">
-                      <button
-                        className="btn btn-outline-secondary btn-sm d-flex align-items-center justify-content-center"
-                        onClick={() => setIsOverflowMenuOpen(prev => !prev)}
-                        title="Thêm hành động"
-                        style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
-                      >
-                        <i className="fas fa-ellipsis-v" style={{ fontSize: '0.85rem' }}></i>
-                      </button>
-                      {isOverflowMenuOpen && (
-                        <div style={{
-                          position: 'absolute',
-                          top: '42px',
-                          right: 0,
-                          zIndex: 1050,
-                          backgroundColor: '#fff',
-                          borderRadius: '10px',
-                          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-                          border: '1px solid #e2e8f0',
-                          minWidth: '170px',
-                          overflow: 'hidden'
-                        }}>
-                          {!showDeletedFilter && (userPermissions.canEdit || (selectedIds.length === 1 && (allReports.find(r => r.id === selectedIds[0])?.handlerId === currentUserStaffId || allReports.find(r => r.id === selectedIds[0])?.reporterId === currentUserStaffId))) && (
-                            <button
-                              className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start py-3 px-3"
-                              style={{ fontSize: '0.85rem', cursor: 'pointer' }}
-                              onClick={() => { handleEdit(); setIsOverflowMenuOpen(false); }}
-                            >
-                              <i className="fas fa-edit text-primary" style={{ width: '16px' }}></i>
-                              Sửa báo cáo
-                            </button>
-                          )}
-                          {showDeletedFilter && isAdmin(currentUser?.roles) && (
-                            <button
-                              className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start py-3 px-3"
-                              style={{ fontSize: '0.85rem', cursor: 'pointer', color: '#198754' }}
-                              onClick={() => { handleRestore(); setIsOverflowMenuOpen(false); }}
-                            >
-                              <i className="fas fa-undo" style={{ width: '16px' }}></i>
-                              Khôi phục báo cáo
-                            </button>
-                          )}
-                          {userPermissions.canDelete && (!showDeletedFilter || isSuperAdmin(currentUser?.roles)) && (
-                            <button
-                              className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start py-3 px-3"
-                              style={{ fontSize: '0.85rem', cursor: 'pointer', color: '#dc3545' }}
-                              onClick={() => { handleDelete(); setIsOverflowMenuOpen(false); }}
-                            >
-                              <i className="fas fa-trash" style={{ width: '16px' }}></i>
-                              {showDeletedFilter ? 'Xóa vĩnh viễn' : 'Xóa báo cáo'}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                {/* Filter toggle - mobile only (table view) */}
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary btn-sm d-md-none d-flex align-items-center justify-content-center"
+                  onClick={() => setFiltersOpen((s) => !s)}
+                  aria-pressed={!filtersOpen}
+                  title={filtersOpen ? 'Ẩn bộ lọc' : 'Hiện bộ lọc'}
+                  style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
+                >
+                  <i className={`fas ${filtersOpen ? 'fa-chevron-up' : 'fa-filter'}`} style={{ fontSize: '0.8rem' }}></i>
+                </button>
+
+                {/* My Work / My Report toggles */}
+                {currentUserStaffId !== null && (
+                  <>
+                    <button
+                      className={`btn btn-sm d-flex align-items-center justify-content-center ${myWorkFilter ? 'btn-info' : 'btn-outline-info'}`}
+                      onClick={() => {
+                        setMyWorkFilter(!myWorkFilter);
+                        if (!myWorkFilter) setMyReportFilter(false);
+                      }}
+                      title="Lọc công việc của tôi"
+                      style={{ width: '36px', height: '36px', borderRadius: '8px', padding: 0 }}
+                    >
+                      <i className="fas fa-user-tie" style={{ fontSize: '0.8rem' }}></i>
+                    </button>
+                    <button
+                      className={`btn btn-sm d-flex align-items-center justify-content-center ${myReportFilter ? 'btn-success' : 'btn-outline-success'}`}
+                      onClick={() => {
+                        setMyReportFilter(!myReportFilter);
+                        if (!myReportFilter) setMyWorkFilter(false);
+                      }}
+                      title="Lọc báo cáo của tôi"
+                      style={{ width: '36px', height: '36px', borderRadius: '8px', padding: 0 }}
+                    >
+                      <i className="fas fa-file-alt" style={{ fontSize: '0.8rem' }}></i>
+                    </button>
+                  </>
+                )}
+                {isAdmin(currentUser?.roles) && (
+                  <button
+                    className={`btn btn-sm d-flex align-items-center justify-content-center ${showDeletedFilter ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                    onClick={() => { setShowDeletedFilter(!showDeletedFilter); setSelectedIds([]); }}
+                    title={showDeletedFilter ? 'Quay lại danh sách báo cáo' : 'Hiển thị báo cáo đã xóa'}
+                    style={{ width: '36px', height: '36px', borderRadius: '8px', padding: 0 }}
+                  >
+                    <i className="fas fa-archive" style={{ fontSize: '0.8rem' }}></i>
+                  </button>
                 )}
 
-                {/* 3. Thêm mới - luôn cuối cùng */}
+                <div className="ms-md-1 d-flex gap-1 align-items-center">
+                  {/* Secondary actions */}
+                  {(isAdmin(currentUser?.roles) || userPermissions.canEdit || userPermissions.canDelete || (selectedIds.length === 1 && (allReports.find(r => r.id === selectedIds[0])?.handlerId === currentUserStaffId || allReports.find(r => r.id === selectedIds[0])?.reporterId === currentUserStaffId))) && (
+                    <div ref={overflowMenuRef} style={{ position: 'relative' }}>
+                      {/* Desktop: nút inline riêng lẻ */}
+                      <div className="d-none d-md-flex gap-1 align-items-center">
+                        {!showDeletedFilter && (userPermissions.canEdit || (selectedIds.length === 1 && (allReports.find(r => r.id === selectedIds[0])?.handlerId === currentUserStaffId || allReports.find(r => r.id === selectedIds[0])?.reporterId === currentUserStaffId))) && (
+                          <button
+                            className="btn btn-outline-secondary btn-sm d-flex align-items-center justify-content-center"
+                            onClick={handleEdit}
+                            title="Sửa"
+                            style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
+                          >
+                            <i className="fas fa-edit" style={{ fontSize: '0.8rem' }}></i>
+                          </button>
+                        )}
+                        {showDeletedFilter && isAdmin(currentUser?.roles) && (
+                          <button
+                            className="btn btn-outline-success btn-sm d-flex align-items-center justify-content-center"
+                            onClick={() => handleRestore()}
+                            title="Khôi phục"
+                            style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
+                          >
+                            <i className="fas fa-undo" style={{ fontSize: '0.8rem' }}></i>
+                          </button>
+                        )}
+                        {userPermissions.canDelete && (!showDeletedFilter || isSuperAdmin(currentUser?.roles)) && (
+                          <button
+                            className="btn btn-outline-danger btn-sm d-flex align-items-center justify-content-center"
+                            onClick={handleDelete}
+                            title={showDeletedFilter ? 'Xóa vĩnh viễn' : 'Xóa'}
+                            style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
+                          >
+                            <i className="fas fa-trash" style={{ fontSize: '0.8rem' }}></i>
+                          </button>
+                        )}
+                      </div>
+                      {/* Mobile: dropdown ⋮ */}
+                      <div className="d-md-none">
+                        <button
+                          className="btn btn-outline-secondary btn-sm d-flex align-items-center justify-content-center"
+                          onClick={() => setIsOverflowMenuOpen(prev => !prev)}
+                          title="Thêm hành động"
+                          style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
+                        >
+                          <i className="fas fa-ellipsis-v" style={{ fontSize: '0.85rem' }}></i>
+                        </button>
+                        {isOverflowMenuOpen && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '42px',
+                            right: 0,
+                            zIndex: 1050,
+                            backgroundColor: '#fff',
+                            borderRadius: '10px',
+                            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                            border: '1px solid #e2e8f0',
+                            minWidth: '170px',
+                            overflow: 'hidden'
+                          }}>
+                            {!showDeletedFilter && (userPermissions.canEdit || (selectedIds.length === 1 && (allReports.find(r => r.id === selectedIds[0])?.handlerId === currentUserStaffId || allReports.find(r => r.id === selectedIds[0])?.reporterId === currentUserStaffId))) && (
+                              <button
+                                className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start py-3 px-3"
+                                style={{ fontSize: '0.85rem', cursor: 'pointer' }}
+                                onClick={() => { handleEdit(); setIsOverflowMenuOpen(false); }}
+                              >
+                                <i className="fas fa-edit text-primary" style={{ width: '16px' }}></i>
+                                Sửa báo cáo
+                              </button>
+                            )}
+                            {showDeletedFilter && isAdmin(currentUser?.roles) && (
+                              <button
+                                className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start py-3 px-3"
+                                style={{ fontSize: '0.85rem', cursor: 'pointer', color: '#198754' }}
+                                onClick={() => { handleRestore(); setIsOverflowMenuOpen(false); }}
+                              >
+                                <i className="fas fa-undo" style={{ width: '16px' }}></i>
+                                Khôi phục báo cáo
+                              </button>
+                            )}
+                            {userPermissions.canDelete && (!showDeletedFilter || isSuperAdmin(currentUser?.roles)) && (
+                              <button
+                                className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start py-3 px-3"
+                                style={{ fontSize: '0.85rem', cursor: 'pointer', color: '#dc3545' }}
+                                onClick={() => { handleDelete(); setIsOverflowMenuOpen(false); }}
+                              >
+                                <i className="fas fa-trash" style={{ width: '16px' }}></i>
+                                {showDeletedFilter ? 'Xóa vĩnh viễn' : 'Xóa báo cáo'}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3. Thêm mới - luôn cuối cùng */}
+                  <button
+                    className="btn btn-primary btn-sm d-flex align-items-center justify-content-center"
+                    onClick={handleNew}
+                    title="Thêm mới"
+                    style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
+                  >
+                    <i className="fas fa-plus" style={{ fontSize: '0.85rem' }}></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Card View Header (Gọn gàng: CÔNG VIỆC + Nút Thêm + Group Popup) */}
+          {viewMode === 'card' && (
+            <div className="d-flex justify-content-between align-items-center mb-1.5" style={{ gap: '0.5rem', width: '100%', minWidth: 0 }}>
+              <div className="d-flex align-items-center gap-1.5" style={{ minWidth: 0, flex: '1 1 auto', overflow: 'hidden' }}>
+                <h4 className="mb-0 fw-bold" style={{ fontSize: '1.15rem', whiteSpace: 'nowrap', color: '#0f172a', flexShrink: 0 }}>
+                  CÔNG VIỆC
+                </h4>
+                {(myWorkFilter || myReportFilter || showDeletedFilter) && (
+                  <span 
+                    className="badge rounded-pill bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 text-truncate" 
+                    style={{ fontSize: '0.62rem', padding: '3px 8px', maxWidth: '110px', flexShrink: 1 }}
+                    title={myWorkFilter ? 'Việc của tôi' : myReportFilter ? 'Báo cáo của tôi' : 'Thùng rác'}
+                  >
+                    {myWorkFilter ? 'Việc của tôi' : myReportFilter ? 'Báo cáo của tôi' : 'Thùng rác'}
+                  </span>
+                )}
+              </div>
+
+              {/* Cụm chức năng: [+] [⋮ Menu] [🔍 Filter] */}
+              <div className="d-flex align-items-center" style={{ position: 'relative', flexShrink: 0, gap: '8px' }} ref={cardMenuRef}>
+                {/* 1. Thêm mới - Call to action chính */}
                 <button
-                  className="btn btn-primary btn-sm d-flex align-items-center justify-content-center"
+                  type="button"
+                  className="btn btn-primary btn-sm d-flex align-items-center justify-content-center shadow-xs"
                   onClick={handleNew}
                   title="Thêm mới"
-                  style={{ width: '36px', height: '36px', padding: 0, borderRadius: '8px' }}
+                  style={{ width: '34px', height: '34px', padding: 0, borderRadius: '8px', flexShrink: 0 }}
                 >
                   <i className="fas fa-plus" style={{ fontSize: '0.85rem' }}></i>
                 </button>
+
+                {/* 2. Nút mở Group Popup */}
+                <button
+                  type="button"
+                  className={`btn btn-sm d-flex align-items-center justify-content-center position-relative ${isCardMenuOpen ? 'btn-dark text-white' : 'btn-white bg-white text-secondary border'}`}
+                  onClick={() => setIsCardMenuOpen(prev => !prev)}
+                  title="Cụm chức năng tác vụ"
+                  style={{ width: '34px', height: '34px', padding: 0, borderRadius: '8px', flexShrink: 0, borderColor: '#cbd5e1' }}
+                >
+                  <i className="fas fa-ellipsis-v" style={{ fontSize: '0.9rem' }}></i>
+                  {/* Chấm tròn báo hiệu nếu có bộ lọc/lựa chọn đang kích hoạt */}
+                  {(myWorkFilter || myReportFilter || showDeletedFilter || selectedIds.length > 0) && (
+                    <span 
+                      className="position-absolute bg-primary rounded-circle"
+                      style={{ width: '7px', height: '7px', top: '4px', right: '4px' }}
+                    />
+                  )}
+                </button>
+
+                {/* 3. Nút Kính lúp / Tìm kiếm & Lọc (đưa về cuối cùng) */}
+                <button
+                  type="button"
+                  className="btn btn-sm d-flex align-items-center justify-content-center position-relative shadow-xs"
+                  style={{
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: '8px',
+                    backgroundColor: isMobileSearchOpen || searchKeyword || selectedPriority > 0 ? '#2563eb' : '#ffffff',
+                    color: isMobileSearchOpen || searchKeyword || selectedPriority > 0 ? '#ffffff' : '#64748b',
+                    border: '1px solid ' + (isMobileSearchOpen || searchKeyword || selectedPriority > 0 ? '#2563eb' : '#cbd5e1'),
+                    flexShrink: 0,
+                    padding: 0
+                  }}
+                  onClick={() => setIsMobileSearchOpen(prev => !prev)}
+                  title="Tìm kiếm & lọc ưu tiên"
+                >
+                  <i className="fas fa-search" style={{ fontSize: '0.82rem' }}></i>
+                  {(searchKeyword || selectedPriority > 0) && !isMobileSearchOpen && (
+                    <span 
+                      className="position-absolute bg-warning rounded-circle"
+                      style={{ width: '7px', height: '7px', top: '4px', right: '4px' }}
+                    />
+                  )}
+                </button>
+
+                {/* Group Popup Menu */}
+                {isCardMenuOpen && (
+                  <div 
+                    className="position-absolute shadow-lg border rounded-3 bg-white py-1"
+                    style={{
+                      top: '40px',
+                      right: 0,
+                      zIndex: 1060,
+                      minWidth: '220px',
+                      maxWidth: 'calc(100vw - 24px)',
+                      borderColor: '#e2e8f0',
+                      fontSize: '0.82rem',
+                      boxShadow: '0 8px 30px rgba(0,0,0,0.12)'
+                    }}
+                  >
+                    <div className="px-3 py-1.5 text-muted fw-bold text-uppercase border-bottom" style={{ fontSize: '0.62rem', letterSpacing: '0.05em' }}>
+                      Tác vụ & Bộ lọc
+                    </div>
+
+                    {/* Tải lại */}
+                    <button
+                      type="button"
+                      className="d-flex align-items-center justify-content-between w-100 border-0 bg-transparent text-start px-3 py-2 text-dark"
+                      style={{ fontSize: '0.8rem', cursor: 'pointer' }}
+                      onClick={() => {
+                        handleClearAllReportFilters();
+                        loadData();
+                        setIsCardMenuOpen(false);
+                        toast.success('Đã tải lại dữ liệu và xóa bộ lọc');
+                      }}
+                    >
+                      <span className="d-flex align-items-center gap-2">
+                        <i className="fas fa-sync-alt text-primary" style={{ width: '16px' }}></i>
+                        Tải lại dữ liệu
+                      </span>
+                    </button>
+
+                    {/* Việc của tôi */}
+                    {currentUserStaffId !== null && (
+                      <button
+                        type="button"
+                        className="d-flex align-items-center justify-content-between w-100 border-0 bg-transparent text-start px-3 py-2 text-dark"
+                        style={{ fontSize: '0.8rem', cursor: 'pointer' }}
+                        onClick={() => {
+                          setMyWorkFilter(!myWorkFilter);
+                          if (!myWorkFilter) setMyReportFilter(false);
+                          setIsCardMenuOpen(false);
+                        }}
+                      >
+                        <span className="d-flex align-items-center gap-2">
+                          <i className="fas fa-user-tie text-info" style={{ width: '16px' }}></i>
+                          Việc của tôi
+                        </span>
+                        {myWorkFilter && <i className="fas fa-check text-primary" style={{ fontSize: '0.75rem' }}></i>}
+                      </button>
+                    )}
+
+                    {/* Báo cáo của tôi */}
+                    {currentUserStaffId !== null && (
+                      <button
+                        type="button"
+                        className="d-flex align-items-center justify-content-between w-100 border-0 bg-transparent text-start px-3 py-2 text-dark"
+                        style={{ fontSize: '0.8rem', cursor: 'pointer' }}
+                        onClick={() => {
+                          setMyReportFilter(!myReportFilter);
+                          if (!myReportFilter) setMyWorkFilter(false);
+                          setIsCardMenuOpen(false);
+                        }}
+                      >
+                        <span className="d-flex align-items-center gap-2">
+                          <i className="fas fa-file-alt text-success" style={{ width: '16px' }}></i>
+                          Báo cáo của tôi
+                        </span>
+                        {myReportFilter && <i className="fas fa-check text-primary" style={{ fontSize: '0.75rem' }}></i>}
+                      </button>
+                    )}
+
+                    {/* Thùng rác */}
+                    {isAdmin(currentUser?.roles) && (
+                      <button
+                        type="button"
+                        className="d-flex align-items-center justify-content-between w-100 border-0 bg-transparent text-start px-3 py-2 text-dark"
+                        style={{ fontSize: '0.8rem', cursor: 'pointer' }}
+                        onClick={() => {
+                          setShowDeletedFilter(!showDeletedFilter);
+                          setSelectedIds([]);
+                          setIsCardMenuOpen(false);
+                        }}
+                      >
+                        <span className="d-flex align-items-center gap-2">
+                          <i className="fas fa-archive text-secondary" style={{ width: '16px' }}></i>
+                          Báo cáo đã xóa
+                        </span>
+                        {showDeletedFilter && <i className="fas fa-check text-primary" style={{ fontSize: '0.75rem' }}></i>}
+                      </button>
+                    )}
+
+                    {/* Các tác vụ thao tác khi chọn thẻ */}
+                    {(selectedIds.length > 0 || showDeletedFilter) && (
+                      <>
+                        <div className="border-top my-1"></div>
+                        <div className="px-3 py-1 text-muted fw-bold text-uppercase" style={{ fontSize: '0.62rem', letterSpacing: '0.05em' }}>
+                          Thao tác ({selectedIds.length} đã chọn)
+                        </div>
+
+                        {!showDeletedFilter && selectedIds.length === 1 && (userPermissions.canEdit || allReports.find(r => r.id === selectedIds[0])?.handlerId === currentUserStaffId || allReports.find(r => r.id === selectedIds[0])?.reporterId === currentUserStaffId) && (
+                          <button
+                            type="button"
+                            className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start px-3 py-2 text-dark"
+                            style={{ fontSize: '0.8rem', cursor: 'pointer' }}
+                            onClick={() => { handleEdit(); setIsCardMenuOpen(false); }}
+                          >
+                            <i className="fas fa-edit text-primary" style={{ width: '16px' }}></i>
+                            Sửa báo cáo
+                          </button>
+                        )}
+
+                        {showDeletedFilter && isAdmin(currentUser?.roles) && selectedIds.length > 0 && (
+                          <button
+                            type="button"
+                            className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start px-3 py-2 text-success"
+                            style={{ fontSize: '0.8rem', cursor: 'pointer' }}
+                            onClick={() => { handleRestore(); setIsCardMenuOpen(false); }}
+                          >
+                            <i className="fas fa-undo" style={{ width: '16px' }}></i>
+                            Khôi phục ({selectedIds.length})
+                          </button>
+                        )}
+
+                        {userPermissions.canDelete && selectedIds.length > 0 && (!showDeletedFilter || isSuperAdmin(currentUser?.roles)) && (
+                          <button
+                            type="button"
+                            className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start px-3 py-2 text-danger"
+                            style={{ fontSize: '0.8rem', cursor: 'pointer' }}
+                            onClick={() => { handleDelete(); setIsCardMenuOpen(false); }}
+                          >
+                            <i className="fas fa-trash" style={{ width: '16px' }}></i>
+                            {showDeletedFilter ? `Xóa vĩnh viễn (${selectedIds.length})` : `Xóa (${selectedIds.length})`}
+                          </button>
+                        )}
+                      </>
+                    )}
+
+                    <div className="border-top my-1"></div>
+
+                    {/* Chuyển sang dạng Bảng */}
+                    <button
+                      type="button"
+                      className="d-flex align-items-center gap-2 w-100 border-0 bg-transparent text-start px-3 py-2 text-muted"
+                      style={{ fontSize: '0.8rem', cursor: 'pointer' }}
+                      onClick={() => { setViewMode('table'); setIsCardMenuOpen(false); }}
+                    >
+                      <i className="fas fa-list text-muted" style={{ width: '16px' }}></i>
+                      Chuyển sang dạng bảng
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Filter Section */}
-          <div className={`card mb-2 filter-card ${filtersOpen ? 'filter-open' : 'filter-collapsed'}`} style={{ backgroundColor: '#f8f9fa', border: '1px solid #e9ecef' }}>
-            <div className="card-body py-2 px-2 px-md-3">
-              <div className="row g-2 align-items-center">
-                {/* Status Filter */}
-                <div className="col-12 col-sm-6 col-md-auto">
+          {/* Table View Header / Filters */}
+          {viewMode === 'table' && (
+            <>
+              {/* Filter Section */}
+              <div className={`card mb-2 filter-card ${filtersOpen ? 'filter-open' : 'filter-collapsed'}`} style={{ backgroundColor: '#f8f9fa', border: '1px solid #e9ecef' }}>
+                <div className="card-body py-2 px-2 px-md-3">
                   <div className="row g-2 align-items-center">
-                    <div className="col-auto" style={{ width: '85px' }}>
-                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Trạng thái:</span>
+                    {/* Status Filter */}
+                    <div className="col-12 col-sm-6 col-md-auto">
+                      <div className="row g-2 align-items-center">
+                        <div className="col-auto" style={{ width: '85px' }}>
+                          <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Trạng thái:</span>
+                        </div>
+                        <div className="col">
+                          <select
+                            className="form-select form-select-sm"
+                            value={selectedStatus}
+                            onChange={(e) => setSelectedStatus(e.target.value === '1,2' ? '1,2' : Number(e.target.value))}
+                            style={{ borderRadius: '6px' }}
+                          >
+                            <option value="0">Tất cả</option>
+                            <option value="1,2">Chờ xử lý</option>
+                            <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
+                            <option value={DamageReportStatus.Completed}>Hoàn thành</option>
+                            <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
+                            <option value={DamageReportStatus.Rejected}>Từ chối</option>
+                          </select>
+                        </div>
+                      </div>
                     </div>
-                    <div className="col">
-                      <select
-                        className="form-select form-select-sm"
-                        value={selectedStatus}
-                        onChange={(e) => setSelectedStatus(e.target.value === '1,2' ? '1,2' : Number(e.target.value))}
-                        style={{ borderRadius: '6px' }}
-                      >
-                        <option value="0">Tất cả</option>
-                        <option value="1,2">Chờ xử lý</option>
-                        <option value={DamageReportStatus.InProgress}>Đang xử lý</option>
-                        <option value={DamageReportStatus.Completed}>Hoàn thành</option>
-                        <option value={DamageReportStatus.Cancelled}>Đã hủy</option>
-                        <option value={DamageReportStatus.Rejected}>Từ chối</option>
-                      </select>
+                    
+                    {/* Priority Filter */}
+                    <div className="col-12 col-sm-6 col-md-auto">
+                      <div className="row g-2 align-items-center">
+                        <div className="col-auto" style={{ width: '85px' }}>
+                          <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Ưu tiên:</span>
+                        </div>
+                        <div className="col">
+                          <select
+                            className="form-select form-select-sm"
+                            value={selectedPriority}
+                            onChange={(e) => setSelectedPriority(Number(e.target.value) as DamageReportPriority | 0)}
+                            style={{ borderRadius: '6px' }}
+                          >
+                            <option value="0">Tất cả</option>
+                            <option value={DamageReportPriority.Low}>Thấp</option>
+                            <option value={DamageReportPriority.Normal}>Bình thường</option>
+                            <option value={DamageReportPriority.High}>Cao</option>
+                            <option value={DamageReportPriority.Urgent}>Khẩn cấp</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Department Filter */}
+                    <div className="col-12 col-md-auto">
+                      <div className="row g-2 align-items-center">
+                        <div className="col-auto" style={{ width: '85px' }}>
+                          <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Phòng ban:</span>
+                        </div>
+                        <div className="col">
+                          <select
+                            className="form-select form-select-sm"
+                            value={selectedDepartment}
+                            onChange={(e) => setSelectedDepartment(Number(e.target.value))}
+                            style={{ borderRadius: '6px' }}
+                          >
+                            <option value="0">Tất cả</option>
+                            {departments.map(dept => (
+                              <option key={dept.id} value={dept.id}>{dept.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Search Bar */}
+                    <div className="col-12 col-md">
+                      <div className="input-group input-group-sm">
+                        <span className="input-group-text bg-white border-end-0">
+                          <i className="fas fa-search text-muted"></i>
+                        </span>
+                        <input
+                          type="text"
+                          className="form-control border-start-0"
+                          placeholder="Tìm kiếm nội dung, thiết bị..."
+                          value={searchInputValue}
+                          onChange={(e) => setSearchInputValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              setSearchKeyword(searchInputValue);
+                            }
+                          }}
+                        />
+
+                        <button
+                          className="btn btn-outline-danger"
+                          type="button"
+                          onClick={() => {
+                            setSearchKeyword('');
+                            setSearchInputValue('');
+                            setSelectedStatus(0);
+                            setSelectedPriority(0);
+                            setSelectedDepartment(0);
+                            setSelectedDevice(0);
+                          }}
+                          title="Xóa bộ lọc"
+                        >
+                          <i className="fas fa-times"></i>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-                
-                {/* Priority Filter */}
-                <div className="col-12 col-sm-6 col-md-auto">
-                  <div className="row g-2 align-items-center">
-                    <div className="col-auto" style={{ width: '85px' }}>
-                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Ưu tiên:</span>
-                    </div>
-                    <div className="col">
-                      <select
-                        className="form-select form-select-sm"
-                        value={selectedPriority}
-                        onChange={(e) => setSelectedPriority(Number(e.target.value) as DamageReportPriority | 0)}
-                        style={{ borderRadius: '6px' }}
-                      >
-                        <option value="0">Tất cả</option>
-                        <option value={DamageReportPriority.Low}>Thấp</option>
-                        <option value={DamageReportPriority.Normal}>Bình thường</option>
-                        <option value={DamageReportPriority.High}>Cao</option>
-                        <option value={DamageReportPriority.Urgent}>Khẩn cấp</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Department Filter */}
-                <div className="col-12 col-md-auto">
-                  <div className="row g-2 align-items-center">
-                    <div className="col-auto" style={{ width: '85px' }}>
-                      <span className="small text-muted fw-bold text-nowrap" style={{ fontSize: '0.75rem' }}>Phòng ban:</span>
-                    </div>
-                    <div className="col">
-                      <select
-                        className="form-select form-select-sm"
-                        value={selectedDepartment}
-                        onChange={(e) => setSelectedDepartment(Number(e.target.value))}
-                        style={{ borderRadius: '6px' }}
-                      >
-                        <option value="0">Tất cả</option>
-                        {departments.map(dept => (
-                          <option key={dept.id} value={dept.id}>{dept.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Search Bar */}
-                <div className="col-12 col-md">
-                  <div className="input-group input-group-sm">
-                    <span className="input-group-text bg-white border-end-0">
-                      <i className="fas fa-search text-muted"></i>
-                    </span>
-                    <input
-                      type="text"
-                      className="form-control border-start-0"
-                      placeholder="Tìm kiếm nội dung, thiết bị..."
-                      value={searchInputValue}
-                      onChange={(e) => setSearchInputValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          setSearchKeyword(searchInputValue);
-                        }
-                      }}
-                    />
-
-                    <button
-                      className="btn btn-outline-danger"
-                      type="button"
-                      onClick={() => {
-                        setSearchKeyword('');
-                        setSearchInputValue('');
-                        setSelectedStatus(0);
-                        setSelectedPriority(0);
-                        setSelectedDepartment(0);
-                        setSelectedDevice(0);
-                      }}
-                      title="Xóa bộ lọc"
+              </div>
+              <ActiveFilterChips chips={activeReportChips} onClearAll={handleClearAllReportFilters} />
+              <div className="d-flex justify-content-between align-items-center" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div className="d-flex align-items-center gap-2" style={{ flexWrap: 'nowrap', flexShrink: 0 }}>
+                  <div className="d-flex align-items-center gap-1" style={{ flexWrap: 'nowrap' }}>
+                    <span style={{ whiteSpace: 'nowrap', fontSize: '0.8rem' }}>Hiện:</span>
+                    <select
+                      className="form-control form-control-sm"
+                      style={{ width: '55px', padding: '0.2rem 0.35rem', fontSize: '0.8rem' }}
+                      value={itemsPerPage}
+                      onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
                     >
-                      <i className="fas fa-times"></i>
+                      <option value="10">10</option>
+                      <option value="25">25</option>
+                      <option value="50">50</option>
+                      <option value="100">100</option>
+                    </select>
+                  </div>
+                  <div className="btn-group btn-group-sm ms-1">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-primary shadow-sm"
+                      onClick={() => setViewMode('table')}
+                      title="Xem dạng bảng"
+                    >
+                      <i className="fas fa-list"></i>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-white border"
+                      onClick={() => setViewMode('card')}
+                      title="Xem dạng thẻ"
+                    >
+                      <i className="fas fa-th-large"></i>
                     </button>
                   </div>
                 </div>
+                <div style={{ flexShrink: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', color: '#6c757d' }}>
+                    Hiển thị {startIndex + 1}-{Math.min(endIndex, reports.length)} của {reports.length}
+                  </span>
+                </div>
               </div>
-            </div>
-          </div>
-          <ActiveFilterChips chips={activeReportChips} onClearAll={handleClearAllReportFilters} />
-          <div className="d-flex justify-content-between align-items-center" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
-            <div className="d-flex align-items-center gap-2" style={{ flexWrap: 'nowrap', flexShrink: 0 }}>
-              <div className="d-flex align-items-center gap-1" style={{ flexWrap: 'nowrap' }}>
-                <span style={{ whiteSpace: 'nowrap', fontSize: '0.8rem' }}>Hiện:</span>
-                <select
-                  className="form-control form-control-sm"
-                  style={{ width: '55px', padding: '0.2rem 0.35rem', fontSize: '0.8rem' }}
-                  value={itemsPerPage}
-                  onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+            </>
+          )}
+
+          {/* Card View Header / Toolbar Hàng 2: Quick Status Pills */}
+          {viewMode === 'card' && (
+            <div className="mt-1" style={{ width: '100%', minWidth: 0 }}>
+              {/* Quick Status Pills cuộn ngang toàn hàng */}
+              <div className="py-1" style={{ width: '100%', minWidth: 0 }}>
+                <div 
+                  className="d-flex align-items-center gap-1 overflow-auto mobile-pills-scroll" 
+                  style={{ 
+                    whiteSpace: 'nowrap',
+                    width: '100%',
+                    minWidth: 0,
+                    WebkitOverflowScrolling: 'touch',
+                    scrollbarWidth: 'none',
+                    msOverflowStyle: 'none'
+                  }}
                 >
-                  <option value="10">10</option>
-                  <option value="25">25</option>
-                  <option value="50">50</option>
-                  <option value="100">100</option>
-                </select>
+                  <button
+                    type="button"
+                    className="btn btn-sm flex-shrink-0"
+                    style={{
+                      borderRadius: '9999px',
+                      padding: '4px 10px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      backgroundColor: selectedStatus === 0 || selectedStatus === '0' ? '#0f172a' : '#f1f5f9',
+                      color: selectedStatus === 0 || selectedStatus === '0' ? '#ffffff' : '#475569',
+                      border: 'none',
+                      boxShadow: selectedStatus === 0 || selectedStatus === '0' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                    }}
+                    onClick={() => { setSelectedStatus(0); setCurrentPage(1); }}
+                  >
+                    <span>Tất cả</span>
+                    <span style={{ marginLeft: '5px', opacity: 0.8 }}>
+                      {statusCounts.total > 0 ? statusCounts.total : allReports.length}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm flex-shrink-0"
+                    style={{
+                      borderRadius: '9999px',
+                      padding: '4px 10px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      backgroundColor: selectedStatus === '1,2' ? '#2563eb' : '#f1f5f9',
+                      color: selectedStatus === '1,2' ? '#ffffff' : '#475569',
+                      border: 'none'
+                    }}
+                    onClick={() => { setSelectedStatus(selectedStatus === '1,2' ? 0 : '1,2'); setCurrentPage(1); }}
+                  >
+                    <span>Chờ</span>
+                    {statusCounts.waiting > 0 && (
+                      <span style={{ marginLeft: '4px', opacity: 0.8 }}>
+                        {statusCounts.waiting}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm flex-shrink-0"
+                    style={{
+                      borderRadius: '9999px',
+                      padding: '4px 10px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      backgroundColor: selectedStatus === DamageReportStatus.InProgress ? '#2563eb' : '#f1f5f9',
+                      color: selectedStatus === DamageReportStatus.InProgress ? '#ffffff' : '#475569',
+                      border: 'none'
+                    }}
+                    onClick={() => { setSelectedStatus(selectedStatus === DamageReportStatus.InProgress ? 0 : DamageReportStatus.InProgress); setCurrentPage(1); }}
+                  >
+                    <span>Đang làm</span>
+                    {statusCounts.inProgress > 0 && (
+                      <span style={{ marginLeft: '4px', opacity: 0.8 }}>
+                        {statusCounts.inProgress}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm flex-shrink-0"
+                    style={{
+                      borderRadius: '9999px',
+                      padding: '4px 10px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      backgroundColor: selectedStatus === DamageReportStatus.Completed ? '#16a34a' : '#f1f5f9',
+                      color: selectedStatus === DamageReportStatus.Completed ? '#ffffff' : '#475569',
+                      border: 'none'
+                    }}
+                    onClick={() => { setSelectedStatus(selectedStatus === DamageReportStatus.Completed ? 0 : DamageReportStatus.Completed); setCurrentPage(1); }}
+                  >
+                    <span>Xong</span>
+                    {statusCounts.completed > 0 && (
+                      <span style={{ marginLeft: '4px', opacity: 0.8 }}>
+                        {statusCounts.completed}
+                      </span>
+                    )}
+                  </button>
+                </div>
               </div>
-              <div className="btn-group btn-group-sm ms-1">
-                <button
-                  type="button"
-                  className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary shadow-sm' : 'btn-white border'}`}
-                  onClick={() => setViewMode('table')}
-                  title="Xem dạng bảng"
+
+              {/* Khay Kính Lúp (Drawer) */}
+              {isMobileSearchOpen && (
+                <div 
+                  className="p-2 rounded-3 mb-2 mt-1 border"
+                  style={{ backgroundColor: '#f8fafc', borderColor: '#e2e8f0' }}
                 >
-                  <i className="fas fa-list"></i>
-                </button>
-                <button
-                  type="button"
-                  className={`btn btn-sm ${viewMode === 'card' ? 'btn-primary shadow-sm' : 'btn-white border'}`}
-                  onClick={() => setViewMode('card')}
-                  title="Xem dạng thẻ"
-                >
-                  <i className="fas fa-th-large"></i>
-                </button>
-              </div>
+                  {/* 1. Ô tìm nhanh */}
+                  <div className="position-relative mb-2">
+                    <div className="input-group input-group-sm">
+                      <span className="input-group-text bg-white border-end-0" style={{ borderColor: '#cbd5e1' }}>
+                        <i className="fas fa-search text-muted" style={{ fontSize: '0.75rem' }}></i>
+                      </span>
+                      <input
+                        type="text"
+                        className="form-control border-start-0"
+                        placeholder="Tìm nhanh theo nội dung sự việc, thiết bị..."
+                        value={searchInputValue}
+                        onChange={(e) => setSearchInputValue(e.target.value)}
+                        style={{ fontSize: '0.75rem', borderColor: '#cbd5e1' }}
+                      />
+                      {searchInputValue && (
+                        <button
+                          className="btn btn-outline-secondary border-start-0 bg-white"
+                          type="button"
+                          onClick={() => { setSearchInputValue(''); setSearchKeyword(''); }}
+                          style={{ borderColor: '#cbd5e1' }}
+                        >
+                          <i className="fas fa-times text-muted"></i>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 2. Nút lọc mức độ ưu tiên cơ bản (KHÔNG CÒN KHU VỰC) */}
+                  <div 
+                    className="d-flex align-items-center gap-1 overflow-auto mobile-pills-scroll pt-0.5" 
+                    style={{ 
+                      whiteSpace: 'nowrap',
+                      minWidth: 0,
+                      WebkitOverflowScrolling: 'touch',
+                      scrollbarWidth: 'none',
+                      msOverflowStyle: 'none'
+                    }}
+                  >
+                    <span className="text-muted fw-bold me-1 flex-shrink-0" style={{ fontSize: '0.68rem', letterSpacing: '0.05em' }}>ƯU TIÊN:</span>
+                    <button
+                      type="button"
+                      className="btn btn-sm flex-shrink-0"
+                      style={{
+                        borderRadius: '9999px',
+                        padding: '2px 8px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        backgroundColor: selectedPriority === 0 ? '#2563eb' : '#ffffff',
+                        color: selectedPriority === 0 ? '#ffffff' : '#64748b',
+                        border: '1px solid ' + (selectedPriority === 0 ? '#2563eb' : '#e2e8f0')
+                      }}
+                      onClick={() => { setSelectedPriority(0); setCurrentPage(1); }}
+                    >
+                      Tất cả
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm flex-shrink-0"
+                      style={{
+                        borderRadius: '9999px',
+                        padding: '2px 8px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        backgroundColor: selectedPriority === DamageReportPriority.Urgent ? '#ef4444' : '#ffffff',
+                        color: selectedPriority === DamageReportPriority.Urgent ? '#ffffff' : '#dc2626',
+                        border: '1px solid ' + (selectedPriority === DamageReportPriority.Urgent ? '#ef4444' : '#fecaca')
+                      }}
+                      onClick={() => { setSelectedPriority(selectedPriority === DamageReportPriority.Urgent ? 0 : DamageReportPriority.Urgent); setCurrentPage(1); }}
+                    >
+                      ⚡ Khẩn
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm flex-shrink-0"
+                      style={{
+                        borderRadius: '9999px',
+                        padding: '2px 8px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        backgroundColor: selectedPriority === DamageReportPriority.High ? '#f59e0b' : '#ffffff',
+                        color: selectedPriority === DamageReportPriority.High ? '#ffffff' : '#d97706',
+                        border: '1px solid ' + (selectedPriority === DamageReportPriority.High ? '#f59e0b' : '#fed7aa')
+                      }}
+                      onClick={() => { setSelectedPriority(selectedPriority === DamageReportPriority.High ? 0 : DamageReportPriority.High); setCurrentPage(1); }}
+                    >
+                      🔥 Cao
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm flex-shrink-0"
+                      style={{
+                        borderRadius: '9999px',
+                        padding: '2px 8px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        backgroundColor: selectedPriority === DamageReportPriority.Normal ? '#64748b' : '#ffffff',
+                        color: selectedPriority === DamageReportPriority.Normal ? '#ffffff' : '#64748b',
+                        border: '1px solid ' + (selectedPriority === DamageReportPriority.Normal ? '#64748b' : '#e2e8f0')
+                      }}
+                      onClick={() => { setSelectedPriority(selectedPriority === DamageReportPriority.Normal ? 0 : DamageReportPriority.Normal); setCurrentPage(1); }}
+                    >
+                      ⚪ Bình thường
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-            <div style={{ flexShrink: 1, minWidth: 0 }}>
-              <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', color: '#6c757d' }}>
-                Hiển thị {startIndex + 1}-{Math.min(endIndex, reports.length)} của {reports.length}
-              </span>
-            </div>
-          </div>
+          )}
         </div>
-        <div className="card-body mobile-sticky-body" style={{ padding: viewMode === 'table' ? 0 : '1rem' }}>
+        <div className="card-body mobile-sticky-body" style={{ padding: 0, backgroundColor: viewMode === 'card' ? '#f1f5f9' : '#ffffff' }}>
           {showDeletedFilter && (
             <div
               className="alert alert-warning d-flex align-items-center gap-2 mb-0 rounded-0 border-0 border-bottom py-2 px-3"
@@ -2613,14 +3119,17 @@ export default function DamageReportsPage() {
                 <table className="table align-middle dr-desktop-table table-sticky-header" style={{ marginBottom: 0, minWidth: '1200px', borderCollapse: 'collapse' }}>
                   <thead className="sticky-top dashboard-table-header" style={{ zIndex: 5, position: 'sticky', top: 0 }}>
                     <tr style={{ fontWeight: '600', color: '#ffffff', fontSize: '0.75rem', letterSpacing: '0.03em' }}>
-                      <th style={{ width: '110px', textAlign: 'center', padding: '0.6rem 0.5rem' }}>
-                        <input
-                          type="checkbox"
-                          checked={currentReports.length > 0 && selectedIds.length === currentReports.length}
-                          onChange={handleSelectAll}
-                          style={{ transform: 'scale(1.2)', cursor: 'pointer' }}
-                          title="Chọn tất cả"
-                        />
+                      <th style={{ width: '130px', textAlign: 'center', padding: '0.6rem 0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                          <span style={{ fontSize: '0.72rem', color: '#ffffff', opacity: 0.9, fontWeight: 600 }}>STT</span>
+                          <input
+                            type="checkbox"
+                            checked={currentReports.length > 0 && selectedIds.length === currentReports.length}
+                            onChange={handleSelectAll}
+                            style={{ transform: 'scale(1.15)', cursor: 'pointer' }}
+                            title="Chọn tất cả"
+                          />
+                        </div>
                       </th>
                       <th style={{ cursor: 'pointer', minWidth: '150px', padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }} onClick={() => handleSort('displayLocation')}>
                         Vị trí/Thiết bị {getSortIcon('displayLocation')}
@@ -2661,7 +3170,7 @@ export default function DamageReportsPage() {
                         </td>
                       </tr>
                     ) : (
-                      currentReports.map((report) => (
+                      currentReports.map((report, idx) => (
                         <tr
                           key={report.id}
                           className={`dr-table-row${selectedIds.includes(report.id) ? ' dr-row-selected' : ''}`}
@@ -2672,8 +3181,11 @@ export default function DamageReportsPage() {
                             transition: 'background-color 0.12s ease'
                           }}
                         >
-                          <td style={{ padding: '0.3rem 0.4rem', width: '110px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', justifyContent: 'center' }}>
+                          <td style={{ padding: '0.3rem 0.4rem', width: '130px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                              <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600, minWidth: '22px', textAlign: 'right' }}>
+                                {startIndex + idx + 1}
+                              </span>
                               {/* Checkbox */}
                               <input
                                 type="checkbox"
@@ -2925,7 +3437,7 @@ export default function DamageReportsPage() {
               style={{ 
                 overflowY: 'auto', 
                 WebkitOverflowScrolling: 'touch',
-                backgroundColor: '#f8f9fa'
+                backgroundColor: '#f1f5f9'
               }}
             >
               <div className="row g-2">
@@ -2938,443 +3450,412 @@ export default function DamageReportsPage() {
                     <span className="text-muted">Không có dữ liệu</span>
                   </div>
                 ) : (
-                  currentReports.map((report) => (
-                    <div key={report.id} className="col-12 col-md-6 col-lg-4">
-                      <div
-                        key={report.id}
-                        className="card border-0 mb-4 modern-status-card h-100"
-                        style={{
-                          borderRadius: '12px',
-                          overflow: 'hidden',
-                          backgroundColor: '#ffffff',
-                          boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-                          border: '1px solid #e2e8f0',
-                          transition: 'all 0.3s ease',
-                          borderLeft: `6px solid ${getStatusStyle(report.status).backgroundColor}`
-                        }}
-                      >
-                        {/* Card Header - Branded Midnight Blue (#2c3e50) */}
+                  currentReports.map((report, idx) => {
+                    const isExpanded = expandedCardId === report.id;
+                    const sBadge = getCardStatusBadge(report.status);
+                    const pBadge = getCardPriorityBadge(report.priority);
+
+                    return (
+                      <div key={report.id} className="col-12 col-md-6 col-lg-4">
                         <div
-                          className="px-2 py-1"
+                          className="card border-0 mb-2 shadow-sm"
                           style={{
-                            backgroundColor: '#2c3e50',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                            cursor: 'pointer',
-                            minHeight: '50px'
+                            borderRadius: '12px',
+                            overflow: 'hidden',
+                            backgroundColor: '#ffffff',
+                            borderTop: selectedIds.includes(report.id) ? '2px solid #3b82f6' : '1px solid #e2e8f0',
+                            borderRight: selectedIds.includes(report.id) ? '2px solid #3b82f6' : '1px solid #e2e8f0',
+                            borderBottom: selectedIds.includes(report.id) ? '2px solid #3b82f6' : '1px solid #e2e8f0',
+                            borderLeft: `4px solid ${pBadge.bar}`,
+                            transition: 'all 0.2s ease',
+                            boxShadow: '0 1px 4px rgba(0,0,0,0.04)'
                           }}
-                          onClick={() => handleCheckboxChange(report.id)}
                         >
-                          <div className="flex-grow-1" style={{ minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                            <div className="d-flex align-items-center gap-2 mb-0">
-                              <span 
-                                className="badge rounded-pill" 
-                                style={{ 
-                                  backgroundColor: getStatusStyle(report.status).backgroundColor, 
-                                  color: '#ffffff', 
-                                  fontSize: '0.6rem',
-                                  fontWeight: '901',
-                                  padding: '3px 6px',
-                                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                                }}
-                              >
-                                #{report.id}
-                              </span>
-                              {report.isFromWorkPlan ? (
-                                <span
-                                  className="badge fw-semibold"
-                                  title={report.sourcePlanDate ? `Tạo từ kế hoạch ngày ${formatDateDisplay(report.sourcePlanDate)}` : 'Tạo từ kế hoạch'}
-                                  style={{
-                                    backgroundColor: 'rgba(16, 185, 129, 0.18)',
-                                    color: '#ffffff',
-                                    border: '1px solid rgba(255,255,255,0.35)',
-                                    fontSize: '0.58rem',
-                                    padding: '3px 6px'
-                                  }}
-                                >
-                                  KH
-                                </span>
-                              ) : null}
-                              <h6 className="mb-0 text-truncate text-white" style={{
-                                fontSize: '0.85rem',
-                                fontWeight: '700',
-                                lineHeight: '1.2'
-                              }}>
-                                {report.displayLocation || 'Không xác định'}
-                                {report.maintenanceBatchId && (!report.deviceName || report.deviceName === '-') ? (
-                                  <span className="badge bg-info bg-opacity-25 text-white fw-bold ms-2" style={{ fontSize: '0.6rem', border: '1px solid rgba(255,255,255,0.3)' }}>Bảo trì</span>
-                                ) : null}
-                              </h6>
-                              {report.isOverdue && (
-                                <span className="badge bg-danger text-white border-0 py-0 px-1" style={{ fontSize: '0.5rem', fontWeight: '800', borderRadius: '4px' }}>
-                                  <i className="fas fa-clock me-1"></i> TRỄ
-                                </span>
-                              )}
-                            </div>
-                            <div className="d-flex align-items-center" style={{ marginTop: '1px', minHeight: '14px' }}>
-                              {report.deviceLocationName ? (
-                                <span className="text-white text-truncate d-flex align-items-center" style={{ fontSize: '0.65rem', fontWeight: '400', opacity: 0.6 }}>
-                                  <i className="fas fa-map-marker-alt me-1 text-info" style={{ fontSize: '0.6rem', opacity: 0.8 }}></i>
-                                  {report.deviceLocationName}
-                                </span>
-                              ) : (
-                                <span style={{ fontSize: '0.65rem' }}>&nbsp;</span>
-                              )}
-                            </div>
-                          </div>
-                        <div className="d-flex align-items-center gap-2" style={{ flexShrink: 0 }}>
-                          <button
-                            type="button"
-                            className="btn btn-icon-only rounded-circle border-0"
-                            style={{ 
-                              backgroundColor: 'rgba(255,255,255,0.1)',
-                              color: '#ffffff',
-                              width: '32px',
-                              height: '32px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center'
-                            }}
-                            onClick={(e) => { e.stopPropagation(); openQuickView(report.id); }}
-                          >
-                            <i className="fas fa-expand-alt fa-sm"></i>
-                          </button>
-                          {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned || report.status === DamageReportStatus.InProgress) && report.handlerId && !report.isDeleted && (isAdmin(currentUser?.roles) || report.reporterId === currentUserStaffId) && (
-                            <button
-                              type="button"
-                              className="btn btn-icon-only rounded-circle border-0"
-                              title="Nhắc nhở xử lý"
-                              style={{ 
-                                backgroundColor: 'rgba(255,193,7,0.2)',
-                                color: '#ffc107',
-                                width: '32px',
-                                height: '32px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                              }}
-                              onClick={(e) => { e.stopPropagation(); handleRemind(report.id); }}
-                            >
-                              <i className="fas fa-bell fa-sm"></i>
-                            </button>
-                          )}
-                          {/* Daily check-in button in header */}
-                          {report.status === DamageReportStatus.InProgress && !report.isDeleted &&
-                           (isAdmin(currentUser?.roles) || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && 
-                           !hasNotesToday(report.handlerNotes) && (
-                            <div onClick={(e) => e.stopPropagation()}>
-                              <DailyCheckinButton reportId={report.id} initialData={getCheckinStatus(report.id)} onCheckinChange={() => mutateCheckins()} compact={true} cardHeader={true} />
-                            </div>
-                          )}
-                          <div className="form-check m-0 p-0" style={{ minHeight: 'auto' }}>
-                            <input
-                              type="checkbox"
-                              className="form-check-input ms-0"
-                              checked={selectedIds.includes(report.id)}
-                              onChange={() => handleCheckboxChange(report.id)}
-                              onClick={(e) => e.stopPropagation()}
-                              style={{
-                                cursor: 'pointer',
-                                width: '1.3rem',
-                                height: '1.3rem',
-                                borderRadius: '4px',
-                                border: '1px solid rgba(255,255,255,0.3)',
-                                backgroundColor: selectedIds.includes(report.id) ? '#3498db' : 'transparent'
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Card Body */}
-                      <div className="card-body px-2 py-3">
-                        {/* Status Selectors - Row */}
-                        <div className="row g-2 mb-3">
-                          <div className="col-6">
-                            <label className="d-block text-muted mb-1 fw-bold" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Trạng thái</label>
-                            <div className="position-relative">
-                              <select
-                                className="form-select form-select-sm fw-bold border"
-                                value={report.status}
-                                onChange={(e) => handleStatusChange(report.id, Number(e.target.value) as DamageReportStatus)}
-                                disabled={!canUpdateStatusForReport(report)}
-                                style={{
-                                  fontSize: '0.75rem',
-                                  borderRadius: '6px',
-                                  height: '34px',
-                                  ...getStatusStyle(report.status),
-                                  border: `1.5px solid ${getStatusStyle(report.status).borderColor}`
-                                }}
+                          <div style={{ padding: '0.75rem 0.85rem' }}>
+                            {/* Hàng 1: Checkbox + Tiêu đề sự việc nổi bật (Hero) + Actions */}
+                            <div className="d-flex align-items-start gap-2">
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.includes(report.id)}
+                                onChange={() => handleCheckboxChange(report.id)}
                                 onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  cursor: 'pointer',
+                                  width: '1rem',
+                                  height: '1rem',
+                                  borderRadius: '4px',
+                                  flexShrink: 0,
+                                  marginTop: '2px',
+                                  accentColor: '#2563eb'
+                                }}
+                              />
+                              <div 
+                                className="flex-grow-1" 
+                                style={{ minWidth: 0, cursor: 'pointer' }}
+                                onClick={() => setExpandedCardId(isExpanded ? null : report.id)}
                               >
-                                {isAdmin(currentUser?.roles) ? (
-                                  <>
-                                    <option value={report.status === DamageReportStatus.Assigned ? DamageReportStatus.Assigned : DamageReportStatus.Pending} style={{ color: getStatusStyle(DamageReportStatus.Pending).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Chờ xử lý</option>
-                                    <option value={DamageReportStatus.InProgress} style={{ color: getStatusStyle(DamageReportStatus.InProgress).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Đang xử lý</option>
-                                    <option value={DamageReportStatus.Completed} style={{ color: getStatusStyle(DamageReportStatus.Completed).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Hoàn thành</option>
-                                    <option value={DamageReportStatus.Cancelled} style={{ color: getStatusStyle(DamageReportStatus.Cancelled).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Đã hủy</option>
-                                    <option value={DamageReportStatus.Rejected} style={{ color: getStatusStyle(DamageReportStatus.Rejected).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Từ chối</option>
-                                  </>
-                                ) : (
-                                  <>
-                                    {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned) && (
-                                      <option value={report.status} style={{ color: getStatusStyle(report.status).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Chờ xử lý</option>
-                                    )}
-                                    <option value={DamageReportStatus.InProgress} style={{ color: getStatusStyle(DamageReportStatus.InProgress).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Đang xử lý</option>
-                                    <option value={DamageReportStatus.Completed} style={{ color: getStatusStyle(DamageReportStatus.Completed).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Hoàn thành</option>
-                                    <option value={DamageReportStatus.Cancelled} style={{ color: getStatusStyle(DamageReportStatus.Cancelled).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Đã hủy</option>
-                                    <option value={DamageReportStatus.Rejected} style={{ color: getStatusStyle(DamageReportStatus.Rejected).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Từ chối</option>
-                                  </>
+                                <div style={{
+                                  fontSize: '0.88rem',
+                                  fontWeight: '700',
+                                  color: '#0f172a',
+                                  lineHeight: '1.35',
+                                  display: '-webkit-box',
+                                  WebkitLineClamp: isExpanded ? 'unset' : 2,
+                                  WebkitBoxOrient: 'vertical',
+                                  overflow: 'hidden',
+                                  wordBreak: 'break-word'
+                                }}>
+                                  {report.damageContent || 'Không có nội dung'}
+                                </div>
+                              </div>
+                              <div className="d-flex align-items-center gap-1.5" style={{ flexShrink: 0 }}>
+                                {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned || report.status === DamageReportStatus.InProgress) && report.handlerId && !report.isDeleted && (isAdmin(currentUser?.roles) || report.reporterId === currentUserStaffId) && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-link text-warning p-0"
+                                    title="Nhắc nhở xử lý"
+                                    style={{ fontSize: '0.8rem', lineHeight: 1 }}
+                                    onClick={(e) => { e.stopPropagation(); handleRemind(report.id); }}
+                                  >
+                                    <i className="fas fa-bell"></i>
+                                  </button>
                                 )}
-                              </select>
+                                {report.status === DamageReportStatus.InProgress && !report.isDeleted &&
+                                 (isAdmin(currentUser?.roles) || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && 
+                                 !hasNotesToday(report.handlerNotes) && (
+                                  <div onClick={(e) => e.stopPropagation()}>
+                                    <DailyCheckinButton reportId={report.id} initialData={getCheckinStatus(report.id)} onCheckinChange={() => mutateCheckins()} compact={true} cardHeader={true} />
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                          <div className="col-6">
-                            <label className="d-block text-muted mb-1 fw-bold" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ưu tiên</label>
-                            <div className="position-relative">
-                              <select
-                                className="form-select form-select-sm fw-bold border"
-                                value={report.priority}
-                                onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
-                                disabled={!userPermissions.canEdit || report.isDeleted || report.status === DamageReportStatus.Completed}
+
+                            {/* Hàng 2: Vị trí + Thiết bị + Ngày tháng + Badges */}
+                            <div 
+                              className="mt-1.5 d-flex align-items-center justify-content-between text-muted" 
+                              style={{ fontSize: '0.75rem', cursor: 'pointer' }}
+                              onClick={() => setExpandedCardId(isExpanded ? null : report.id)}
+                            >
+                              <div className="text-truncate me-2" style={{ color: '#64748b' }}>
+                                <span className="me-1">📍</span>
+                                <span className="fw-semibold text-dark">{report.displayLocation || 'Không xác định'}</span>
+                                {report.deviceName && report.deviceName !== '-' && (
+                                  <span className="text-muted ms-1">· {report.deviceName}</span>
+                                )}
+                                {report.isFromWorkPlan && (
+                                  <span className="badge bg-success bg-opacity-10 text-success ms-1 py-0 px-1" style={{ fontSize: '0.6rem' }}>KH</span>
+                                )}
+                                {report.isOverdue && (
+                                  <span className="badge bg-danger text-white ms-1 py-0 px-1" style={{ fontSize: '0.55rem', fontWeight: 800 }}>TRỄ</span>
+                                )}
+                              </div>
+                              <div className="text-muted text-nowrap d-flex align-items-center gap-1.5" style={{ fontSize: '0.72rem', flexShrink: 0 }}>
+                                {report.handlerNotes && (
+                                  <span title="Có ghi chú xử lý"><i className="far fa-comment-alt text-success"></i></span>
+                                )}
+                                {((report.images && report.images.length > 0) || (report.afterImages && report.afterImages.length > 0)) && (
+                                  <span title="Có ảnh đính kèm"><i className="far fa-image text-primary"></i> {(report.images?.length || 0) + (report.afterImages?.length || 0)}</span>
+                                )}
+                                <span>{report.reportDate ? formatDateDisplay(report.reportDate).split(' ')[0] : ''}</span>
+                              </div>
+                            </div>
+
+                            {/* Đường phân cách kèm Số thứ tự (Đúng vị trí theo demo) */}
+                            <div className="d-flex align-items-center gap-1.5 mt-2 mb-2" style={{ minWidth: 0 }}>
+                              <span 
                                 style={{
                                   fontSize: '0.75rem',
-                                  borderRadius: '6px',
-                                  height: '34px',
-                                  ...getPriorityStyle(report.priority),
-                                  border: `1.5px solid ${getPriorityStyle(report.priority).borderColor}`
+                                  fontWeight: 700,
+                                  color: '#64748b',
+                                  lineHeight: 1,
+                                  flexShrink: 0,
+                                  userSelect: 'none'
                                 }}
                               >
-                                <option value={DamageReportPriority.Low} style={{ color: getPriorityStyle(DamageReportPriority.Low).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Thấp</option>
-                                <option value={DamageReportPriority.Normal} style={{ color: getPriorityStyle(DamageReportPriority.Normal).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Bình thường</option>
-                                <option value={DamageReportPriority.High} style={{ color: getPriorityStyle(DamageReportPriority.High).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Cao</option>
-                                <option value={DamageReportPriority.Urgent} style={{ color: getPriorityStyle(DamageReportPriority.Urgent).backgroundColor, backgroundColor: '#ffffff', fontWeight: 600 }}>Khẩn cấp</option>
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Damage Content - Branded Boxed Style */}
-                        <div className="mb-3 p-2 rounded" style={{ backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0' }}>
-                          <div className="d-flex align-items-center gap-2 mb-2">
-                            <label className="fw-800 text-muted mb-0" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                              Nội dung sự việc
-                            </label>
-                          </div>
-                          <div
-                            className="text-dark"
-                            style={{
-                              fontSize: '0.9rem',
-                              fontWeight: '600',
-                              lineHeight: '1.5',
-                              display: '-webkit-box',
-                              WebkitLineClamp: 3,
-                              WebkitBoxOrient: 'vertical',
-                              overflow: 'hidden',
-                              wordBreak: 'break-word'
-                            }}
-                          >
-                            {report.damageContent || 'N/A'}
-                          </div>
-                        </div>
-
-                        {/* Staff Information */}
-                        <div className="row g-2 mb-3">
-                          <div className="col-6">
-                            <div className="p-2 border rounded" style={{ backgroundColor: '#ffffff', borderColor: '#f1f5f9' }}>
-                              <span className="text-muted fw-bold d-block" style={{ fontSize: '0.55rem', textTransform: 'uppercase' }}>Người báo cáo</span>
-                              <span className="fw-700 text-dark d-block text-truncate" style={{ fontSize: '0.8rem' }}>
-                                {report.reporterName || 'N/A'}
+                                {idx + 1}
                               </span>
+                              <div style={{ flex: 1, height: '1px', backgroundColor: '#e2e8f0' }} />
                             </div>
-                          </div>
-                          <div className="col-6">
-                            <div className="p-2 border rounded h-100" style={{ backgroundColor: '#ffffff', borderColor: '#f1f5f9' }}>
-                              <span className="text-muted fw-bold d-block" style={{ fontSize: '0.55rem', textTransform: 'uppercase' }}>Người xử lý</span>
-                              <span className={`fw-700 d-block text-truncate ${report.handlerName ? 'text-primary' : 'text-muted italic'}`} style={{ fontSize: '0.8rem' }}>
-                                {report.handlerName || 'Chưa gán'}
-                              </span>
-                              {report.coHandlers && report.coHandlers.length > 0 && (
-                                <span className="d-block text-muted fst-italic mt-1" style={{ fontSize: '0.65rem', lineHeight: '1.2' }}>
-                                  <i className="fas fa-users fa-xs me-1"></i>
-                                  {report.coHandlers.map(h => h.name).join(', ')}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
 
-                        {/* Timeline */}
-                        <div className="row g-1 mb-3 text-center">
-                          <div className="col-4">
-                            <div className="py-1 bg-light rounded" style={{ border: '1px solid #edf2f7' }}>
-                              <div style={{ fontSize: '0.5rem', color: '#718096', fontWeight: '800' }}>BÁO CÁO</div>
-                              <div style={{ fontSize: '0.7rem', fontWeight: '700', color: '#2d3748' }}>
-                                {report.reportDate ? formatDateDisplay(report.reportDate).split(' ')[0] : '--'}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="col-4">
-                            <div className="py-1 bg-light rounded" style={{ border: '1px solid #edf2f7' }}>
-                              <div style={{ fontSize: '0.5rem', color: '#718096', fontWeight: '800' }}>XỬ LÝ</div>
-                              <div style={{ fontSize: '0.7rem', fontWeight: '700', color: report.handlingDate ? '#2d3748' : '#cbd5e1' }}>
-                                {report.handlingDate ? formatDateDisplay(report.handlingDate).split(' ')[0] : '--'}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="col-4">
-                            <div className="py-1 bg-light rounded" style={{ border: '1px solid #edf2f7' }}>
-                              <div style={{ fontSize: '0.5rem', color: '#718096', fontWeight: '800' }}>XONG</div>
-                              <div style={{ fontSize: '0.7rem', fontWeight: '700', color: report.completedDate ? '#38a169' : '#cbd5e1' }}>
-                                {report.completedDate ? formatDateDisplay(report.completedDate).split(' ')[0] : '--'}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Handler Notes - Boxed Style */}
-                        {((report.handlerNotes && report.handlerNotes.trim() !== '') || 
-                          ((userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && 
-                           report.status !== DamageReportStatus.Completed && 
-                           report.status !== DamageReportStatus.Cancelled && 
-                           report.status !== DamageReportStatus.Rejected)) && (
-                        <div className="p-2 rounded mb-3" style={{ backgroundColor: '#f0fdf4', border: '1px solid #dcfce7' }} onClick={(e) => e.stopPropagation()}>
-                          <div className="d-flex align-items-center gap-2 mb-2">
-                            <span className="fw-800 text-success" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                              Kết quả / Ghi chú xử lý
-                            </span>
-                          </div>
-                          <HandlerNotesEditor
-                            reportId={report.id}
-                            value={report.handlerNotes || ''}
-                            onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
-                            isCard={true}
-                            canEdit={!report.isDeleted && (userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && 
-                                     report.status !== DamageReportStatus.Completed && 
-                                     report.status !== DamageReportStatus.Cancelled && 
-                                     report.status !== DamageReportStatus.Rejected}
-                            isAdmin={isAdmin(currentUser?.roles)}
-                            isAdding={editingNoteReportId === `card-${report.id}`}
-                            setIsAdding={(adding) => setEditingNoteReportId(adding ? `card-${report.id}` : null)}
-                          />
-                        </div>
-                        )}
-
-                        {/* Images Section - Side by Side (Before | After) */}
-                        {((report.images && report.images.length > 0) || 
-                          (report.afterImages && report.afterImages.length > 0) ||
-                          (isAdmin(currentUser?.roles) || report.reporterId === currentUserStaffId || report.handlerId === currentUserStaffId)) && (
-                          <div className="mt-3 pt-2 border-top" onClick={(e) => e.stopPropagation()}>
-                            <div className="row g-2">
-                              {/* Left Column: Before Images */}
-                              <div className={report.afterImages && report.afterImages.length > 0 ? "col-6 border-end" : "col-12"}>
-                                <div className="d-flex align-items-center justify-content-between mb-1">
-                                  <div className="text-muted" style={{ fontSize: '0.5rem', fontWeight: '800', textTransform: 'uppercase' }}>Ảnh báo cáo</div>
-                                  {(isAdmin(currentUser?.roles) || report.reporterId === currentUserStaffId || report.handlerId === currentUserStaffId) && 
-                                   report.status !== DamageReportStatus.Completed && (
-                                    <button 
-                                      className="btn btn-link p-0 text-primary text-decoration-none" 
-                                      style={{ fontSize: '0.55rem', fontWeight: '700' }}
-                                      onClick={() => {
-                                        setFileManagerMode('image');
-                                        setFileManagerTarget('images');
-                                        setSelectedReportForImages(report.id);
-                                        setShowFileManager(true);
-                                      }}
-                                    >
-                                      <i className="fas fa-plus-circle me-1"></i>Thêm ảnh
-                                    </button>
-                                  )}
-                                </div>
-                                <div className="d-flex gap-1 overflow-auto pb-1 scrollbar-thin">
-                                  {report.images && report.images.length > 0 ? (
+                            {/* Hàng 3: Trạng thái + Ưu tiên + Người phụ trách */}
+                            <div className="d-flex align-items-center justify-content-between gap-1">
+                              <div className="d-flex align-items-center gap-1.5" style={{ flexShrink: 0 }}>
+                                <select
+                                  value={report.status}
+                                  onChange={(e) => handleStatusChange(report.id, Number(e.target.value) as DamageReportStatus)}
+                                  disabled={!canUpdateStatusForReport(report)}
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    fontWeight: 600,
+                                    borderRadius: '9999px',
+                                    padding: '2px 8px',
+                                    height: '24px',
+                                    width: 'auto',
+                                    backgroundColor: sBadge.bg,
+                                    color: sBadge.color,
+                                    border: `1px solid ${sBadge.border}`,
+                                    appearance: 'none',
+                                    WebkitAppearance: 'none',
+                                    cursor: canUpdateStatusForReport(report) ? 'pointer' : 'default',
+                                    outline: 'none',
+                                    textAlign: 'center',
+                                    lineHeight: 1
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {isAdmin(currentUser?.roles) ? (
                                     <>
-                                      {report.images.slice(0, 3).map((img, idx) => (
-                                        <img
-                                          key={idx}
-                                          src={img}
-                                          alt={`Hình ${idx + 1}`}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setSelectedImages(report.images!);
-                                            setCurrentImageIndex(idx);
-                                            setShowImageModal(true);
-                                          }}
-                                          style={{
-                                            width: '38px',
-                                            height: '38px',
-                                            objectFit: 'cover',
-                                            borderRadius: '4px',
-                                            border: '1px solid #e2e8f0',
-                                            cursor: 'pointer',
-                                            flexShrink: 0
-                                          }}
-                                        />
-                                      ))}
-                                      {report.images.length > 3 && (
-                                        <div 
-                                          className="d-flex align-items-center justify-content-center" 
-                                          style={{ width: '38px', height: '38px', backgroundColor: '#f1f5f9', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 'bold', cursor: 'pointer', flexShrink: 0 }}
-                                          onClick={(e) => { e.stopPropagation(); setSelectedImages(report.images!); setCurrentImageIndex(3); setShowImageModal(true); }}
-                                        >
-                                          +{report.images.length - 3}
-                                        </div>
-                                      )}
+                                      <option value={report.status === DamageReportStatus.Assigned ? DamageReportStatus.Assigned : DamageReportStatus.Pending} style={{ color: '#475569', backgroundColor: '#ffffff', fontWeight: 600 }}>Chờ xử lý</option>
+                                      <option value={DamageReportStatus.InProgress} style={{ color: '#1d4ed8', backgroundColor: '#ffffff', fontWeight: 600 }}>Đang xử lý</option>
+                                      <option value={DamageReportStatus.Completed} style={{ color: '#047857', backgroundColor: '#ffffff', fontWeight: 600 }}>Hoàn thành</option>
+                                      <option value={DamageReportStatus.Cancelled} style={{ color: '#374151', backgroundColor: '#ffffff', fontWeight: 600 }}>Đã hủy</option>
+                                      <option value={DamageReportStatus.Rejected} style={{ color: '#b91c1c', backgroundColor: '#ffffff', fontWeight: 600 }}>Từ chối</option>
                                     </>
                                   ) : (
-                                    <div className="text-muted fst-italic" style={{ fontSize: '0.6rem' }}>Chưa có ảnh</div>
+                                    <>
+                                      {(report.status === DamageReportStatus.Pending || report.status === DamageReportStatus.Assigned) && (
+                                        <option value={report.status} style={{ color: '#475569', backgroundColor: '#ffffff', fontWeight: 600 }}>Chờ xử lý</option>
+                                      )}
+                                      <option value={DamageReportStatus.InProgress} style={{ color: '#1d4ed8', backgroundColor: '#ffffff', fontWeight: 600 }}>Đang xử lý</option>
+                                      <option value={DamageReportStatus.Completed} style={{ color: '#047857', backgroundColor: '#ffffff', fontWeight: 600 }}>Hoàn thành</option>
+                                      <option value={DamageReportStatus.Cancelled} style={{ color: '#374151', backgroundColor: '#ffffff', fontWeight: 600 }}>Đã hủy</option>
+                                      <option value={DamageReportStatus.Rejected} style={{ color: '#b91c1c', backgroundColor: '#ffffff', fontWeight: 600 }}>Từ chối</option>
+                                    </>
                                   )}
-                                </div>
+                                </select>
+
+                                <select
+                                  value={report.priority}
+                                  onChange={(e) => handlePriorityChange(report.id, Number(e.target.value) as DamageReportPriority)}
+                                  disabled={!userPermissions.canEdit || report.isDeleted || report.status === DamageReportStatus.Completed}
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    fontWeight: 600,
+                                    borderRadius: '9999px',
+                                    padding: '2px 8px',
+                                    height: '24px',
+                                    width: 'auto',
+                                    backgroundColor: pBadge.bg,
+                                    color: pBadge.color,
+                                    border: `1px solid ${pBadge.border}`,
+                                    appearance: 'none',
+                                    WebkitAppearance: 'none',
+                                    cursor: userPermissions.canEdit ? 'pointer' : 'default',
+                                    outline: 'none',
+                                    textAlign: 'center',
+                                    lineHeight: 1
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <option value={DamageReportPriority.Low} style={{ color: '#64748b', backgroundColor: '#ffffff', fontWeight: 600 }}>Thấp</option>
+                                  <option value={DamageReportPriority.Normal} style={{ color: '#64748b', backgroundColor: '#ffffff', fontWeight: 600 }}>Bình thường</option>
+                                  <option value={DamageReportPriority.High} style={{ color: '#c2410c', backgroundColor: '#ffffff', fontWeight: 600 }}>Cao</option>
+                                  <option value={DamageReportPriority.Urgent} style={{ color: '#b91c1c', backgroundColor: '#ffffff', fontWeight: 600 }}>Khẩn cấp</option>
+                                </select>
                               </div>
 
-                              {/* Right Column: After Images */}
-                              {report.afterImages && report.afterImages.length > 0 && (
-                                <div className={report.images && report.images.length > 0 ? "col-6" : "col-12"}>
-                                  <div className="text-success mb-1" style={{ fontSize: '0.5rem', fontWeight: '800', textTransform: 'uppercase' }}>Ảnh hoàn thành</div>
-                                  <div className="d-flex gap-1 overflow-auto pb-1 scrollbar-thin">
-                                    {report.afterImages.slice(0, 3).map((img, idx) => (
-                                      <img
-                                        key={idx}
-                                        src={img}
-                                        alt={`Hình hoàn thành ${idx + 1}`}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setSelectedImages(report.afterImages!);
-                                          setCurrentImageIndex(idx);
-                                          setShowImageModal(true);
-                                        }}
-                                        style={{
-                                          width: '38px',
-                                          height: '38px',
-                                          objectFit: 'cover',
-                                          borderRadius: '4px',
-                                          border: '1px solid #dcfce7',
-                                          cursor: 'pointer',
-                                          flexShrink: 0
-                                        }}
-                                      />
-                                    ))}
-                                    {report.afterImages.length > 3 && (
-                                      <div 
-                                        className="d-flex align-items-center justify-content-center" 
-                                        style={{ width: '38px', height: '38px', backgroundColor: '#f0fdf4', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 'bold', color: '#166534', cursor: 'pointer', flexShrink: 0 }}
-                                        onClick={(e) => { e.stopPropagation(); setSelectedImages(report.afterImages!); setCurrentImageIndex(3); setShowImageModal(true); }}
-                                      >
-                                        +{report.afterImages.length - 3}
+                              {/* Người phụ trách đầy đủ họ tên */}
+                              <div className="text-end text-truncate ms-2" style={{ minWidth: 0 }}>
+                                <span style={{ fontSize: '0.78rem', fontWeight: '600', color: report.handlerName ? '#1e293b' : '#d97706' }}>
+                                  <i className="far fa-user me-1 text-muted" style={{ fontSize: '0.72rem' }}></i>
+                                  {report.handlerName || 'Chưa gán'}
+                                </span>
+                                {report.coHandlers && report.coHandlers.length > 0 && (
+                                  <span className="d-block text-muted text-truncate" style={{ fontSize: '0.65rem' }}>
+                                    +{report.coHandlers.map(h => h.name).join(', ')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Khối Mở rộng chi tiết (Timeline + Ghi chú + Ảnh) */}
+                            {isExpanded && (
+                              <div className="mt-3 pt-3 border-top" onClick={(e) => e.stopPropagation()}>
+                                {/* Timeline */}
+                                <div className="row g-1 mb-3 text-center">
+                                  <div className="col-4">
+                                    <div className="py-1 bg-light rounded" style={{ border: '1px solid #edf2f7' }}>
+                                      <div style={{ fontSize: '0.5rem', color: '#718096', fontWeight: '800' }}>BÁO CÁO</div>
+                                      <div style={{ fontSize: '0.7rem', fontWeight: '700', color: '#2d3748' }}>
+                                        {report.reportDate ? formatDateDisplay(report.reportDate).split(' ')[0] : '--'}
                                       </div>
-                                    )}
+                                    </div>
+                                  </div>
+                                  <div className="col-4">
+                                    <div className="py-1 bg-light rounded" style={{ border: '1px solid #edf2f7' }}>
+                                      <div style={{ fontSize: '0.5rem', color: '#718096', fontWeight: '800' }}>XỬ LÝ</div>
+                                      <div style={{ fontSize: '0.7rem', fontWeight: '700', color: report.handlingDate ? '#2d3748' : '#cbd5e1' }}>
+                                        {report.handlingDate ? formatDateDisplay(report.handlingDate).split(' ')[0] : '--'}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="col-4">
+                                    <div className="py-1 bg-light rounded" style={{ border: '1px solid #edf2f7' }}>
+                                      <div style={{ fontSize: '0.5rem', color: '#718096', fontWeight: '800' }}>XONG</div>
+                                      <div style={{ fontSize: '0.7rem', fontWeight: '700', color: report.completedDate ? '#38a169' : '#cbd5e1' }}>
+                                        {report.completedDate ? formatDateDisplay(report.completedDate).split(' ')[0] : '--'}
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
-                              )}
-                            </div>
+
+                                {/* Handler Notes */}
+                                {((report.handlerNotes && report.handlerNotes.trim() !== '') || 
+                                  ((userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && 
+                                   report.status !== DamageReportStatus.Completed && 
+                                   report.status !== DamageReportStatus.Cancelled && 
+                                   report.status !== DamageReportStatus.Rejected)) && (
+                                  <div className="p-2 rounded mb-3" style={{ backgroundColor: '#f0fdf4', border: '1px solid #dcfce7' }}>
+                                    <div className="d-flex align-items-center justify-content-between mb-1">
+                                      <span className="fw-800 text-success" style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                        Kết quả / Ghi chú xử lý
+                                      </span>
+                                    </div>
+                                    <HandlerNotesEditor
+                                      reportId={report.id}
+                                      value={report.handlerNotes || ''}
+                                      onChange={(newValue) => handleHandlerNotesChange(report.id, newValue)}
+                                      isCard={true}
+                                      canEdit={!report.isDeleted && (userPermissions.canEdit || (currentUserStaffId !== null && report.handlerId === currentUserStaffId)) && 
+                                               report.status !== DamageReportStatus.Completed && 
+                                               report.status !== DamageReportStatus.Cancelled && 
+                                               report.status !== DamageReportStatus.Rejected}
+                                      isAdmin={isAdmin(currentUser?.roles)}
+                                      isAdding={editingNoteReportId === `card-${report.id}`}
+                                      setIsAdding={(adding) => setEditingNoteReportId(adding ? `card-${report.id}` : null)}
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Images Section (Before | After) */}
+                                {((report.images && report.images.length > 0) || 
+                                  (report.afterImages && report.afterImages.length > 0) ||
+                                  (isAdmin(currentUser?.roles) || report.reporterId === currentUserStaffId || report.handlerId === currentUserStaffId)) && (
+                                  <div className="pt-2 border-top">
+                                    <div className="row g-2">
+                                      {/* Left Column: Before Images */}
+                                      <div className={report.afterImages && report.afterImages.length > 0 ? "col-6 border-end" : "col-12"}>
+                                        <div className="d-flex align-items-center justify-content-between mb-1">
+                                          <div className="text-muted" style={{ fontSize: '0.55rem', fontWeight: '800', textTransform: 'uppercase' }}>Ảnh báo cáo</div>
+                                          {(isAdmin(currentUser?.roles) || report.reporterId === currentUserStaffId || report.handlerId === currentUserStaffId) && 
+                                           report.status !== DamageReportStatus.Completed && (
+                                            <button 
+                                              className="btn btn-link p-0 text-primary text-decoration-none" 
+                                              style={{ fontSize: '0.6rem', fontWeight: '700' }}
+                                              onClick={() => {
+                                                setFileManagerMode('image');
+                                                setFileManagerTarget('images');
+                                                setSelectedReportForImages(report.id);
+                                                setShowFileManager(true);
+                                              }}
+                                            >
+                                              <i className="fas fa-plus-circle me-1"></i>Thêm
+                                            </button>
+                                          )}
+                                        </div>
+                                        <div className="d-flex gap-1 overflow-auto pb-1 scrollbar-thin">
+                                          {report.images && report.images.length > 0 ? (
+                                            <>
+                                              {report.images.slice(0, 3).map((img, idx) => (
+                                                <img
+                                                  key={idx}
+                                                  src={img}
+                                                  alt={`Hình ${idx + 1}`}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSelectedImages(report.images!);
+                                                    setCurrentImageIndex(idx);
+                                                    setShowImageModal(true);
+                                                  }}
+                                                  style={{
+                                                    width: '38px',
+                                                    height: '38px',
+                                                    objectFit: 'cover',
+                                                    borderRadius: '4px',
+                                                    border: '1px solid #e2e8f0',
+                                                    cursor: 'pointer',
+                                                    flexShrink: 0
+                                                  }}
+                                                />
+                                              ))}
+                                              {report.images.length > 3 && (
+                                                <div 
+                                                  className="d-flex align-items-center justify-content-center" 
+                                                  style={{ width: '38px', height: '38px', backgroundColor: '#f1f5f9', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 'bold', cursor: 'pointer', flexShrink: 0 }}
+                                                  onClick={(e) => { e.stopPropagation(); setSelectedImages(report.images!); setCurrentImageIndex(3); setShowImageModal(true); }}
+                                                >
+                                                  +{report.images.length - 3}
+                                                </div>
+                                              )}
+                                            </>
+                                          ) : (
+                                            <div className="text-muted fst-italic" style={{ fontSize: '0.6rem' }}>Chưa có ảnh</div>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* Right Column: After Images */}
+                                      {report.afterImages && report.afterImages.length > 0 && (
+                                        <div className={report.images && report.images.length > 0 ? "col-6" : "col-12"}>
+                                          <div className="text-success mb-1" style={{ fontSize: '0.55rem', fontWeight: '800', textTransform: 'uppercase' }}>Ảnh xong</div>
+                                          <div className="d-flex gap-1 overflow-auto pb-1 scrollbar-thin">
+                                            {report.afterImages.slice(0, 3).map((img, idx) => (
+                                              <img
+                                                key={idx}
+                                                src={img}
+                                                alt={`Hình hoàn thành ${idx + 1}`}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setSelectedImages(report.afterImages!);
+                                                  setCurrentImageIndex(idx);
+                                                  setShowImageModal(true);
+                                                }}
+                                                style={{
+                                                  width: '38px',
+                                                  height: '38px',
+                                                  objectFit: 'cover',
+                                                  borderRadius: '4px',
+                                                  border: '1px solid #dcfce7',
+                                                  cursor: 'pointer',
+                                                  flexShrink: 0
+                                                }}
+                                              />
+                                            ))}
+                                            {report.afterImages.length > 3 && (
+                                              <div 
+                                                className="d-flex align-items-center justify-content-center" 
+                                                style={{ width: '38px', height: '38px', backgroundColor: '#f0fdf4', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 'bold', color: '#166534', cursor: 'pointer', flexShrink: 0 }}
+                                                onClick={(e) => { e.stopPropagation(); setSelectedImages(report.afterImages!); setCurrentImageIndex(3); setShowImageModal(true); }}
+                                              >
+                                                +{report.afterImages.length - 3}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Nút thu gọn */}
+                                <div className="text-center pt-2">
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-link text-muted p-0 text-decoration-none"
+                                    style={{ fontSize: '0.72rem' }}
+                                    onClick={() => setExpandedCardId(null)}
+                                  >
+                                    <i className="fas fa-chevron-up me-1"></i> Thu gọn
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
                           </div>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                ))
+                    );
+                  })
               )}
             </div>
             {/* Nút Xem thêm cho Mobile */}

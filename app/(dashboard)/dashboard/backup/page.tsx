@@ -20,6 +20,7 @@ function BackupPageContent() {
   const [backups, setBackups] = useState<BackupItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [downloading, setDownloading] = useState<string | null>(null);
   const { user } = useAuth();
   const isSuperAdmin = user?.roles?.includes('SuperAdmin');
 
@@ -38,6 +39,30 @@ function BackupPageContent() {
       toast.error('Lỗi khi tải danh sách bản sao lưu');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDownloadBackup = async (backup: BackupItem) => {
+    try {
+      setDownloading(backup.name);
+      toast.info(`Đang tải file ${backup.name}...`);
+      const res = await api.get(`/admin/backup?download=${encodeURIComponent(backup.name)}`, {
+        responseType: 'blob'
+      });
+      const blob = new Blob([res.data], { type: 'application/octet-stream' });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = backup.name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+      toast.success(`Đã tải xuống ${backup.name}`);
+    } catch (e: any) {
+      toast.error('Lỗi khi tải file sao lưu: ' + (e.response?.data?.error || e.message));
+    } finally {
+      setDownloading(null);
     }
   };
 
@@ -61,7 +86,7 @@ function BackupPageContent() {
   const handleDeleteBackup = async (backup: BackupItem) => {
     if (!window.confirm(`Bạn có chắc muốn xóa bản sao lưu ${backup.name}?`)) return;
     try {
-      await api.delete(`/admin/backup?name=${backup.name}&url=${encodeURIComponent(backup.url)}`);
+      await api.delete(`/admin/backup?name=${encodeURIComponent(backup.name)}`);
       toast.success('Đã xóa bản sao lưu');
       loadBackups();
     } catch (e: any) {
@@ -152,16 +177,15 @@ function BackupPageContent() {
                     <td className="align-middle d-none d-md-table-cell small">{formatDateTime(b.uploadedAt)}</td>
                     <td className="align-middle">
                       <div className="d-flex gap-1 justify-content-center">
-                        <a 
-                          href={b.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
+                        <button 
+                          type="button"
                           className="btn btn-sm btn-outline-primary"
                           title={`Tải về file ${b.name.endsWith('.dump') ? 'Dump' : 'SQL'}`}
-                          download={b.name}
+                          onClick={() => handleDownloadBackup(b)}
+                          disabled={downloading === b.name}
                         >
-                          <i className="fas fa-download"></i>
-                        </a>
+                          <i className={`fas ${downloading === b.name ? 'fa-spinner fa-spin' : 'fa-download'}`}></i>
+                        </button>
                         <button 
                           className="btn btn-sm btn-outline-warning"
                           onClick={() => handleRestoreBackup(b)}
@@ -257,14 +281,17 @@ function BackupPageContent() {
               </div>
               <div className="modal-footer">
                 <button className="btn btn-secondary" onClick={() => setShowRestoreGuideModal(false)}>Đóng</button>
-                <a 
-                  href={backups.find(b => b.name === restoreGuideName)?.url || '#'}
-                  download={restoreGuideName}
+                <button 
+                  type="button"
                   className="btn btn-warning"
-                  onClick={() => setShowRestoreGuideModal(false)}
+                  onClick={() => {
+                    const b = backups.find(item => item.name === restoreGuideName);
+                    if (b) handleDownloadBackup(b);
+                    setShowRestoreGuideModal(false);
+                  }}
                 >
                   <i className="fas fa-download me-2"></i>Tải file ngay
-                </a>
+                </button>
               </div>
             </div>
           </div>

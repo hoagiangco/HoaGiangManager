@@ -682,10 +682,22 @@ a {
 /* Maintenance accordion: ensure enough right padding for collapse arrow,
    and prevent the inner content from being clipped under it */
 .accordion-button {
-  padding-right: 3.5rem !important;
+  align-items: flex-start !important;
+  padding-right: 2.75rem !important;
+}
+
+.accordion-button::after {
+  margin-top: 0.35rem;
+  flex-shrink: 0;
 }
 
 @media (max-width: 767px) {
+  .accordion-button {
+    padding-right: 2.25rem !important;
+    padding-left: 0.85rem !important;
+    padding-top: 0.85rem !important;
+    padding-bottom: 0.85rem !important;
+  }
   /* On mobile, the accordion inner div should not restrict width */
   .accordion-button > div {
     width: 100%;

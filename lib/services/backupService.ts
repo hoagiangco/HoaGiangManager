@@ -2,9 +2,6 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
-import { put, list, del } from '@vercel/blob';
-import axios from 'axios';
-
 import { Client } from 'pg';
 import { getVNNow } from '../utils/dateFormat';
 
@@ -39,13 +36,13 @@ export interface BackupItem {
 }
 
 export class BackupService {
-  private static backupDir = process.env.VERCEL ? '/tmp' : path.join(process.cwd(), 'backups');
+  private static backupDir = path.join(process.cwd(), 'backups');
 
   /**
-   * Triggers a database backup using pg_dump
-   * @returns The path or URL of the created backup
+   * Triggers a database backup using pg_dump (or JS fallback)
+   * Saves directly to local backups/ directory
    */
-  static async createBackup(): Promise<{ localPath?: string; blobUrl?: string }> {
+  static async createBackup(): Promise<{ localPath: string; filename: string }> {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
       throw new Error('DATABASE_URL is not defined');
@@ -61,7 +58,7 @@ export class BackupService {
       String(now.getSeconds()).padStart(2, '0');
     const filename = `hgmanager_backup-${timestamp}.dump`;
     
-    // Ensure backup directory exists (for local fallback)
+    // Ensure backup directory exists
     if (!fs.existsSync(this.backupDir)) {
       fs.mkdirSync(this.backupDir, { recursive: true });
     }
@@ -74,11 +71,10 @@ export class BackupService {
       try {
         const pgDump = getPgBin('pg_dump');
         console.log(`Attempting ${pgDump} (custom format) to ${localPath}...`);
-        // Use custom format (-Fc), blobs, and clean flags for easy restore
         await execPromise(`${pgDump} --no-owner --no-privileges --clean --if-exists --format=c --blobs --file="${localPath}" "${databaseUrl}"`);
       } catch (execError: any) {
         console.warn('pg_dump failed, falling back to JS-based backup:', execError.message);
-        // Fallback to JS-based backup (always plain SQL)
+        // Fallback to JS-based backup (plain SQL)
         usedCustomFormat = false;
         const sqlFilename = `hgmanager_backup-${timestamp}.sql`;
         localPath = path.join(this.backupDir, sqlFilename);
@@ -86,31 +82,9 @@ export class BackupService {
       }
       
       const finalFilename = path.basename(localPath);
-      console.log(`Backup created at ${localPath}`);
+      console.log(`Backup created locally at ${localPath}`);
 
-      // 2. Check if Vercel Blob is configured
-      const hasBlobToken = !!process.env.BLOB_READ_WRITE_TOKEN && 
-                          process.env.BLOB_READ_WRITE_TOKEN !== 'your_blob_token_here' && 
-                          !process.env.BLOB_READ_WRITE_TOKEN.startsWith('YOUR_');
-
-      if (hasBlobToken) {
-        const fileBuffer = fs.readFileSync(localPath);
-        const blob = await put(`backups/${finalFilename}`, fileBuffer, {
-          access: 'public',
-          contentType: usedCustomFormat ? 'application/octet-stream' : 'application/sql',
-        });
-        
-        console.log(`Backup uploaded to Vercel Blob: ${blob.url}`);
-        
-        // After uploading to blob, we can optionally delete the local file if we are in production
-        if (process.env.NODE_ENV === 'production') {
-          fs.unlinkSync(localPath);
-        }
-        
-        return { blobUrl: blob.url };
-      }
-
-      return { localPath };
+      return { localPath, filename: finalFilename };
     } catch (error: any) {
       console.error('Backup error:', error);
       throw new Error(`Failed to create backup: ${error.message}`);
@@ -118,47 +92,23 @@ export class BackupService {
   }
 
   /**
-   * Lists all available backups (from Blob or local)
+   * Lists all available local backups
    */
   static async listBackups(): Promise<BackupItem[]> {
     const backups: BackupItem[] = [];
 
-    // 1. List from Vercel Blob
-    const hasBlobToken = !!process.env.BLOB_READ_WRITE_TOKEN && 
-                          process.env.BLOB_READ_WRITE_TOKEN !== 'your_blob_token_here' && 
-                          !process.env.BLOB_READ_WRITE_TOKEN.startsWith('YOUR_');
-
-    if (hasBlobToken) {
-      try {
-        const { blobs } = await list({ prefix: 'backups/' });
-        blobs.forEach(b => {
-          backups.push({
-            name: b.pathname.replace('backups/', ''),
-            url: b.url,
-            size: b.size,
-            uploadedAt: b.uploadedAt
-          });
-        });
-      } catch (error) {
-        console.error('Error listing blobs:', error);
-      }
-    }
-
-    // 2. List from local storage if any (only if not on Vercel)
     if (fs.existsSync(this.backupDir)) {
       const files = fs.readdirSync(this.backupDir);
       files.forEach(file => {
         if (file.endsWith('.sql') || file.endsWith('.dump') || file.endsWith('.bak')) {
-          const stats = fs.statSync(path.join(this.backupDir, file));
-          // Don't duplicate if already in blob (matching by name)
-          if (!backups.find(b => b.name === file)) {
-            backups.push({
-              name: file,
-              url: `/backups/${file}`, // This would need a route to serve it
-              size: stats.size,
-              uploadedAt: stats.mtime
-            });
-          }
+          const filePath = path.join(this.backupDir, file);
+          const stats = fs.statSync(filePath);
+          backups.push({
+            name: file,
+            url: `/api/admin/backup?download=${encodeURIComponent(file)}`,
+            size: stats.size,
+            uploadedAt: stats.mtime
+          });
         }
       });
     }
@@ -170,7 +120,7 @@ export class BackupService {
   /**
    * Validates backup filename to prevent directory traversal and injection
    */
-  private static validateBackupName(name: string): string {
+  public static validateBackupName(name: string): string {
     const cleanName = path.basename(name);
     if (!cleanName || cleanName !== name || !/^[a-zA-Z0-9_\-\.]+$/.test(cleanName)) {
       throw new Error('Tên bản sao lưu không hợp lệ');
@@ -182,54 +132,45 @@ export class BackupService {
   }
 
   /**
-   * Validates restore URL to ensure it originates only from trusted storage
+   * Gets absolute path to a local backup file
    */
-  private static validateRestoreUrl(url: string): void {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      try {
-        const parsed = new URL(url);
-        const hostname = parsed.hostname.toLowerCase();
-        if (!hostname.endsWith('.blob.vercel-storage.com') && hostname !== 'localhost' && hostname !== '127.0.0.1') {
-          throw new Error('URL phục hồi không thuộc nguồn lưu trữ tin cậy');
-        }
-      } catch (err: any) {
-        throw new Error(`URL phục hồi không hợp lệ: ${err.message}`);
-      }
+  static getBackupFilePath(name: string): string {
+    const safeName = this.validateBackupName(name);
+    const filePath = path.join(this.backupDir, safeName);
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Không tìm thấy file bản sao lưu: ${safeName}`);
     }
+    return filePath;
   }
 
   /**
-   * Deletes a backup
+   * Deletes a local backup
    */
-  static async deleteBackup(name: string, url: string): Promise<void> {
+  static async deleteBackup(name: string): Promise<void> {
     const safeName = this.validateBackupName(name);
-
-    // 1. Delete from Blob if it's a blob URL
-    if (url && url.includes('public.blob.vercel-storage.com')) {
-      this.validateRestoreUrl(url);
-      await del(url);
-    }
-
-    // 2. Delete from local if it exists
     const localPath = path.join(this.backupDir, safeName);
     if (fs.existsSync(localPath)) {
       fs.unlinkSync(localPath);
+    } else {
+      throw new Error('Không tìm thấy bản sao lưu để xóa');
     }
   }
 
   /**
-   * Restores a database from a backup
+   * Restores a database from a local backup
    */
-  static async restoreBackup(name: string, url: string): Promise<void> {
+  static async restoreBackup(name: string): Promise<void> {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
       throw new Error('DATABASE_URL is not defined');
     }
 
     const safeName = this.validateBackupName(name);
-    this.validateRestoreUrl(url);
+    const restorePath = path.join(this.backupDir, safeName);
 
-    let restorePath = path.join(this.backupDir, safeName);
+    if (!fs.existsSync(restorePath)) {
+      throw new Error(`Không tìm thấy file bản sao lưu: ${safeName}`);
+    }
 
     try {
       // 1. Create a safety backup first - MUST succeed before proceeding
@@ -240,18 +181,7 @@ export class BackupService {
         throw new Error(`Không thể tạo bản sao lưu an toàn trước khi phục hồi: ${e.message}. Quá trình phục hồi đã bị dừng để đảm bảo an toàn dữ liệu.`);
       }
 
-      // 2. Download from blob if needed
-      if (url.startsWith('http')) {
-        console.log(`Downloading backup from ${url}...`);
-        const response = await axios.get(url, { responseType: 'arraybuffer' });
-        // Ensure directory exists
-        if (!fs.existsSync(this.backupDir)) {
-          fs.mkdirSync(this.backupDir, { recursive: true });
-        }
-        fs.writeFileSync(restorePath, Buffer.from(response.data));
-      }
-
-      // 3. Run pg_restore, psql or JS-based restore
+      // 2. Run pg_restore, psql or JS-based restore
       console.log(`Restoring database from ${restorePath}...`);
       
       const isCustomFormat = restorePath.endsWith('.dump') || restorePath.endsWith('.bak');
@@ -277,16 +207,12 @@ export class BackupService {
       }
       
       console.log('Restore completed successfully');
-
-      // 4. Cleanup downloaded file if it was from blob
-      if (url.startsWith('http') && fs.existsSync(restorePath)) {
-        try { fs.unlinkSync(restorePath); } catch (e) {}
-      }
     } catch (error: any) {
       console.error('Restore error:', error);
       throw new Error(`Failed to restore backup: ${error.message}`);
     }
   }
+
 
   /**
    * Pure JS backup implementation using pg client

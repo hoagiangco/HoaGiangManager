@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import fs from 'fs';
 import { authenticate } from '@/lib/auth/middleware';
 import { BackupService } from '@/lib/services/backupService';
 import { isAdmin, isSuperAdmin } from '@/lib/auth/permissions';
 
 /**
  * GET /api/admin/backup
- * Lists all backups
+ * Lists all backups, or downloads a specific backup file if ?download=<filename> is provided
  */
 export async function GET(request: NextRequest) {
   try {
@@ -17,6 +18,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden: Chỉ quản trị viên mới có quyền xem bản sao lưu' }, { status: 403 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const downloadName = searchParams.get('download');
+
+    if (downloadName) {
+      const filePath = BackupService.getBackupFilePath(downloadName);
+      const fileBuffer = fs.readFileSync(filePath);
+      return new NextResponse(fileBuffer, {
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Disposition': `attachment; filename="${downloadName}"`,
+          'Content-Length': fileBuffer.length.toString(),
+        },
+      });
+    }
+
     const backups = await BackupService.listBackups();
     return NextResponse.json({ status: true, data: backups });
   } catch (error: any) {
@@ -26,7 +42,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/admin/backup
- * Triggers a new backup
+ * Triggers a new local database backup
  */
 export async function POST(request: NextRequest) {
   try {
@@ -47,9 +63,12 @@ export async function POST(request: NextRequest) {
         authResult.user.userId,
         'CREATE',
         'Backups',
-        result.localPath || result.blobUrl || 'backup',
+        result.filename,
         null,
-        result
+        {
+          filename: result.filename,
+          localPath: result.localPath,
+        }
       );
     } catch (auditErr) {
       console.error('Audit log error on backup create:', auditErr);
@@ -67,7 +86,7 @@ export async function POST(request: NextRequest) {
 
 /**
  * DELETE /api/admin/backup
- * Deletes a backup
+ * Deletes a local backup
  */
 export async function DELETE(request: NextRequest) {
   try {
@@ -81,13 +100,12 @@ export async function DELETE(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const name = searchParams.get('name');
-    const url = searchParams.get('url');
 
-    if (!name || !url) {
-      return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
+    if (!name) {
+      return NextResponse.json({ error: 'Missing backup name' }, { status: 400 });
     }
 
-    await BackupService.deleteBackup(name, url);
+    await BackupService.deleteBackup(name);
 
     try {
       const { logAudit } = await import('@/lib/services/auditService');
@@ -97,7 +115,7 @@ export async function DELETE(request: NextRequest) {
         'DELETE',
         'Backups',
         name,
-        { name, url },
+        { name },
         null
       );
     } catch (auditErr) {
@@ -112,7 +130,7 @@ export async function DELETE(request: NextRequest) {
 
 /**
  * PATCH /api/admin/backup
- * Restores a backup
+ * Restores a database from a local backup
  */
 export async function PATCH(request: NextRequest) {
   try {
@@ -124,13 +142,13 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden: Chỉ quản trị viên mới có quyền phục hồi dữ liệu' }, { status: 403 });
     }
 
-    const { name, url } = await request.json();
+    const { name } = await request.json();
 
-    if (!name || !url) {
-      return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
+    if (!name) {
+      return NextResponse.json({ error: 'Missing backup name' }, { status: 400 });
     }
 
-    await BackupService.restoreBackup(name, url);
+    await BackupService.restoreBackup(name);
 
     try {
       const { logAudit } = await import('@/lib/services/auditService');
@@ -141,7 +159,7 @@ export async function PATCH(request: NextRequest) {
         'Database',
         name,
         null,
-        { action: 'RESTORE', backupName: name, url }
+        { action: 'RESTORE', backupName: name }
       );
     } catch (auditErr) {
       console.error('Audit log error on database restore:', auditErr);

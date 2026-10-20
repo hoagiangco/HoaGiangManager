@@ -15,11 +15,13 @@ export const metadata: Metadata = {
   manifest: '/manifest.webmanifest',
   icons: {
     icon: [
+      { url: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512x512.png', sizes: '512x512', type: 'image/png' },
       { url: '/icons/icon.svg', type: 'image/svg+xml' },
       { url: '/favicon.ico', rel: 'shortcut icon' },
     ],
     apple: [
-      { url: '/icons/icon.svg', type: 'image/svg+xml' },
+      { url: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
     ],
   },
   appleWebApp: {
@@ -45,6 +47,18 @@ export default function RootLayout({
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="mobile-web-app-capable" content="yes" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.__deferredPwaPrompt = null;
+              window.addEventListener('beforeinstallprompt', function(e) {
+                e.preventDefault();
+                window.__deferredPwaPrompt = e;
+                window.dispatchEvent(new Event('pwa-install-available'));
+              });
+            `,
+          }}
+        />
       </head>
       <body className={inter.className}>
         <ClientProviders>

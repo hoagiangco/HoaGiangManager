@@ -4,12 +4,14 @@ import { AuthProvider } from '@/lib/contexts/AuthContext';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import PwaInstallPrompt from '@/components/PwaInstallPrompt';
 
 export default function ClientProviders({ children }: { children: React.ReactNode }) {
   return (
     <ErrorBoundary>
       <AuthProvider>
         {children}
+        <PwaInstallPrompt />
         <ToastContainer position="bottom-right" autoClose={2000} />
       </AuthProvider>
     </ErrorBoundary>

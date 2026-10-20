@@ -4,9 +4,38 @@ import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { formatDateInput } from '@/lib/utils/dateFormat';
 
-// Dynamically import DatePicker to avoid SSR issues
-const DatePicker = dynamic(
-  () => import('react-datepicker').then((mod) => mod.default || mod),
+const noop = () => {};
+
+// Dynamically import DatePicker with ssr: false
+const DatePicker = dynamic<any>(
+  () =>
+    Promise.all([
+      import('react-datepicker'),
+      import('date-fns/locale/vi')
+    ])
+      .then(([datePickerMod, viLocale]) => {
+        const dp = datePickerMod.default || datePickerMod;
+        const { registerLocale } = datePickerMod;
+        if (registerLocale) {
+          registerLocale('vi', viLocale.default || viLocale);
+        }
+        // Polyfill defaultProps on the loaded component to prevent "a.props.onFocus is not a function"
+        if (dp) {
+          (dp as any).defaultProps = {
+            ...((dp as any).defaultProps || {}),
+            onFocus: noop,
+            onBlur: noop,
+            onKeyDown: noop,
+            onClickOutside: noop,
+            onInputClick: noop
+          };
+        }
+        return dp;
+      })
+      .catch((err) => {
+        console.warn('DatePicker dynamic import error, fallback to native input:', err);
+        return () => null;
+      }),
   { 
     ssr: false,
     loading: () => (
@@ -17,6 +46,31 @@ const DatePicker = dynamic(
     )
   }
 );
+
+class DatePickerErrorBoundary extends React.Component<
+  { fallback: React.ReactNode; children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: any) {
+    console.warn('DatePicker caught error, displaying fallback input:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
 
 interface DateInputProps {
   value?: string | Date | null;
@@ -42,19 +96,9 @@ export default function DateInput({
   style,
 }: DateInputProps) {
   const [isMounted, setIsMounted] = useState(false);
-  const [DatePickerComponent, setDatePickerComponent] = useState<any>(null);
 
   useEffect(() => {
     setIsMounted(true);
-    // Register Vietnamese locale when component mounts
-    Promise.all([
-      import('react-datepicker'),
-      import('date-fns/locale')
-    ]).then(([datePickerMod, localeMod]) => {
-      const { registerLocale } = datePickerMod;
-      registerLocale('vi', localeMod.vi);
-      setDatePickerComponent(() => datePickerMod.default || datePickerMod);
-    });
   }, []);
 
   // Convert string value to Date object
@@ -116,14 +160,33 @@ export default function DateInput({
     }
   };
 
-  if (!isMounted || !DatePickerComponent) {
-    // Return a regular input during SSR or while loading
+  const formattedDateString = dateValue ? formatDateInput(dateValue) : '';
+
+  const nativeInputFallback = (
+    <div className="position-relative w-100">
+      <input
+        type="date"
+        className={`${className} pe-4`}
+        value={formattedDateString}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        required={required}
+        min={minDate ? formatDateInput(minDate) : undefined}
+        max={maxDate ? formatDateInput(maxDate) : undefined}
+        style={style}
+      />
+      <i className="fas fa-calendar-alt position-absolute end-0 top-50 translate-middle-y me-2 text-muted" style={{ pointerEvents: 'none', fontSize: '0.85rem' }}></i>
+    </div>
+  );
+
+  if (!isMounted) {
+    // Return a regular input during SSR
     return (
       <div className="position-relative w-100">
         <input
           type="text"
           className={`${className} pe-4`}
-          value={dateValue ? formatDateInput(dateValue) : ''}
+          value={formattedDateString}
           placeholder={placeholder}
           disabled={disabled}
           required={required}
@@ -135,33 +198,42 @@ export default function DateInput({
     );
   }
 
-  const Picker = DatePickerComponent;
-
   return (
-    <div className="position-relative w-100">
-      <Picker
-        selected={dateValue}
-        onChange={handleChange}
-        dateFormat="dd/MM/yyyy"
-        className={`${className} pe-4`}
-        disabled={disabled}
-        minDate={minDate}
-        maxDate={maxDate}
-        placeholderText={placeholder}
-        required={required}
-        showYearDropdown
-        showMonthDropdown
-        dropdownMode="select"
-        locale="vi"
-        wrapperClassName="w-100"
-        customInput={
-          <input 
-            style={style} 
-          />
-        }
-      />
-      <i className="fas fa-calendar-alt position-absolute end-0 top-50 translate-middle-y me-2 text-muted" style={{ pointerEvents: 'none', fontSize: '0.85rem' }}></i>
-    </div>
+    <DatePickerErrorBoundary fallback={nativeInputFallback}>
+      <div className="position-relative w-100">
+        <DatePicker
+          selected={dateValue}
+          onChange={handleChange}
+          dateFormat="dd/MM/yyyy"
+          className={`${className} pe-4`}
+          disabled={disabled}
+          minDate={minDate}
+          maxDate={maxDate}
+          placeholderText={placeholder}
+          required={required}
+          showYearDropdown
+          showMonthDropdown
+          dropdownMode="select"
+          locale="vi"
+          wrapperClassName="w-100"
+          onFocus={noop}
+          onBlur={noop}
+          onKeyDown={noop}
+          onClickOutside={noop}
+          onInputClick={noop}
+          customInput={
+            <input 
+              style={style} 
+              onFocus={noop}
+              onBlur={noop}
+              onKeyDown={noop}
+              onClick={noop}
+              onChange={noop}
+            />
+          }
+        />
+        <i className="fas fa-calendar-alt position-absolute end-0 top-50 translate-middle-y me-2 text-muted" style={{ pointerEvents: 'none', fontSize: '0.85rem' }}></i>
+      </div>
+    </DatePickerErrorBoundary>
   );
 }
-

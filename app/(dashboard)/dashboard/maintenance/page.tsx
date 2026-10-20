@@ -155,6 +155,22 @@ function MaintenancePageContent() {
     filterTitleTimer.current = setTimeout(() => setFilterTitle(value), 300);
   };
 
+  const activeFilterCount = (filterTitle.trim() ? 1 : 0)
+    + (filterDepartmentId !== 'all' ? 1 : 0)
+    + (filterStaffId !== 'all' ? 1 : 0)
+    + (planTypeFilter !== 'all' ? 1 : 0)
+    + (subFilter !== 'all' ? 1 : 0);
+
+  const handleClearAllFilters = () => {
+    if (filterTitleTimer.current) clearTimeout(filterTitleTimer.current);
+    setFilterTitleInput('');
+    setFilterTitle('');
+    setFilterDepartmentId('all');
+    setFilterStaffId('all');
+    setPlanTypeFilter('all');
+    setSubFilter('all');
+  };
+
   // Enforce tab access for non-admins (Supervisor can see batches if we allow, but let's stick to plans for now or allow both)
   useEffect(() => {
     if (!authLoading && currentUser && !isSupervisor(currentUser?.roles)) {
@@ -197,6 +213,8 @@ function MaintenancePageContent() {
   const [viewingRoundDevices, setViewingRoundDevices] = useState<any | null>(null);
   const [planDeviceSearch, setPlanDeviceSearch] = useState('');
   const [roundDeviceSearch, setRoundDeviceSearch] = useState('');
+  const [openActionDropdownBatchId, setOpenActionDropdownBatchId] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
   const planSearchInputRef = useRef<HTMLInputElement>(null);
   const roundSearchInputRef = useRef<HTMLInputElement>(null);
 
@@ -2631,15 +2649,37 @@ function MaintenancePageContent() {
     <>
       <div className="container-fluid">
         <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-          <h4 className="mb-0 d-flex align-items-center" style={{ fontSize: '1.25rem' }}>
+          <h4 className="mb-0 d-flex align-items-center fw-bold" style={{ fontSize: '1.25rem' }}>
             <i className="fas fa-wrench me-2 text-primary"></i>
             Quản Lý Bảo Trì
           </h4>
           <div className="d-flex align-items-center gap-2">
-
+            {isUserAdmin && activeTab !== 'create' && (
+              <button
+                type="button"
+                className="btn btn-sm btn-primary rounded-pill px-3 shadow-sm d-flex align-items-center gap-2"
+                style={{ fontSize: '0.825rem', fontWeight: 600 }}
+                onClick={() => { setActiveTab('create'); setSubFilter('all'); }}
+              >
+                <i className="fas fa-plus"></i>
+                <span className="d-none d-sm-inline">Tạo Kế Hoạch</span>
+                <span className="d-sm-none">Tạo mới</span>
+              </button>
+            )}
+            {activeTab === 'create' && (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary rounded-pill px-3 d-flex align-items-center gap-2"
+                style={{ fontSize: '0.825rem' }}
+                onClick={() => setActiveTab('plans')}
+              >
+                <i className="fas fa-arrow-left"></i>
+                <span>Quay lại danh sách</span>
+              </button>
+            )}
             <button
-              className="btn btn-white btn-sm border rounded-circle d-flex align-items-center justify-content-center"
-              style={{ width: '32px', height: '32px' }}
+              className="btn btn-white btn-sm border rounded-circle d-flex align-items-center justify-content-center shadow-sm"
+              style={{ width: '34px', height: '34px' }}
               onClick={() => {
                 loadData();
                 toast.success('Đã tải lại dữ liệu');
@@ -2647,57 +2687,93 @@ function MaintenancePageContent() {
               title="Tải lại dữ liệu"
               id="reload-maintenance-btn"
             >
-              <i className="fas fa-sync-alt" style={{ fontSize: '0.8rem' }}></i>
+              <i className="fas fa-sync-alt text-muted" style={{ fontSize: '0.8rem' }}></i>
             </button>
           </div>
         </div>
 
-        {/* Tabs - compact pill style */}
-        <div className="d-flex flex-wrap gap-2 mb-3">
-          {isUserAdmin && (
-              <button
-                className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'create' ? 'btn-primary shadow-sm' : 'btn-outline-secondary'}`}
-                style={{ fontSize: '0.8rem', fontWeight: activeTab === 'create' ? 600 : 400 }}
-                onClick={() => { setActiveTab('create'); setSubFilter('all'); }}
-              >
-                <i className="fas fa-plus-circle"></i>
-                <span className="d-none d-sm-inline">Tạo Kế Hoạch</span>
-                <span className="d-sm-none">Tạo</span>
-              </button>
-          )}
-          {(isUserAdmin || isSupervisor(currentUser?.roles)) && (
-              <button
-                className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'batches' ? 'btn-primary shadow-sm' : 'btn-outline-secondary'}`}
-                style={{ fontSize: '0.8rem', fontWeight: activeTab === 'batches' ? 600 : 400 }}
-                onClick={() => { setActiveTab('batches'); setSubFilter('all'); }}
-              >
-                <i className="fas fa-layer-group"></i>
-                <span className="d-none d-sm-inline">Batch Bảo Trì</span>
-                <span className="d-sm-none">Batch</span>
-              </button>
-          )}
-          <button
-            className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'plans' ? 'btn-primary shadow-sm' : 'btn-outline-secondary'}`}
-            style={{ fontSize: '0.8rem', fontWeight: activeTab === 'plans' ? 600 : 400 }}
-            onClick={() => { setActiveTab('plans'); setSubFilter('all'); }}
-          >
-            <i className="fas fa-list-alt"></i>
-            <span className="d-none d-sm-inline">Lịch Bảo Trì</span>
-            <span className="d-sm-none">Lịch</span>
-          </button>
-          
-          {(isUserAdmin || isSupervisor(currentUser?.roles)) && (
-            <button
-              className={`btn btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 ${activeTab === 'cancelled' ? 'btn-danger shadow-sm' : 'btn-outline-secondary'}`}
-              style={{ fontSize: '0.8rem', fontWeight: activeTab === 'cancelled' ? 600 : 400 }}
-              onClick={() => { setActiveTab('cancelled'); setSubFilter('all'); }}
+        {/* View Tabs - Modern Segmented Control */}
+        {activeTab !== 'create' && (
+          <div className="d-flex align-items-center mb-3 overflow-auto pb-1" style={{ maxWidth: '100%' }}>
+            <div
+              className="nav p-1 bg-light rounded-pill border d-inline-flex gap-1"
+              role="tablist"
+              style={{ flexShrink: 0 }}
             >
-              <i className="fas fa-ban"></i>
-              <span className="d-none d-sm-inline">Đã Hủy</span>
-              <span className="d-sm-none">Đã Hủy</span>
-            </button>
-          )}
-        </div>
+              <button
+                type="button"
+                className={`btn btn-sm rounded-pill px-3 py-1.5 border-0 d-flex align-items-center gap-2 ${
+                  activeTab === 'plans'
+                    ? 'bg-primary text-white shadow-sm fw-semibold'
+                    : 'text-secondary'
+                }`}
+                style={{ fontSize: '0.825rem', whiteSpace: 'nowrap' }}
+                onClick={() => { setActiveTab('plans'); setSubFilter('all'); }}
+              >
+                <i className="fas fa-calendar-alt"></i>
+                <span>Lịch Bảo Trì</span>
+                <span
+                  className={`badge rounded-pill ms-1 ${
+                    activeTab === 'plans' ? 'bg-white text-primary' : 'bg-secondary bg-opacity-25 text-secondary'
+                  }`}
+                  style={{ fontSize: '0.7rem' }}
+                >
+                  {groupedPlansBase.filter(g => g.activeCount > 0).length}
+                </span>
+              </button>
+
+              {(isUserAdmin || isSupervisor(currentUser?.roles)) && (
+                <button
+                  type="button"
+                  className={`btn btn-sm rounded-pill px-3 py-1.5 border-0 d-flex align-items-center gap-2 ${
+                    activeTab === 'batches'
+                      ? 'bg-primary text-white shadow-sm fw-semibold'
+                      : 'text-secondary'
+                  }`}
+                  style={{ fontSize: '0.825rem', whiteSpace: 'nowrap' }}
+                  onClick={() => { setActiveTab('batches'); setSubFilter('all'); }}
+                >
+                  <i className="fas fa-layer-group"></i>
+                  <span>Batch</span>
+                  <span
+                    className={`badge rounded-pill ms-1 ${
+                      activeTab === 'batches' ? 'bg-white text-primary' : 'bg-secondary bg-opacity-25 text-secondary'
+                    }`}
+                    style={{ fontSize: '0.7rem' }}
+                  >
+                    {batches.length}
+                  </span>
+                </button>
+              )}
+
+              {(isUserAdmin || isSupervisor(currentUser?.roles)) && (
+                <button
+                  type="button"
+                  className={`btn btn-sm rounded-pill px-3 py-1.5 border-0 d-flex align-items-center gap-2 ${
+                    activeTab === 'cancelled'
+                      ? 'bg-danger text-white shadow-sm fw-semibold'
+                      : 'text-secondary'
+                  }`}
+                  style={{ fontSize: '0.825rem', whiteSpace: 'nowrap' }}
+                  onClick={() => { setActiveTab('cancelled'); setSubFilter('all'); }}
+                >
+                  <i className="fas fa-ban"></i>
+                  <span>Đã Hủy</span>
+                  {groupedPlansBase.filter(g => g.inactiveCount > 0).length > 0 && (
+                    <span
+                      className={`badge rounded-pill ms-1 ${
+                        activeTab === 'cancelled' ? 'bg-white text-danger' : 'bg-danger bg-opacity-25 text-danger'
+                      }`}
+                      style={{ fontSize: '0.7rem' }}
+                    >
+                      {groupedPlansBase.filter(g => g.inactiveCount > 0).length}
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Content */}
         {loading ? (
@@ -3353,12 +3429,12 @@ function MaintenancePageContent() {
                       <div key={batch.batchId} className="col-md-6 col-lg-4 mb-4">
                         <div className={`card h-100 ${batch.isCancelled ? 'border-danger border-opacity-25' : ''}`}>
                           <div className={`card-header d-flex justify-content-between align-items-center ${batch.isCancelled ? 'bg-danger bg-opacity-10 text-danger' : ''}`}>
-                            <div className="text-truncate" style={{ maxWidth: '90%' }}>
-                              <h6 className="mb-0 text-truncate" title={`${batch.title}${batch.batchId ? ` (${batch.batchId})` : ''}`}>
+                            <div className="flex-grow-1 me-2" style={{ minWidth: 0 }}>
+                              <h6 className="mb-0 fw-bold text-break" style={{ wordBreak: 'break-word', whiteSpace: 'normal', lineHeight: '1.3' }} title={`${batch.title}${batch.batchId ? ` (${batch.batchId})` : ''}`}>
                                 {getShortTitle(batch.title)}
                               </h6>
                             </div>
-                            <div className="d-flex align-items-center gap-1">
+                            <div className="d-flex align-items-center gap-1 flex-shrink-0">
                               {batch.inProgress > 0 && <span className="badge bg-primary small fw-normal"><i className="fas fa-tools me-1"></i>{batch.inProgress} đang BT</span>}
                               {batch.isCancelled && <span className="badge bg-danger shadow-sm">ĐÃ HỦY</span>}
                             </div>
@@ -3424,112 +3500,288 @@ function MaintenancePageContent() {
           </div>
         ) : activeTab === 'plans' || activeTab === 'cancelled' ? (
           <div>
-            <div className="card">
-              <div className="card-header py-2 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <h6 className="mb-0 d-flex align-items-center gap-2" style={{ fontSize: '0.85rem' }}>
-                  <i className={`fas ${activeTab === 'plans' ? 'fa-list-alt' : 'fa-ban'} me-2`}></i>
-                  {activeTab === 'plans' ? ((isUserAdmin || isSupervisor(currentUser?.roles)) ? 'Batch Đang Hoạt Động' : 'Lịch Bảo Trì Của Tôi') : 'Batch Đã Hủy'}
-                  <span className="badge bg-secondary fw-normal" style={{ fontSize: '0.75rem' }}>
-                    {groupedPlans.length}
-                    {groupedPlans.length !== groupedPlansBase.filter(g => activeTab === 'plans' ? g.activeCount > 0 : g.inactiveCount > 0).length && (
-                      <span className="text-white-50">
-                        {' / '}{groupedPlansBase.filter(g => activeTab === 'plans' ? g.activeCount > 0 : g.inactiveCount > 0).length}
+            <div className="card shadow-sm border-0 mb-3">
+              <div className="card-header py-2.5 px-3 bg-white border-bottom">
+                <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+                  {/* Tiêu đề danh sách và số lượng */}
+                  <div className="d-flex align-items-center gap-2">
+                    <i className={`fas ${activeTab === 'plans' ? 'fa-list-alt text-primary' : 'fa-ban text-danger'}`}></i>
+                    <h6 className="mb-0 fw-bold text-dark" style={{ fontSize: '0.9rem' }}>
+                      {activeTab === 'plans'
+                        ? ((isUserAdmin || isSupervisor(currentUser?.roles)) ? 'Batch Đang Hoạt Động' : 'Lịch Bảo Trì Của Tôi')
+                        : 'Batch Đã Hủy'}
+                    </h6>
+                    <span className="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 rounded-pill px-2" style={{ fontSize: '0.75rem' }}>
+                      {groupedPlans.length}
+                      {groupedPlans.length !== groupedPlansBase.filter(g => activeTab === 'plans' ? g.activeCount > 0 : g.inactiveCount > 0).length && (
+                        <span className="text-muted ms-1">
+                          / {groupedPlansBase.filter(g => activeTab === 'plans' ? g.activeCount > 0 : g.inactiveCount > 0).length}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+
+                  {/* Thanh tìm kiếm và công cụ lọc tinh gọn */}
+                  <div className="d-flex align-items-center gap-2 flex-grow-1 justify-content-md-end" style={{ minWidth: 0 }}>
+                    {/* Ô tìm kiếm dạng pill gọn gàng */}
+                    <div className="position-relative flex-grow-1 flex-md-grow-0" style={{ minWidth: '150px', maxWidth: '300px' }}>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm ps-4 pe-4 rounded-pill border"
+                        placeholder="Tìm theo tiêu đề..."
+                        value={filterTitleInput}
+                        onChange={(e) => handleFilterTitleChange(e.target.value)}
+                        style={{ fontSize: '0.8rem', height: '34px' }}
+                      />
+                      <i className="fas fa-search position-absolute text-muted" style={{ left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem' }}></i>
+                      {filterTitleInput && (
+                        <button
+                          type="button"
+                          className="btn btn-link p-0 position-absolute text-muted"
+                          style={{ right: '10px', top: '50%', transform: 'translateY(-50%)', textDecoration: 'none', fontSize: '1rem', lineHeight: 1 }}
+                          onClick={() => {
+                            if (filterTitleTimer.current) clearTimeout(filterTitleTimer.current);
+                            setFilterTitleInput('');
+                            setFilterTitle('');
+                          }}
+                          title="Xóa tìm kiếm"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Nút bật/tắt Bộ lọc */}
+                    <button
+                      type="button"
+                      className={`btn btn-sm rounded-pill d-inline-flex align-items-center gap-2 px-3 ${
+                        showFilters || activeFilterCount > 0
+                          ? 'btn-primary shadow-sm'
+                          : 'btn-outline-secondary'
+                      }`}
+                      style={{ fontSize: '0.8rem', height: '34px', whiteSpace: 'nowrap' }}
+                      onClick={() => setShowFilters(prev => !prev)}
+                      title="Bộ lọc nâng cao"
+                    >
+                      <i className="fas fa-sliders-h" style={{ fontSize: '0.75rem' }}></i>
+                      <span>Bộ lọc</span>
+                      {activeFilterCount > 0 && (
+                        <span
+                          className={`badge rounded-pill ${
+                            showFilters || activeFilterCount > 0 ? 'bg-white text-primary' : 'bg-primary text-white'
+                          }`}
+                          style={{ fontSize: '0.68rem', padding: '0.2em 0.5em' }}
+                        >
+                          {activeFilterCount}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Nút Xuất Excel */}
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-success rounded-pill d-inline-flex align-items-center gap-2 px-3"
+                      style={{ fontSize: '0.8rem', height: '34px', whiteSpace: 'nowrap' }}
+                      onClick={handleExportExcel}
+                      title="Xuất danh sách ra Excel"
+                    >
+                      <i className="fas fa-file-excel"></i>
+                      <span className="d-none d-sm-inline">Xuất Excel</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Chips tóm tắt bộ lọc đang hoạt động (Khi bảng lọc thu gọn) */}
+                {!showFilters && activeFilterCount > 0 && (
+                  <div className="d-flex align-items-center flex-wrap gap-2 pt-2 mt-2 border-top">
+                    <span className="text-muted small me-1" style={{ fontSize: '0.75rem' }}>Đang lọc:</span>
+                    
+                    {filterTitle.trim() && (
+                      <span className="badge bg-light text-dark border d-inline-flex align-items-center gap-1 py-1 px-2 rounded-pill small">
+                        <span>Tiêu đề: &quot;{filterTitle}&quot;</span>
+                        <i
+                          className="fas fa-times text-muted"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => { setFilterTitleInput(''); setFilterTitle(''); }}
+                        ></i>
                       </span>
                     )}
-                  </span>
-                </h6>
-                <div className="d-flex flex-wrap gap-2">
-                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', minWidth: '200px' }}>
-                    <input
-                      type="text"
-                      className="form-control form-control-sm"
-                      placeholder="Tìm theo tiêu đề..."
-                      value={filterTitleInput}
-                      onChange={(e) => handleFilterTitleChange(e.target.value)}
-                      style={{ paddingRight: filterTitleInput ? '26px' : undefined, width: '100%' }}
-                    />
-                    {filterTitleInput && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (filterTitleTimer.current) clearTimeout(filterTitleTimer.current);
-                          setFilterTitleInput('');
-                          setFilterTitle('');
-                        }}
-                        style={{
-                          position: 'absolute',
-                          right: '6px',
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          background: 'none',
-                          border: 'none',
-                          padding: '0 2px',
-                          color: '#999',
-                          cursor: 'pointer',
-                          fontSize: '16px',
-                          lineHeight: 1,
-                          zIndex: 2,
-                        }}
-                        title="Xóa"
-                      >
-                        ×
-                      </button>
+
+                    {filterDepartmentId !== 'all' && (() => {
+                      const dept = departments.find((d: any) => d.id === filterDepartmentId);
+                      return (
+                        <span className="badge bg-light text-dark border d-inline-flex align-items-center gap-1 py-1 px-2 rounded-pill small">
+                          <span>Phòng: {dept?.name || filterDepartmentId}</span>
+                          <i
+                            className="fas fa-times text-muted"
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => { setFilterDepartmentId('all'); setFilterStaffId('all'); }}
+                          ></i>
+                        </span>
+                      );
+                    })()}
+
+                    {filterStaffId !== 'all' && (() => {
+                      const staff = staffListForCreate.find((s: any) => s.id === filterStaffId);
+                      return (
+                        <span className="badge bg-light text-dark border d-inline-flex align-items-center gap-1 py-1 px-2 rounded-pill small">
+                          <span>NV: {staff?.name || filterStaffId}</span>
+                          <i
+                            className="fas fa-times text-muted"
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => setFilterStaffId('all')}
+                          ></i>
+                        </span>
+                      );
+                    })()}
+
+                    {planTypeFilter !== 'all' && (
+                      <span className="badge bg-light text-dark border d-inline-flex align-items-center gap-1 py-1 px-2 rounded-pill small">
+                        <span>{planTypeFilter === 'device' ? 'Theo thiết bị' : 'Công việc định kỳ'}</span>
+                        <i
+                          className="fas fa-times text-muted"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => setPlanTypeFilter('all')}
+                        ></i>
+                      </span>
                     )}
-                  </div>
-                  <select 
-                    className="form-select form-select-sm" 
-                    style={{ width: 'auto', minWidth: '150px' }}
-                    value={filterDepartmentId}
-                    onChange={(e) => {
-                      setFilterDepartmentId(e.target.value === 'all' ? 'all' : Number(e.target.value));
-                      setFilterStaffId('all'); // Reset staff when department changes
-                    }}
-                  >
-                    <option value="all">Tất cả Phòng ban</option>
-                    {departments.map((d: any) => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
-                  <select 
-                    className="form-select form-select-sm" 
-                    style={{ width: 'auto', minWidth: '170px' }}
-                    value={filterStaffId}
-                    onChange={(e) => setFilterStaffId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                  >
-                    <option value="all">Tất cả Người thực hiện</option>
-                    {staffListForCreate
-                      .filter((s: any) => filterDepartmentId === 'all' || s.departmentId === filterDepartmentId)
-                      .map((s: any) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                  <select 
-                    className="form-select form-select-sm" 
-                    style={{ width: 'auto', minWidth: '150px' }}
-                    value={planTypeFilter}
-                    onChange={(e) => setPlanTypeFilter(e.target.value as any)}
-                  >
-                    <option value="all">Tất cả phân loại</option>
-                    <option value="device">Theo thiết bị</option>
-                    <option value="task">Công việc định kỳ</option>
-                  </select>
-                  {activeTab === 'plans' && (
-                    <select 
-                      className="form-select form-select-sm" 
-                      style={{ width: 'auto', minWidth: '150px' }}
-                      value={subFilter}
-                      onChange={(e) => setSubFilter(e.target.value as any)}
+
+                    {subFilter !== 'all' && (
+                      <span className="badge bg-light text-dark border d-inline-flex align-items-center gap-1 py-1 px-2 rounded-pill small">
+                        <span>{subFilter === 'upcoming' ? 'Sắp đến hạn' : 'Quá hạn'}</span>
+                        <i
+                          className="fas fa-times text-muted"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => setSubFilter('all')}
+                        ></i>
+                      </span>
+                    )}
+
+                    <button
+                      type="button"
+                      className="btn btn-link btn-sm p-0 text-danger text-decoration-none ms-1 small"
+                      style={{ fontSize: '0.75rem' }}
+                      onClick={handleClearAllFilters}
                     >
-                      <option value="all">Tất cả trạng thái</option>
-                      <option value="upcoming">Sắp đến hạn</option>
-                      <option value="overdue">Quá hạn</option>
-                    </select>
-                  )}
-                  <button className="btn btn-sm btn-success d-flex align-items-center gap-1" onClick={handleExportExcel} title="Xuất danh sách ra Excel">
-                    <i className="fas fa-file-excel"></i>
-                    <span className="d-none d-sm-inline">Xuất Excel</span>
-                  </button>
-                </div>
+                      Xóa tất cả
+                    </button>
+                  </div>
+                )}
+
+                {/* Bảng bộ lọc có thể mở ra / thu gọn */}
+                {showFilters && (
+                  <div className="mt-2.5 pt-2.5 border-top bg-light p-3 rounded-3">
+                    <div className="row g-2">
+                      {/* Phòng ban */}
+                      <div className="col-12 col-sm-6 col-md-3">
+                        <label className="form-label text-muted small mb-1 fw-medium" style={{ fontSize: '0.75rem' }}>Phòng ban</label>
+                        <select
+                          className="form-select form-select-sm"
+                          value={filterDepartmentId}
+                          onChange={(e) => {
+                            setFilterDepartmentId(e.target.value === 'all' ? 'all' : Number(e.target.value));
+                            setFilterStaffId('all');
+                          }}
+                          style={{ fontSize: '0.8rem' }}
+                        >
+                          <option value="all">Tất cả Phòng ban</option>
+                          {departments.map((d: any) => (
+                            <option key={d.id} value={d.id}>{d.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Người thực hiện */}
+                      <div className="col-12 col-sm-6 col-md-3">
+                        <label className="form-label text-muted small mb-1 fw-medium" style={{ fontSize: '0.75rem' }}>Người thực hiện</label>
+                        <select
+                          className="form-select form-select-sm"
+                          value={filterStaffId}
+                          onChange={(e) => setFilterStaffId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                          style={{ fontSize: '0.8rem' }}
+                        >
+                          <option value="all">Tất cả Người thực hiện</option>
+                          {staffListForCreate
+                            .filter((s: any) => filterDepartmentId === 'all' || s.departmentId === filterDepartmentId)
+                            .map((s: any) => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Phân loại */}
+                      <div className="col-12 col-sm-6 col-md-3">
+                        <label className="form-label text-muted small mb-1 fw-medium" style={{ fontSize: '0.75rem' }}>Phân loại kế hoạch</label>
+                        <select
+                          className="form-select form-select-sm"
+                          value={planTypeFilter}
+                          onChange={(e) => setPlanTypeFilter(e.target.value as any)}
+                          style={{ fontSize: '0.8rem' }}
+                        >
+                          <option value="all">Tất cả phân loại</option>
+                          <option value="device">Theo thiết bị</option>
+                          <option value="task">Công việc định kỳ</option>
+                        </select>
+                      </div>
+
+                      {/* Trạng thái đến hạn */}
+                      <div className="col-12 col-sm-6 col-md-3">
+                        <label className="form-label text-muted small mb-1 fw-medium" style={{ fontSize: '0.75rem' }}>Trạng thái đến hạn</label>
+                        {activeTab === 'plans' ? (
+                          <select
+                            className="form-select form-select-sm"
+                            value={subFilter}
+                            onChange={(e) => setSubFilter(e.target.value as any)}
+                            style={{ fontSize: '0.8rem' }}
+                          >
+                            <option value="all">Tất cả trạng thái</option>
+                            <option value="upcoming">Sắp đến hạn (≤ 30 ngày)</option>
+                            <option value="overdue">Quá hạn</option>
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            className="form-control form-control-sm text-muted bg-white"
+                            value="Đã hủy"
+                            disabled
+                            style={{ fontSize: '0.8rem' }}
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Footer của bảng bộ lọc: Đặt lại & Thu gọn */}
+                    <div className="d-flex justify-content-between align-items-center mt-2.5 pt-2 border-top">
+                      <div className="small text-muted" style={{ fontSize: '0.75rem' }}>
+                        {activeFilterCount > 0 ? (
+                          <span>Đang áp dụng <strong>{activeFilterCount}</strong> điều kiện lọc</span>
+                        ) : (
+                          <span>Chưa áp dụng bộ lọc nào</span>
+                        )}
+                      </div>
+                      <div className="d-flex gap-2">
+                        {activeFilterCount > 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-link text-danger text-decoration-none p-0 small fw-medium"
+                            style={{ fontSize: '0.75rem' }}
+                            onClick={handleClearAllFilters}
+                          >
+                            <i className="fas fa-undo me-1"></i>Đặt lại bộ lọc
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-link text-muted text-decoration-none p-0 small"
+                          style={{ fontSize: '0.75rem' }}
+                          onClick={() => setShowFilters(false)}
+                        >
+                          <i className="fas fa-chevron-up me-1"></i>Thu gọn
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="card-body">
                 {allPlans.length === 0 ? (
@@ -3580,23 +3832,32 @@ function MaintenancePageContent() {
                       }
 
                       return (
-                        <div key={group.batchId} className="accordion-item mb-3">
+                        <div key={group.batchId} className="accordion-item mb-3 shadow-sm border rounded-3 overflow-hidden">
                           <h2 className="accordion-header" id={`heading-${group.batchId}`}>
-                            <button
+                            <div
                               className={`accordion-button ${isExpanded ? '' : 'collapsed'} ${headerBgClass}`}
-                              type="button"
+                              role="button"
+                              tabIndex={0}
                               onClick={toggleGroup}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  toggleGroup();
+                                }
+                              }}
                               aria-expanded={isExpanded}
                               aria-controls={collapseId}
                               style={{ cursor: 'pointer' }}
                             >
-                              <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center w-100 pe-5 gap-2" style={{ minWidth: 0 }}>
-                                {/* Bên trái: Tiêu đề, Batch ID, Lịch trình - chia 2 hàng */}
-                                <div className="d-flex flex-column gap-1 flex-grow-1 overflow-hidden" style={{ minWidth: '150px' }}>
-                                  {/* Hàng trên: Tiêu đề và Batch ID */}
-                                  <div className="d-flex align-items-center gap-2 flex-wrap">
-                                    <i className={group.hasDevices ? "fas fa-layer-group text-primary" : "fas fa-clipboard-check text-primary"} style={{ fontSize: '0.9rem' }}></i>
-                                    <h6 className="mb-0 fw-bold text-truncate" style={{ fontSize: '0.95rem' }}>{groupIndex + 1}. {getShortTitle(group.title)}</h6>
+                              <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center w-100 gap-2" style={{ minWidth: 0 }}>
+                                {/* Bên trái: Tiêu đề, Lịch trình, Badges */}
+                                <div className="d-flex flex-column gap-1 flex-grow-1" style={{ minWidth: 0 }}>
+                                  {/* Hàng 1: Tiêu đề và Badges phân loại */}
+                                  <div className="d-flex align-items-center gap-2 flex-wrap mb-0.5">
+                                    <i className={group.hasDevices ? "fas fa-layer-group text-primary" : "fas fa-clipboard-check text-primary"} style={{ fontSize: '0.95rem', flexShrink: 0 }}></i>
+                                    <h6 className="mb-0 fw-bold text-dark text-break" style={{ fontSize: '0.95rem', wordBreak: 'break-word', whiteSpace: 'normal', lineHeight: '1.4' }}>
+                                      {groupIndex + 1}. {group.title ? getShortTitle(group.title) : 'Không có tiêu đề'}
+                                    </h6>
                                     {group.metadata?.scheduleConfig?.scheduleType === 'specific_dates' ? (
                                       <span className="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25" style={{ fontSize: '0.7rem', fontWeight: 'normal' }}>
                                         Lịch cố định
@@ -3606,59 +3867,6 @@ function MaintenancePageContent() {
                                         Theo khoảng thời gian
                                       </span>
                                     )}
-                                  </div>
-
-                                  {/* Hàng dưới: Lịch trình */}
-                                  {(group.lastMaintenanceDate || group.nextMaintenanceDate) && (
-                                    <div className="d-flex flex-wrap align-items-center text-muted small" style={{ rowGap: '4px' }}>
-                                      <div className="d-flex align-items-center me-3">
-                                        <i className="fas fa-calendar-check text-success me-1"></i>
-                                        <span>BT trước: <strong>{formatDateDisplay(group.lastMaintenanceDate) || '-'}</strong></span>
-                                      </div>
-                                      
-                                      <div className="d-flex align-items-center flex-wrap">
-                                        <i className="fas fa-clock text-primary me-1"></i>
-                                        <span>BT sắp đến: <strong>{formatDateDisplay(group.nextMaintenanceDate) || '-'}</strong></span>
-                                        {group.nextMaintenanceDate && (() => {
-                                          const nextDate = group.nextMaintenanceDate instanceof Date
-                                            ? group.nextMaintenanceDate
-                                            : new Date(maintenanceDay(group.nextMaintenanceDate));
-                                          const today = new Date(maintenanceToday());
-                                          const daysUntilDue = Math.ceil((nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                                          
-                                          const statusText = daysUntilDue > 0 ? `còn lại ${daysUntilDue} ngày` : daysUntilDue === 0 ? 'hôm nay' : `quá ${Math.abs(daysUntilDue)} ngày`;
-                                          return <span className="ms-1">({statusText})</span>;
-                                        })()}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Bên phải: Thông tin thiết bị, badges và action buttons - luôn xuống hàng trên mobile */}
-                                <div className="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-md-end gap-2 w-100 w-md-auto mt-1 mt-md-0 ms-md-auto">
-                                  {/* Badge row - full width trên mobile */}
-                                  <div className="d-flex flex-wrap align-items-center justify-content-start justify-content-md-end gap-1 gap-md-2">
-                                    <span className="text-muted small me-2">
-                                      <i className={group.hasDevices ? "fas fa-boxes me-1" : "fas fa-tasks me-1"}></i>
-                                      <span className="fw-bold">{group.totalDevices}</span> {group.hasDevices ? 'thiết bị' : 'công việc'}
-                                    </span>
-                                    {group.metadata?.assignedStaffId && (() => {
-                                      const assignee = staffListForCreate.find((s: any) => s.id === group.metadata?.assignedStaffId);
-                                      if (assignee) {
-                                        return (
-                                          <span className="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 fw-normal small">
-                                            <i className="fas fa-user-hard-hat me-1"></i>
-                                            {assignee.name}
-                                          </span>
-                                        );
-                                      }
-                                      return null;
-                                    })()}
-                                    <span className="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 fw-normal small">{group.activeCount} hoạt động</span>
-                                    {activeTab === 'plans' ? null : group.inactiveCount > 0 && (
-                                      <span className="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 fw-normal small">{group.inactiveCount} đã hủy</span>
-                                    )}
-                                    {/* Batch Status Indicator based on current events */}
                                     {(() => {
                                       const inProgress = (group as any).inProgressCount || 0;
                                       const planned = (group as any).plannedCount || 0;
@@ -3669,181 +3877,315 @@ function MaintenancePageContent() {
                                       }
                                       return null;
                                     })()}
+                                  </div>
+
+                                  {/* Hàng 2: Lịch trình bảo trì */}
+                                  {(group.lastMaintenanceDate || group.nextMaintenanceDate) && (
+                                    <div className="d-flex flex-wrap align-items-center text-muted small" style={{ rowGap: '4px', columnGap: '12px', fontSize: '0.8rem' }}>
+                                      {group.lastMaintenanceDate && (
+                                        <div className="d-flex align-items-center">
+                                          <i className="fas fa-calendar-check text-success me-1.5"></i>
+                                          <span>BT trước: <strong className="text-secondary">{formatDateDisplay(group.lastMaintenanceDate)}</strong></span>
+                                        </div>
+                                      )}
+                                      
+                                      {group.nextMaintenanceDate && (
+                                        <div className="d-flex align-items-center flex-wrap">
+                                          <i className="fas fa-clock text-primary me-1.5"></i>
+                                          <span>BT sắp đến: <strong className="text-dark">{formatDateDisplay(group.nextMaintenanceDate)}</strong></span>
+                                          {(() => {
+                                            const nextDate = group.nextMaintenanceDate instanceof Date
+                                              ? group.nextMaintenanceDate
+                                              : new Date(maintenanceDay(group.nextMaintenanceDate));
+                                            const today = new Date(maintenanceToday());
+                                            const daysUntilDue = Math.ceil((nextDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                                            
+                                            const statusText = daysUntilDue > 0 ? `còn lại ${daysUntilDue} ngày` : daysUntilDue === 0 ? 'hôm nay' : `quá ${Math.abs(daysUntilDue)} ngày`;
+                                            const statusColor = daysUntilDue < 0 ? 'text-danger fw-semibold' : daysUntilDue === 0 ? 'text-warning fw-semibold' : 'text-primary';
+                                            return <span className={`ms-1 ${statusColor}`}>({statusText})</span>;
+                                          })()}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Hàng 3: Metadata chips */}
+                                  <div className="d-flex flex-wrap align-items-center gap-2 mt-1">
+                                    <span className="badge bg-light text-dark border fw-normal small d-inline-flex align-items-center">
+                                      <i className={group.hasDevices ? "fas fa-boxes me-1 text-secondary" : "fas fa-tasks me-1 text-secondary"}></i>
+                                      <strong>{group.totalDevices}</strong>&nbsp;{group.hasDevices ? 'thiết bị' : 'công việc'}
+                                    </span>
+                                    {group.metadata?.assignedStaffId && (() => {
+                                      const assignee = staffListForCreate.find((s: any) => s.id === group.metadata?.assignedStaffId);
+                                      if (assignee) {
+                                        return (
+                                          <span className="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 fw-normal small d-inline-flex align-items-center">
+                                            <i className="fas fa-user-hard-hat me-1"></i>
+                                            {assignee.name}
+                                          </span>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
+                                    <span className="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 fw-normal small">
+                                      {group.activeCount} hoạt động
+                                    </span>
+                                    {activeTab === 'plans' ? null : group.inactiveCount > 0 && (
+                                      <span className="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 fw-normal small">
+                                        {group.inactiveCount} đã hủy
+                                      </span>
+                                    )}
                                     {group.maintenanceType === 'outsource' && group.maintenanceProvider && (
-                                      <span className="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 fw-normal small text-truncate" style={{ maxWidth: '150px' }}>
+                                      <span className="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 fw-normal small d-inline-flex align-items-center" style={{ maxWidth: '180px' }}>
                                         <i className="fas fa-building me-1"></i>
-                                        {group.maintenanceProvider}
+                                        <span className="text-truncate">{group.maintenanceProvider}</span>
                                       </span>
                                     )}
                                     {group.maintenanceType === 'internal' && (
-                                      <span className="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 fw-normal small">Nội bộ</span>
-                                    )}
-                                  </div>
-
-                                  {/* Action buttons row - full width trên mobile */}
-                                  <div className="d-flex flex-wrap justify-content-start justify-content-md-end gap-1" onClick={(e) => e.stopPropagation()}>
-                                    <button
-                                      className="btn btn-sm btn-outline-info d-flex align-items-center justify-content-center"
-                                      style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                      onClick={() => {
-                                        setSelectedGroup({
-                                          batchId: group.batchId,
-                                          title: group.title,
-                                          plans: group.plans,
-                                        });
-                                        const planIds = group.plans.map(p => p.id);
-                                        loadViewPlanHistory(group.batchId, planIds);
-                                        setOpenMaintenanceTab(true);
-                                        setOpenRescheduleTab(false);
-                                        setShowViewPlanModal(true);
-                                      }}
-                                      title="Xem chi tiết kế hoạch"
-                                    >
-                                      <i className="fas fa-eye"></i>
-                                    </button>
-                                    
-                                    {/* Ghi nhận hoàn thành cho Admin HOẶC Người được phân công */}
-                                    {group.activeCount > 0 && (isUserAdmin || group.metadata?.assignedStaffId === currentUserStaffId) && (
-                                      <>
-                                        {(() => {
-                                          const today = new Date(maintenanceToday());
-                                          const hasDuePlans = group.plans.some((plan) => {
-                                            if (!plan.isActive || !plan.nextDueDate) return false;
-                                            const dueDate = new Date(maintenanceDay(plan.nextDueDate));
-                                            return dueDate <= today;
-                                          });
-                                          let inProgressCount = 0;
-                                          if ((group as any).inProgressCount !== undefined) {
-                                            inProgressCount = (group as any).inProgressCount;
-                                          } else {
-                                            inProgressCount = group.plans.filter(p => {
-                                              const ev = planEvents[p.id];
-                                              return ev && ev.status === 'in_progress';
-                                            }).length;
-                                          }
-
-                                          return (
-                                            <>
-                                              {(hasDuePlans || inProgressCount > 0) && inProgressCount === 0 && (
-                                                <button
-                                                  className="btn btn-sm btn-outline-primary d-flex align-items-center justify-content-center border-primary"
-                                                  style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                                  onClick={() => {
-                                                    setSelectedGroup(group);
-                                                    setBatchStartDate(formatDateInput(new Date()));
-                                                    setBatchStartNotes('');
-                                                    setBatchStartStaffId(group.metadata?.assignedStaffId || currentUserStaffId || null);
-                                                    setBatchAutoCreateReport(true);
-                                                    loadStaffList();
-                                                    setShowBatchStartModal(true);
-                                                  }}
-                                                  title="Bắt đầu thực hiện tất cả"
-                                                >
-                                                  <i className="fas fa-play"></i>
-                                                </button>
-                                              )}
-                                              {inProgressCount > 0 && (
-                                                <button
-                                                  className="btn btn-sm btn-outline-success d-flex align-items-center justify-content-center"
-                                                  style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                                  onClick={() => {
-                                                    setSelectedGroup(group);
-                                                    setBatchCompleteDate(formatDateInput(new Date()));
-                                                    setBatchCompleteNotes('');
-                                                    setBatchCompleteStaffId(group.metadata?.assignedStaffId || currentUserStaffId || null);
-                                                    setBatchAutoCreateReport(true);
-                                                    loadStaffList();
-                                                    setShowBatchCompleteModal(true);
-                                                  }}
-                                                  title="Ghi nhận hoàn thành tất cả"
-                                                >
-                                                  <i className="fas fa-check-double"></i>
-                                                </button>
-                                              )}
-                                            </>
-                                          );
-                                        })()}
-                                      </>
-                                    )}
-
-                                    {/* Các nút chỉnh sửa/dời/hủy/xóa chỉ cho Admin */}
-                                    {isUserAdmin && (
-                                      <>
-                                        {activeTab === 'cancelled' ? (
-                                          // Tab Đã Hủy: chỉ hiện Khôi phục + Xóa
-                                          <>
-                                            <button
-                                              className="btn btn-sm btn-outline-success d-flex align-items-center justify-content-center"
-                                              style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                              onClick={(e) => { e.stopPropagation(); handleBatchRestore(group); }}
-                                              title="Khôi phục toàn batch về danh sách bảo trì"
-                                            >
-                                              <i className="fas fa-undo"></i>
-                                            </button>
-                                            <button
-                                              className="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center"
-                                              style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                              onClick={(e) => { e.stopPropagation(); handleBatchDelete(group); }}
-                                              title="Xóa vĩnh viễn toàn batch"
-                                            >
-                                              <i className="fas fa-trash"></i>
-                                            </button>
-                                          </>
-                                        ) : (
-                                          // Tab Lịch Bảo Trì: hiện các nút thao tác đầy đủ
-                                          <>
-                                            <button
-                                              className="btn btn-sm btn-outline-info d-flex align-items-center justify-content-center"
-                                              style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                              onClick={() => handleOpenEditBatch(group.batchId, group.title)}
-                                              title="Sửa thông tin kế hoạch"
-                                            >
-                                              <i className="fas fa-edit"></i>
-                                            </button>
-                                            <button
-                                              className="btn btn-sm btn-outline-warning d-flex align-items-center justify-content-center"
-                                              style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                              onClick={() => {
-                                                setSelectedGroup(group);
-                                                const earliestDate = group.plans
-                                                  .filter(p => p.isActive && p.nextDueDate)
-                                                  .map(p => p.nextDueDate ? new Date(p.nextDueDate) : null)
-                                                  .filter(d => d !== null)
-                                                  .sort((a, b) => (a?.getTime() || 0) - (b?.getTime() || 0))[0];
-                                                setBatchRescheduleDate(earliestDate ? formatDateInput(earliestDate) : formatDateInput(new Date()));
-                                                setShowBatchRescheduleModal(true);
-                                              }}
-                                              title="Dời lịch bảo trì tất cả"
-                                            >
-                                              <i className="fas fa-calendar-alt"></i>
-                                            </button>
-                                            <button
-                                              className="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center"
-                                              style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                              onClick={() => {
-                                                setSelectedGroup(group);
-                                                setShowBatchCancelModal(true);
-                                              }}
-                                              title="Hủy kế hoạch tất cả"
-                                            >
-                                              <i className="fas fa-times"></i>
-                                            </button>
-                                            <button
-                                              className="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center"
-                                              style={{ width: '32px', height: '32px', borderRadius: '6px' }}
-                                              onClick={() => handleBatchDelete(group)}
-                                              title="Xóa kế hoạch tất cả"
-                                            >
-                                              <i className="fas fa-trash"></i>
-                                            </button>
-                                          </>
-                                        )}
-                                      </>
+                                      <span className="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 fw-normal small">
+                                        Nội bộ
+                                      </span>
                                     )}
                                   </div>
                                 </div>
+
+                                {/* Divider mỏng trên mobile trước hàng nút thao tác */}
+                                <div className="d-lg-none my-1 border-top border-secondary border-opacity-10 w-100"></div>
+
+                                {/* Bên phải: Hàng nút thao tác tinh gọn */}
+                                <div
+                                  className="d-flex align-items-center justify-content-start justify-content-lg-end gap-2 flex-shrink-0"
+                                  style={{ gap: '8px' }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {/* Nút hành động chính: Bắt đầu / Hoàn thành */}
+                                  {group.activeCount > 0 && (isUserAdmin || group.metadata?.assignedStaffId === currentUserStaffId) && (() => {
+                                    const today = new Date(maintenanceToday());
+                                    const hasDuePlans = group.plans.some((plan) => {
+                                      if (!plan.isActive || !plan.nextDueDate) return false;
+                                      const dueDate = new Date(maintenanceDay(plan.nextDueDate));
+                                      return dueDate <= today;
+                                    });
+                                    let inProgressCount = 0;
+                                    if ((group as any).inProgressCount !== undefined) {
+                                      inProgressCount = (group as any).inProgressCount;
+                                    } else {
+                                      inProgressCount = group.plans.filter(p => {
+                                        const ev = planEvents[p.id];
+                                        return ev && ev.status === 'in_progress';
+                                      }).length;
+                                    }
+
+                                    if (inProgressCount > 0) {
+                                      return (
+                                        <button
+                                          type="button"
+                                          className="btn btn-sm btn-success d-inline-flex align-items-center gap-1.5 shadow-sm px-3"
+                                          style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px' }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedGroup(group);
+                                            setBatchCompleteDate(formatDateInput(new Date()));
+                                            setBatchCompleteNotes('');
+                                            setBatchCompleteStaffId(group.metadata?.assignedStaffId || currentUserStaffId || null);
+                                            setBatchAutoCreateReport(true);
+                                            loadStaffList();
+                                            setShowBatchCompleteModal(true);
+                                          }}
+                                          title="Ghi nhận hoàn thành tất cả"
+                                        >
+                                          <i className="fas fa-check-double"></i>
+                                          <span>Hoàn thành</span>
+                                        </button>
+                                      );
+                                    }
+
+                                    if (hasDuePlans) {
+                                      return (
+                                        <button
+                                          type="button"
+                                          className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1.5 shadow-sm px-3"
+                                          style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px' }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedGroup(group);
+                                            setBatchStartDate(formatDateInput(new Date()));
+                                            setBatchStartNotes('');
+                                            setBatchStartStaffId(group.metadata?.assignedStaffId || currentUserStaffId || null);
+                                            setBatchAutoCreateReport(true);
+                                            loadStaffList();
+                                            setShowBatchStartModal(true);
+                                          }}
+                                          title="Bắt đầu thực hiện tất cả"
+                                        >
+                                          <i className="fas fa-play"></i>
+                                          <span>Bắt đầu</span>
+                                        </button>
+                                      );
+                                    }
+
+                                    return null;
+                                  })()}
+
+                                  {/* Nút Khôi phục trong Tab Đã Hủy */}
+                                  {activeTab === 'cancelled' && isUserAdmin && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline-success d-inline-flex align-items-center gap-1.5 px-3"
+                                      style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px' }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleBatchRestore(group);
+                                      }}
+                                      title="Khôi phục toàn batch về danh sách bảo trì"
+                                    >
+                                      <i className="fas fa-undo"></i>
+                                      <span>Khôi phục</span>
+                                    </button>
+                                  )}
+
+                                  {/* Nút Xem Chi Tiết */}
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-info d-inline-flex align-items-center gap-1.5 px-3"
+                                    style={{ fontSize: '0.8rem', borderRadius: '6px', height: '31px' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedGroup({
+                                        batchId: group.batchId,
+                                        title: group.title,
+                                        plans: group.plans,
+                                      });
+                                      const planIds = group.plans.map(p => p.id);
+                                      loadViewPlanHistory(group.batchId, planIds);
+                                      setOpenMaintenanceTab(true);
+                                      setOpenRescheduleTab(false);
+                                      setShowViewPlanModal(true);
+                                    }}
+                                    title="Xem chi tiết kế hoạch & lịch sử"
+                                  >
+                                    <i className="fas fa-eye"></i>
+                                    <span>Chi tiết</span>
+                                  </button>
+
+                                  {/* Menu Thao tác khác (⋮) dành cho Admin */}
+                                  {isUserAdmin && (
+                                    <div className="position-relative d-inline-block" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        type="button"
+                                        className={`btn btn-sm ${openActionDropdownBatchId === group.batchId ? 'btn-secondary text-white' : 'btn-outline-secondary'} d-inline-flex align-items-center justify-content-center`}
+                                        style={{ width: '32px', height: '31px', borderRadius: '6px' }}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setOpenActionDropdownBatchId(prev => prev === group.batchId ? null : group.batchId);
+                                        }}
+                                        title="Thao tác khác"
+                                        aria-expanded={openActionDropdownBatchId === group.batchId}
+                                      >
+                                        <i className="fas fa-ellipsis-v"></i>
+                                      </button>
+
+                                      {openActionDropdownBatchId === group.batchId && (
+                                        <>
+                                          <div
+                                            className="position-fixed top-0 start-0 w-100 h-100"
+                                            style={{ zIndex: 1040, background: 'transparent' }}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setOpenActionDropdownBatchId(null);
+                                            }}
+                                          />
+                                          <div
+                                            className="dropdown-menu dropdown-menu-end show shadow border-0 py-1"
+                                            style={{
+                                              position: 'absolute',
+                                              right: 0,
+                                              top: '100%',
+                                              marginTop: '4px',
+                                              zIndex: 1050,
+                                              minWidth: '210px',
+                                              borderRadius: '8px',
+                                              boxShadow: '0 4px 16px rgba(0,0,0,0.15)'
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            {activeTab === 'cancelled' ? (
+                                              <button
+                                                type="button"
+                                                className="dropdown-item py-2 px-3 small text-danger d-flex align-items-center gap-2"
+                                                onClick={() => {
+                                                  setOpenActionDropdownBatchId(null);
+                                                  handleBatchDelete(group);
+                                                }}
+                                              >
+                                                <i className="fas fa-trash fa-fw"></i>
+                                                <span>Xóa vĩnh viễn batch</span>
+                                              </button>
+                                            ) : (
+                                              <>
+                                                <button
+                                                  type="button"
+                                                  className="dropdown-item py-2 px-3 small d-flex align-items-center gap-2"
+                                                  onClick={() => {
+                                                    setOpenActionDropdownBatchId(null);
+                                                    handleOpenEditBatch(group.batchId, group.title);
+                                                  }}
+                                                >
+                                                  <i className="fas fa-edit text-info fa-fw"></i>
+                                                  <span>Sửa thông tin kế hoạch</span>
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className="dropdown-item py-2 px-3 small d-flex align-items-center gap-2"
+                                                  onClick={() => {
+                                                    setOpenActionDropdownBatchId(null);
+                                                    setSelectedGroup(group);
+                                                    const earliestDate = group.plans
+                                                      .filter(p => p.isActive && p.nextDueDate)
+                                                      .map(p => p.nextDueDate ? new Date(p.nextDueDate) : null)
+                                                      .filter(d => d !== null)
+                                                      .sort((a, b) => (a?.getTime() || 0) - (b?.getTime() || 0))[0];
+                                                    setBatchRescheduleDate(earliestDate ? formatDateInput(earliestDate) : formatDateInput(new Date()));
+                                                    setShowBatchRescheduleModal(true);
+                                                  }}
+                                                >
+                                                  <i className="fas fa-calendar-alt text-warning fa-fw"></i>
+                                                  <span>Dời lịch bảo trì</span>
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className="dropdown-item py-2 px-3 small d-flex align-items-center gap-2 text-danger"
+                                                  onClick={() => {
+                                                    setOpenActionDropdownBatchId(null);
+                                                    setSelectedGroup(group);
+                                                    setShowBatchCancelModal(true);
+                                                  }}
+                                                >
+                                                  <i className="fas fa-times-circle fa-fw"></i>
+                                                  <span>Hủy kế hoạch (vào Đã Hủy)</span>
+                                                </button>
+                                                <div className="dropdown-divider my-1"></div>
+                                                <button
+                                                  type="button"
+                                                  className="dropdown-item py-2 px-3 small d-flex align-items-center gap-2 text-danger fw-semibold"
+                                                  onClick={() => {
+                                                    setOpenActionDropdownBatchId(null);
+                                                    handleBatchDelete(group);
+                                                  }}
+                                                >
+                                                  <i className="fas fa-trash fa-fw"></i>
+                                                  <span>Xóa hoàn toàn kế hoạch</span>
+                                                </button>
+                                              </>
+                                            )}
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                            </button>
+                            </div>
                           </h2>
                           <div
                             id={collapseId}
@@ -4055,29 +4397,25 @@ function MaintenancePageContent() {
                 {activeTab === 'plans' && groupedPlans.length > 0 && isUserAdmin && (
                   <div className="card mt-4 border-0 shadow-sm bg-light">
                     <div className="card-header bg-white border-0 py-2">
-                      <h6 className="mb-0 text-muted small"><i className="fas fa-info-circle me-2"></i>Chú thích thao tác (Dành cho đợt bảo trì)</h6>
+                      <h6 className="mb-0 text-muted small"><i className="fas fa-info-circle me-2"></i>Chú thích thao tác bảo trì</h6>
                     </div>
                     <div className="card-body py-2">
                       <div className="row g-2">
                         <div className="col-md-auto col-6 d-flex align-items-center me-3">
-                          <span className="badge bg-outline-info text-info border border-info me-2"><i className="fas fa-eye"></i></span>
-                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Xem chi tiết</small>
+                          <span className="badge bg-primary text-white me-2"><i className="fas fa-play"></i> Bắt đầu</span>
+                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Bắt đầu đợt bảo trì</small>
                         </div>
                         <div className="col-md-auto col-6 d-flex align-items-center me-3">
-                          <span className="badge bg-outline-success text-success border border-success me-2"><i className="fas fa-check-double"></i></span>
-                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Hoàn thành tất cả</small>
+                          <span className="badge bg-success text-white me-2"><i className="fas fa-check-double"></i> Hoàn thành</span>
+                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Ghi nhận hoàn thành</small>
                         </div>
                         <div className="col-md-auto col-6 d-flex align-items-center me-3">
-                          <span className="badge bg-outline-primary text-primary border border-primary me-2"><i className="fas fa-edit"></i></span>
-                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Sửa kế hoạch</small>
-                        </div>
-                        <div className="col-md-auto col-6 d-flex align-items-center me-3">
-                          <span className="badge bg-outline-warning text-warning border border-warning me-2"><i className="fas fa-calendar-alt"></i></span>
-                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Dời lịch bảo trì</small>
+                          <span className="badge bg-outline-info text-info border border-info me-2"><i className="fas fa-eye"></i> Chi tiết</span>
+                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Xem chi tiết & lịch sử</small>
                         </div>
                         <div className="col-md-auto col-6 d-flex align-items-center">
-                          <span className="badge bg-outline-danger text-danger border border-danger me-2"><i className="fas fa-times"></i></span>
-                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Hủy/Xóa kế hoạch</small>
+                          <span className="badge bg-outline-secondary text-secondary border border-secondary me-2"><i className="fas fa-ellipsis-v"></i></span>
+                          <small className="text-secondary" style={{ fontSize: '0.75rem' }}>Thao tác khác (Sửa / Dời lịch / Hủy / Xóa)</small>
                         </div>
                       </div>
                     </div>
@@ -5093,7 +5431,7 @@ function MaintenancePageContent() {
                             {nextMaintenanceDate && (() => {
                               const daysUntilDue = maintenanceDaysBetween(nextMaintenanceDate);
                               return (
-                                <div className="d-flex align-items-center gap-1.5">
+                                <div className="d-flex align-items-center gap-2">
                                   <span className="text-muted">BT sắp đến:</span>
                                   <span className={`fw-semibold ${getDaysUntilDueColor(daysUntilDue)}`}>
                                     {formatDateDisplay(nextMaintenanceDate)}
@@ -5115,14 +5453,14 @@ function MaintenancePageContent() {
                             })()}
 
                             {lastMaintenanceDate && (
-                              <div className="d-flex align-items-center gap-1.5">
+                              <div className="d-flex align-items-center gap-2">
                                 <span className="text-muted">BT trước:</span>
                                 <span className="fw-semibold text-success">{formatDateDisplay(lastMaintenanceDate)}</span>
                               </div>
                             )}
 
                             {firstPlan?.metadata?.maintenanceProvider && (
-                              <div className="d-flex align-items-center gap-1.5">
+                              <div className="d-flex align-items-center gap-2">
                                 <span className="text-muted">Đơn vị:</span>
                                 <span className="fw-semibold text-dark">{firstPlan.metadata.maintenanceProvider}</span>
                               </div>
@@ -5246,7 +5584,7 @@ function MaintenancePageContent() {
                                           <td className="fw-semibold">{formatDateDisplay(round.roundDate) || '-'}</td>
                                           <td>
                                             {round.devices.length > 1 ? (
-                                              <div className="d-flex align-items-center gap-1.5 text-nowrap">
+                                              <div className="d-flex align-items-center gap-2 text-nowrap">
                                                 <span className="fw-semibold text-dark text-nowrap">
                                                   {round.devices.length} thiết bị
                                                 </span>

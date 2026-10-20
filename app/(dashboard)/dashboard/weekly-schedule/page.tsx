@@ -60,6 +60,7 @@ interface PendingTask {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const DAYS = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ Nhật'];
+const DAYS_SHORT = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 const QUICK_CONTENT = [
   'S-C', 'Nghỉ', 'S-C Nghỉ', 'Trực', 'Hội nghị', 
   'Công tác', 'Khảo sát', 'Đào tạo', 'Bảo trì', 
@@ -79,8 +80,24 @@ function formatShort(date: Date): string {
   return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getFullYear()).slice(2)}`;
 }
 
+function formatDayMonth(date: Date): string {
+  return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
 function formatFull(date: Date): string {
   return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+}
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function isOffDayContent(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  return normalized === 'nghỉ' || normalized === 'nghỉ phép' || normalized.startsWith('nghỉ ');
 }
 
 // ─── Cell Editor ─────────────────────────────────────────────────────────────
@@ -91,10 +108,24 @@ interface CellEditorProps {
   cell: ScheduleCell;
   pendingTasks: PendingTask[];
   onSave: (staffId: number, dayOfWeek: number, content: string, note: string) => void;
+  variant?: 'table' | 'mobile-day' | 'mobile-staff';
+  dayDateLabel?: string;
+  isToday?: boolean;
 }
 
-function CellEditor({ staffId, staffName, dayIndex, cell, pendingTasks, onSave }: CellEditorProps) {
+function CellEditor({
+  staffId,
+  staffName,
+  dayIndex,
+  cell,
+  pendingTasks,
+  onSave,
+  variant = 'table',
+  dayDateLabel,
+  isToday = false,
+}: CellEditorProps) {
   const [open, setOpen] = useState(false);
+  const [isMobileSheet, setIsMobileSheet] = useState(false);
   const [content, setContent] = useState(cell.content);
   const [note, setNote] = useState(cell.note || '');
   const [tab, setTab] = useState<'text' | 'pick'>('text');
@@ -107,10 +138,19 @@ function CellEditor({ staffId, staffName, dayIndex, cell, pendingTasks, onSave }
   const POPUP_HEIGHT = 460; // ước lượng chiều cao popup
 
   const computePopupStyle = () => {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
+    if (typeof window === 'undefined') return;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+
+    if (vw <= 768) {
+      setIsMobileSheet(true);
+      setPopupStyle({});
+      return;
+    }
+
+    setIsMobileSheet(false);
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
 
     let left = rect.left;
     let top = rect.bottom + 4;
@@ -162,7 +202,7 @@ function CellEditor({ staffId, staffName, dayIndex, cell, pendingTasks, onSave }
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || isMobileSheet) return;
     const handler = (e: MouseEvent) => {
       const clickedInCell = ref.current && ref.current.contains(e.target as Node);
       const clickedInPopup = popupRef.current && popupRef.current.contains(e.target as Node);
@@ -173,7 +213,7 @@ function CellEditor({ staffId, staffName, dayIndex, cell, pendingTasks, onSave }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [open, content, note]);
+  }, [open, isMobileSheet, content, note]);
 
   const handleSave = () => {
     onSave(staffId, dayIndex, content.trim(), note.trim());
@@ -219,28 +259,107 @@ function CellEditor({ staffId, staffName, dayIndex, cell, pendingTasks, onSave }
   };
 
   const displayContent = cell.content || '';
+  const isOff = displayContent ? isOffDayContent(displayContent) : false;
 
   return (
     <div className="ws-cell-wrapper" ref={ref}>
-      <div
-        className={`ws-cell ${open ? 'ws-cell--active' : ''} ${displayContent ? '' : 'ws-cell--empty'}`}
-        onClick={() => setOpen(true)}
-        title={`${staffName} - ${DAYS[dayIndex - 1]}: ${displayContent || 'Nhấp để nhập'}`}
-      >
-        <span className="ws-cell-text">{displayContent || <span className="ws-cell-placeholder">+</span>}</span>
-        {cell.note && !open && <span className="ws-cell-note">{cell.note}</span>}
-      </div>
+      {variant === 'table' && (
+        <div
+          className={`ws-cell ${open ? 'ws-cell--active' : ''} ${displayContent ? (isOff ? 'ws-cell--off' : '') : 'ws-cell--empty'}`}
+          onClick={() => setOpen(true)}
+          title={`${staffName} - ${DAYS[dayIndex - 1]}: ${displayContent || 'Nhấp để nhập'}`}
+        >
+          <span className="ws-cell-text">{displayContent || <span className="ws-cell-placeholder">+</span>}</span>
+          {cell.note && !open && <span className="ws-cell-note">{cell.note}</span>}
+        </div>
+      )}
+
+      {variant === 'mobile-day' && (
+        <div
+          className={`ws-mday-card ${open ? 'ws-mday-card--active' : ''} ${displayContent ? (isOff ? 'ws-mday-card--off' : 'ws-mday-card--filled') : 'ws-mday-card--empty'}`}
+          onClick={() => setOpen(true)}
+        >
+          <div className="ws-mday-card-top">
+            <div className="ws-mday-staff">
+              <div className="ws-mday-avatar">{getInitials(staffName)}</div>
+              <div className="ws-mday-staff-info">
+                <div className="ws-mday-staff-name">{staffName}</div>
+                {pendingTasks.length > 0 && (
+                  <div className="ws-mday-pending-badge">
+                    <i className="fas fa-list-check" /> {pendingTasks.length} việc tồn
+                  </div>
+                )}
+              </div>
+            </div>
+            <button type="button" className="ws-mday-edit-btn" aria-label="Chỉnh sửa lịch">
+              <i className={displayContent ? 'fas fa-pen' : 'fas fa-plus'} />
+            </button>
+          </div>
+
+          <div className="ws-mday-body">
+            {displayContent ? (
+              <div className={`ws-mday-content ${isOff ? 'ws-mday-content--off' : ''}`}>
+                {displayContent}
+              </div>
+            ) : (
+              <div className="ws-mday-placeholder">Chưa có lịch — Chạm để xếp việc</div>
+            )}
+            {cell.note && (
+              <div className="ws-mday-note">
+                <i className="fas fa-sticky-note" /> {cell.note}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {variant === 'mobile-staff' && (
+        <div
+          className={`ws-mstaff-day-row ${open ? 'ws-mstaff-day-row--active' : ''} ${isToday ? 'ws-mstaff-day-row--today' : ''} ${isOff ? 'ws-mstaff-day-row--off' : ''}`}
+          onClick={() => setOpen(true)}
+        >
+          <div className="ws-mstaff-day-label">
+            <span className="ws-mstaff-day-name">
+              {DAYS_SHORT[dayIndex - 1]}
+              {isToday && <span className="ws-mstaff-today-dot" title="Hôm nay" />}
+            </span>
+            {dayDateLabel && <span className="ws-mstaff-day-date">{dayDateLabel}</span>}
+          </div>
+          <div className="ws-mstaff-day-content">
+            {displayContent ? (
+              <div className={`ws-mstaff-text ${isOff ? 'ws-mstaff-text--off' : ''}`}>{displayContent}</div>
+            ) : (
+              <div className="ws-mstaff-empty">+ Thêm lịch</div>
+            )}
+            {cell.note && (
+              <div className="ws-mstaff-note">
+                <i className="fas fa-comment-dots" /> {cell.note}
+              </div>
+            )}
+          </div>
+          <div className="ws-mstaff-day-action">
+            <i className={displayContent ? 'fas fa-pen' : 'fas fa-plus'} />
+          </div>
+        </div>
+      )}
 
       {open && typeof window !== 'undefined' && (
         <PopupPortal>
+          {isMobileSheet && (
+            <div className="ws-popup-backdrop" onClick={handleClose} />
+          )}
           <div
             ref={popupRef}
-            className="ws-popup"
-            style={popupStyle}
+            className={`ws-popup ${isMobileSheet ? 'ws-popup--mobile' : ''}`}
+            style={isMobileSheet ? undefined : popupStyle}
             onMouseDown={e => e.stopPropagation()}
           >
+            {isMobileSheet && <div className="ws-sheet-handle" />}
             <div className="ws-popup-header">
-              <span>{staffName} — {DAYS[dayIndex - 1]}</span>
+              <span>
+                {staffName} — {DAYS[dayIndex - 1]}
+                {dayDateLabel ? ` (${dayDateLabel})` : ''}
+              </span>
               <button className="ws-popup-close" onClick={handleClose}>✕</button>
             </div>
 
@@ -272,7 +391,7 @@ function CellEditor({ staffId, staffName, dayIndex, cell, pendingTasks, onSave }
                   onChange={e => setContent(e.target.value)}
                   placeholder="Nội dung công việc (S-C, Nghỉ, Trực HN...)"
                   rows={4}
-                  autoFocus
+                  autoFocus={!isMobileSheet}
                 />
                 <textarea
                   className="ws-textarea ws-textarea--note"
@@ -303,8 +422,8 @@ function CellEditor({ staffId, staffName, dayIndex, cell, pendingTasks, onSave }
             )}
 
             <div className="ws-popup-footer">
-              <button className="ws-btn ws-btn--clear" onClick={() => { setContent(''); setNote(''); }}>Xóa</button>
-              <button className="ws-btn ws-btn--save" onClick={handleClose}>Lưu</button>
+              <button className="ws-btn ws-btn--clear" onClick={() => { setContent(''); setNote(''); }}>Xóa nội dung</button>
+              <button className="ws-btn ws-btn--save" onClick={handleClose}>Lưu & Đóng</button>
             </div>
           </div>
         </PopupPortal>
@@ -466,12 +585,52 @@ export default function WeeklySchedulePage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
 
+  // Mobile view state ('day' | 'staff' | 'table')
+  const [mobileViewMode, setMobileViewMode] = useState<'day' | 'staff' | 'table'>('day');
+  const [selectedMobileDay, setSelectedMobileDay] = useState<number>(() => {
+    const d = new Date().getDay();
+    return d === 0 ? 7 : d;
+  });
+  const [collapsedStaffIds, setCollapsedStaffIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    const savedMode = safeLocalStorage.getItem('ws_mobile_view_mode');
+    if (savedMode === 'day' || savedMode === 'staff' || savedMode === 'table') {
+      setMobileViewMode(savedMode);
+    }
+  }, []);
+
+  const handleMobileViewChange = (mode: 'day' | 'staff' | 'table') => {
+    setMobileViewMode(mode);
+    safeLocalStorage.setItem('ws_mobile_view_mode', mode);
+  };
+
+  const toggleStaffCollapse = (staffId: number) => {
+    setCollapsedStaffIds(prev => {
+      const next = new Set(prev);
+      if (next.has(staffId)) next.delete(staffId);
+      else next.add(staffId);
+      return next;
+    });
+  };
+
   const pendingSaves = useRef<Record<string, ScheduleCell>>({});
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noteSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const weekStartStr = format(currentMonday, 'yyyy-MM-dd');
   const sunday = addDays(currentMonday, 6);
+
+  // Khi đổi tuần, nếu tuần đó chứa ngày hôm nay thì tự chọn thứ hôm nay
+  useEffect(() => {
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    for (let i = 0; i < 7; i++) {
+      if (format(addDays(currentMonday, i), 'yyyy-MM-dd') === todayStr) {
+        setSelectedMobileDay(i + 1);
+        return;
+      }
+    }
+  }, [currentMonday]);
 
   // ── Load departments & all staff once
   useEffect(() => {
@@ -734,10 +893,28 @@ export default function WeeklySchedulePage() {
     );
   }
 
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
   const dateHeaders = Array.from({ length: 7 }, (_, i) => {
     const d = addDays(currentMonday, i);
-    return { label: DAYS[i], date: formatShort(d) };
+    return {
+      label: DAYS[i],
+      shortLabel: DAYS_SHORT[i],
+      date: formatShort(d),
+      dayMonth: formatDayMonth(d),
+      isToday: format(d, 'yyyy-MM-dd') === todayStr,
+    };
   });
+
+  const allStaffInGroups = groups.flatMap(g => g.staff);
+  const allCollapsed = allStaffInGroups.length > 0 && allStaffInGroups.every(s => collapsedStaffIds.has(s.staffId));
+
+  const toggleCollapseAll = () => {
+    if (allCollapsed) {
+      setCollapsedStaffIds(new Set());
+    } else {
+      setCollapsedStaffIds(new Set(allStaffInGroups.map(s => s.staffId)));
+    }
+  };
 
   return (
     <>
@@ -797,17 +974,30 @@ export default function WeeklySchedulePage() {
         @keyframes spin { 100% { transform: rotate(360deg); } }
 
         /* Table */
-        .ws-table-wrap { overflow-x: auto; margin: 0 16px; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
-        .ws-table { width: 100%; border-collapse: separate; border-spacing: 0; background: #fff; border-radius: 16px; table-layout: fixed; }
+        .ws-table-wrap {
+          overflow-x: auto; margin: 0 16px; border-radius: 16px;
+          box-shadow: 0 4px 24px rgba(0,0,0,0.08); background: #fff;
+          -webkit-overflow-scrolling: touch;
+        }
+        .ws-table {
+          width: 100%; min-width: 920px; border-collapse: separate; border-spacing: 0;
+          background: #fff; border-radius: 16px; table-layout: fixed;
+        }
         .ws-table thead th {
           background: #1a56db; color: #fff; font-weight: 700; text-align: center;
           padding: 11px 10px; font-size: 0.88rem; border-right: 1px solid rgba(255,255,255,0.15); white-space: nowrap;
         }
-        .ws-table thead th:first-child { text-align: left; padding-left: 18px; width: 16%; }
-        .ws-table thead th:not(:first-child) { width: 12%; }
+        .ws-table thead th:first-child {
+          text-align: left; padding-left: 18px; width: 160px; min-width: 160px;
+          position: sticky; left: 0; z-index: 6; background: #1a56db;
+        }
+        .ws-table thead th:not(:first-child) { width: calc((100% - 160px) / 7); }
         .ws-table thead .ws-date-row th {
           background: #dce6f1; color: #1e293b; font-weight: 600; font-size: 0.78rem;
           padding: 6px 10px; border-bottom: 2px solid #c3d4ed;
+        }
+        .ws-table thead .ws-date-row th:first-child {
+          position: sticky; left: 0; z-index: 6; background: #dce6f1;
         }
         .ws-dept-row td {
           background: linear-gradient(90deg, #e8f0fe, #f0f4ff); font-weight: 800;
@@ -816,10 +1006,12 @@ export default function WeeklySchedulePage() {
         }
         .ws-table tbody tr.ws-staff-row { transition: background .15s; }
         .ws-table tbody tr.ws-staff-row:hover { background: #f8faff; }
+        .ws-table tbody tr.ws-staff-row:hover .ws-staff-name-cell { background: #f8faff; }
         .ws-staff-name-cell {
-          padding: 0 6px 0 18px; font-weight: 600; font-size: 0.88rem; color: #1e293b;
+          padding: 8px 10px 8px 16px; font-weight: 600; font-size: 0.88rem; color: #1e293b;
           vertical-align: middle; border-right: 2px solid #e5e7eb; border-bottom: 1px solid #f1f5f9;
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          background: #fff; position: sticky; left: 0; z-index: 4;
+          white-space: normal; word-break: break-word; line-height: 1.35;
         }
         .ws-day-cell {
           padding: 2px; vertical-align: top; border-right: 1px solid #f1f5f9;
@@ -835,16 +1027,60 @@ export default function WeeklySchedulePage() {
         }
         .ws-cell:hover { background: #eff6ff; box-shadow: inset 0 0 0 1.5px #93c5fd; }
         .ws-cell--active { background: #dbeafe !important; box-shadow: inset 0 0 0 2px #1a56db !important; }
+        .ws-cell--off { background: #fff7ed; }
+        .ws-cell--off .ws-cell-text { color: #c2410c; font-weight: 600; }
         .ws-cell--empty .ws-cell-placeholder { color: #cbd5e1; font-size: 1.1rem; }
         .ws-cell-text { display: block; color: #1e293b; }
         .ws-cell-note { display: block; color: #6b7280; font-size: 0.75rem; font-style: italic; margin-top: 2px; }
 
         /* Popup editor – dùng position:fixed để thoát khỏi mọi overflow clip */
+        .ws-popup-backdrop {
+          position: fixed; inset: 0; z-index: 99998;
+          background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(2px);
+          animation: fadeIn .18s ease;
+        }
         .ws-popup {
           position: fixed; z-index: 99999;
           background: #fff; border-radius: 14px;
           box-shadow: 0 8px 40px rgba(0,0,0,0.22), 0 0 0 1px rgba(26,86,219,0.15);
           width: 360px; animation: popIn .15s ease; overflow: hidden;
+        }
+        .ws-popup--mobile {
+          left: 0 !important; right: 0 !important; bottom: 0 !important; top: auto !important;
+          width: 100% !important; max-height: 88vh;
+          border-radius: 20px 20px 0 0;
+          box-shadow: 0 -8px 32px rgba(0,0,0,0.25);
+          animation: slideUpSheet .22s cubic-bezier(0.16, 1, 0.3, 1);
+          display: flex; flex-direction: column;
+        }
+        .ws-sheet-handle {
+          width: 40px; height: 4px; border-radius: 4px; background: rgba(255,255,255,0.45);
+          margin: 8px auto -4px;
+        }
+        .ws-popup--mobile .ws-popup-header {
+          padding: 14px 16px 12px;
+          font-size: 0.95rem;
+        }
+        .ws-popup--mobile .ws-popup-body {
+          overflow-y: auto; max-height: calc(88vh - 150px);
+          padding: 14px 16px;
+        }
+        .ws-popup--mobile .ws-quick-btn {
+          padding: 6px 12px; font-size: 0.82rem;
+        }
+        .ws-popup--mobile .ws-textarea {
+          font-size: 0.95rem; padding: 10px 12px;
+        }
+        .ws-popup--mobile .ws-popup-footer {
+          padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+        }
+        .ws-popup--mobile .ws-btn--clear,
+        .ws-popup--mobile .ws-btn--save {
+          flex: 1; justify-content: center; padding: 10px 16px; font-size: 0.9rem;
+        }
+        @keyframes slideUpSheet {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
         }
         @keyframes popIn { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
         @keyframes popUp { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -913,13 +1149,13 @@ export default function WeeklySchedulePage() {
         .ws-btn--clear {
           background: #fff; color: #ef4444; border: 1.5px solid #fca5a5;
           padding: 6px 14px; border-radius: 7px; font-size: 0.82rem; font-weight: 600;
-          cursor: pointer; transition: all .15s;
+          cursor: pointer; transition: all .15s; display: inline-flex; align-items: center;
         }
         .ws-btn--clear:hover { background: #fef2f2; }
         .ws-btn--save {
           background: #1a56db; color: #fff; border: none;
           padding: 6px 18px; border-radius: 7px; font-size: 0.82rem; font-weight: 700;
-          cursor: pointer; transition: all .15s;
+          cursor: pointer; transition: all .15s; display: inline-flex; align-items: center;
         }
         .ws-btn--save:hover { background: #1e40af; }
 
@@ -996,12 +1232,274 @@ export default function WeeklySchedulePage() {
         .ws-empty { text-align: center; padding: 60px 20px; color: #9ca3af; }
         .ws-empty i { font-size: 3rem; margin-bottom: 12px; display: block; color: #d1d5db; }
 
+        /* ============================== Mobile Specific Views ============================== */
+        .ws-mobile-only { display: none; }
+
+        /* Mobile View Switcher */
+        .ws-view-switcher {
+          display: flex; background: #eef2ff; padding: 4px; border-radius: 11px;
+          gap: 4px; width: 100%; border: 1px solid #dbeafe;
+        }
+        .ws-view-switch-btn {
+          flex: 1; padding: 8px 6px; border: none; border-radius: 8px;
+          background: transparent; color: #475569; font-size: 0.8rem; font-weight: 600;
+          cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;
+          transition: all .18s; white-space: nowrap;
+        }
+        .ws-view-switch-btn.active {
+          background: #1a56db; color: #fff;
+          box-shadow: 0 2px 6px rgba(26, 86, 219, 0.28);
+        }
+
+        /* Mode 1: Day View (Theo ngày) */
+        .ws-mday-wrap { margin: 0 8px; }
+        .ws-day-strip {
+          display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px;
+          background: #fff; padding: 8px; border-radius: 14px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.06); margin-bottom: 12px;
+        }
+        .ws-day-pill {
+          border: 1.5px solid #e2e8f0; border-radius: 10px; background: #f8fafc;
+          padding: 7px 2px 6px; cursor: pointer; display: flex; flex-direction: column;
+          align-items: center; justify-content: center; gap: 2px; position: relative;
+          transition: all .18s;
+        }
+        .ws-day-pill--today { border-color: #93c5fd; background: #eff6ff; }
+        .ws-day-pill--active {
+          background: linear-gradient(135deg, #1a56db, #1e40af) !important;
+          border-color: #1a56db !important; color: #fff !important;
+          box-shadow: 0 4px 10px rgba(26,86,219,0.3); transform: translateY(-1px);
+        }
+        .ws-day-pill-name { font-size: 0.78rem; font-weight: 800; color: #1e293b; line-height: 1.1; }
+        .ws-day-pill--active .ws-day-pill-name { color: #fff; }
+        .ws-day-pill-date { font-size: 0.68rem; font-weight: 600; color: #64748b; }
+        .ws-day-pill--active .ws-day-pill-date { color: rgba(255,255,255,0.88); }
+        .ws-day-pill-dot {
+          width: 6px; height: 6px; border-radius: 50%; background: #cbd5e1; margin-top: 2px;
+        }
+        .ws-day-pill-dot.has-work { background: #10b981; }
+        .ws-day-pill--active .ws-day-pill-dot.has-work { background: #6ee7b7; }
+        .ws-day-pill--active .ws-day-pill-dot:not(.has-work) { background: rgba(255,255,255,0.35); }
+        .ws-day-pill-today-tag {
+          position: absolute; top: -5px; right: -2px; width: 8px; height: 8px;
+          border-radius: 50%; background: #f59e0b; border: 1.5px solid #fff;
+        }
+
+        .ws-mday-banner {
+          display: flex; align-items: center; justify-content: space-between;
+          background: #fff; padding: 10px 14px; border-radius: 12px;
+          margin-bottom: 12px; box-shadow: 0 1px 6px rgba(0,0,0,0.05);
+          border-left: 4px solid #1a56db;
+        }
+        .ws-mday-banner-title {
+          font-size: 0.92rem; font-weight: 700; color: #1e293b;
+          display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        }
+        .ws-today-badge {
+          font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+          background: #fef3c7; color: #b45309;
+        }
+        .ws-mday-banner-nav { display: flex; gap: 6px; }
+        .ws-mday-step-btn {
+          width: 30px; height: 30px; border-radius: 8px; border: 1px solid #cbd5e1;
+          background: #f8fafc; color: #334155; display: flex; align-items: center;
+          justify-content: center; cursor: pointer; font-size: 0.78rem;
+        }
+        .ws-mday-step-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .ws-mdept-group { margin-bottom: 14px; }
+        .ws-mdept-header {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 8px 12px; background: linear-gradient(90deg, #dbeafe, #eff6ff);
+          color: #1e40af; font-weight: 800; font-size: 0.82rem; border-radius: 10px;
+          margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.03em;
+        }
+        .ws-mdept-count {
+          font-size: 0.72rem; font-weight: 600; background: #fff; color: #1a56db;
+          padding: 2px 8px; border-radius: 10px; text-transform: none;
+        }
+        .ws-mday-list { display: flex; flex-direction: column; gap: 8px; }
+
+        .ws-mday-card {
+          background: #fff; border-radius: 12px; padding: 12px 14px;
+          border: 1.5px solid #e2e8f0; box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+          cursor: pointer; transition: all .15s;
+        }
+        .ws-mday-card:active, .ws-mday-card--active {
+          border-color: #1a56db; background: #f8faff;
+        }
+        .ws-mday-card--filled { border-left: 4px solid #1a56db; }
+        .ws-mday-card--off { border-left: 4px solid #f97316; background: #fffaf5; }
+        .ws-mday-card--empty { border-left: 4px solid #cbd5e1; }
+
+        .ws-mday-card-top {
+          display: flex; align-items: center; justify-content: space-between; gap: 8px;
+          margin-bottom: 8px;
+        }
+        .ws-mday-staff { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .ws-mday-avatar {
+          width: 34px; height: 34px; border-radius: 10px;
+          background: linear-gradient(135deg, #dbeafe, #bfdbfe); color: #1e40af;
+          font-weight: 800; font-size: 0.78rem; display: flex; align-items: center;
+          justify-content: center; flex-shrink: 0;
+        }
+        .ws-mday-staff-info { min-width: 0; }
+        .ws-mday-staff-name {
+          font-weight: 700; font-size: 0.92rem; color: #0f172a;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .ws-mday-pending-badge {
+          display: inline-flex; align-items: center; gap: 4px;
+          font-size: 0.7rem; font-weight: 600; color: #7c3aed; background: #f3e8ff;
+          padding: 1px 7px; border-radius: 8px; margin-top: 2px;
+        }
+        .ws-mday-edit-btn {
+          width: 30px; height: 30px; border-radius: 8px; border: none;
+          background: #eff6ff; color: #1a56db; font-size: 0.78rem;
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+        .ws-mday-body {
+          background: #f8fafc; border-radius: 8px; padding: 9px 11px;
+          border: 1px solid #f1f5f9;
+        }
+        .ws-mday-card--off .ws-mday-body { background: #fff7ed; border-color: #ffedd5; }
+        .ws-mday-content {
+          font-size: 0.88rem; color: #1e293b; line-height: 1.45;
+          white-space: pre-wrap; word-break: break-word; font-weight: 500;
+        }
+        .ws-mday-content--off { color: #c2410c; font-weight: 700; }
+        .ws-mday-placeholder {
+          font-size: 0.82rem; color: #94a3b8; font-style: italic;
+        }
+        .ws-mday-note {
+          margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2e8f0;
+          font-size: 0.78rem; color: #64748b; font-style: italic;
+          display: flex; align-items: flex-start; gap: 6px;
+        }
+        .ws-mday-note i { color: #f59e0b; margin-top: 2px; }
+
+        /* Mode 2: Staff View (Theo nhân viên) */
+        .ws-mstaff-wrap { margin: 0 8px; }
+        .ws-mstaff-toolbar {
+          display: flex; align-items: center; justify-content: space-between;
+          background: #fff; padding: 9px 14px; border-radius: 12px;
+          margin-bottom: 12px; box-shadow: 0 1px 6px rgba(0,0,0,0.05);
+          font-size: 0.82rem; color: #475569; font-weight: 600;
+        }
+        .ws-mstaff-toggle-all {
+          border: 1px solid #cbd5e1; background: #f8fafc; color: #1a56db;
+          border-radius: 8px; padding: 5px 10px; font-size: 0.76rem; font-weight: 700;
+          cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+        }
+        .ws-mstaff-card {
+          background: #fff; border-radius: 14px; margin-bottom: 10px;
+          border: 1.5px solid #e2e8f0; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+          overflow: hidden;
+        }
+        .ws-mstaff-card-header {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 11px 14px; background: #f8fafc; cursor: pointer;
+          border-bottom: 1px solid #e2e8f0; user-select: none;
+        }
+        .ws-mstaff-card-header.collapsed { border-bottom: none; background: #fff; }
+        .ws-mstaff-header-right { display: flex; align-items: center; gap: 8px; }
+        .ws-mstaff-count-badge {
+          font-size: 0.74rem; font-weight: 700; padding: 3px 9px; border-radius: 12px;
+          background: #dbeafe; color: #1e40af;
+        }
+        .ws-mstaff-count-badge.empty { background: #f1f5f9; color: #64748b; }
+        .ws-mstaff-days-list { display: flex; flex-direction: column; }
+        .ws-mstaff-day-row {
+          display: flex; align-items: stretch; border-bottom: 1px solid #f1f5f9;
+          cursor: pointer; transition: background .15s; min-height: 46px;
+        }
+        .ws-mstaff-day-row:last-child { border-bottom: none; }
+        .ws-mstaff-day-row:active, .ws-mstaff-day-row--active { background: #eff6ff; }
+        .ws-mstaff-day-row--today { background: #f0f9ff; }
+        .ws-mstaff-day-row--off { background: #fffaf5; }
+        .ws-mstaff-day-label {
+          width: 68px; flex-shrink: 0; padding: 8px 6px;
+          background: #f8fafc; border-right: 1.5px solid #e2e8f0;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .ws-mstaff-day-row--today .ws-mstaff-day-label {
+          background: #dbeafe; border-right-color: #93c5fd;
+        }
+        .ws-mstaff-day-name {
+          font-size: 0.8rem; font-weight: 800; color: #1e293b;
+          display: flex; align-items: center; gap: 4px;
+        }
+        .ws-mstaff-day-row--today .ws-mstaff-day-name { color: #1a56db; }
+        .ws-mstaff-today-dot {
+          width: 6px; height: 6px; border-radius: 50%; background: #f59e0b;
+        }
+        .ws-mstaff-day-date { font-size: 0.68rem; color: #64748b; font-weight: 600; }
+        .ws-mstaff-day-content {
+          flex: 1; padding: 8px 10px; display: flex; flex-direction: column;
+          justify-content: center; min-width: 0;
+        }
+        .ws-mstaff-text {
+          font-size: 0.84rem; color: #1e293b; line-height: 1.4;
+          white-space: pre-wrap; word-break: break-word; font-weight: 500;
+        }
+        .ws-mstaff-text--off { color: #c2410c; font-weight: 700; }
+        .ws-mstaff-empty { font-size: 0.78rem; color: #cbd5e1; font-style: italic; }
+        .ws-mstaff-note {
+          font-size: 0.74rem; color: #64748b; font-style: italic; margin-top: 3px;
+          display: flex; align-items: center; gap: 4px;
+        }
+        .ws-mstaff-day-action {
+          width: 34px; display: flex; align-items: center; justify-content: center;
+          color: #94a3b8; font-size: 0.75rem; flex-shrink: 0;
+        }
+
+        /* Mode 3: Sticky Horizontal Table Hint */
+        .ws-mtable-hint {
+          margin: 0 8px 8px; padding: 8px 12px; border-radius: 10px;
+          background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;
+          font-size: 0.76rem; font-weight: 600; display: flex; align-items: center; gap: 8px;
+        }
+
         @media (max-width: 768px) {
-          .ws-header { padding: 16px; }
-          .ws-toolbar { margin: 0 8px 16px; padding: 12px; }
-          .ws-table-wrap { margin: 0 8px; }
-          .ws-popup { width: 300px; }
-          .ws-week-label { min-width: 160px; font-size: 0.92rem; }
+          .ws-mobile-only { display: block; }
+          .ws-desktop-table-hidden { display: none !important; }
+
+          .ws-header { padding: 14px 14px 16px; margin-bottom: 14px; border-radius: 0 0 16px 16px; }
+          .ws-header h1 { font-size: 1.2rem; }
+          .ws-header-sub { font-size: 0.8rem; }
+          .ws-header-actions { width: 100%; display: flex; gap: 8px; }
+          .ws-header-actions .ws-btn { flex: 1; justify-content: center; padding: 8px 10px; font-size: 0.82rem; }
+
+          .ws-toolbar {
+            margin: 0 8px 12px; padding: 12px; gap: 10px;
+          }
+          .ws-toolbar-sep { display: none; }
+          .ws-week-nav { width: 100%; justify-content: space-between; }
+          .ws-week-label { min-width: 0; flex: 1; font-size: 0.94rem; }
+          .ws-toolbar-controls {
+            display: flex; width: 100%; gap: 8px; align-items: center; flex-wrap: wrap;
+          }
+          .ws-select { flex: 1; min-width: 140px; font-size: 0.84rem; padding: 7px 10px; }
+
+          .ws-table-wrap { margin: 0 8px; border-radius: 12px; }
+          .ws-table { min-width: 860px; }
+          .ws-table thead th:first-child {
+            width: 120px; min-width: 120px; max-width: 120px;
+            padding-left: 10px; font-size: 0.8rem;
+            box-shadow: 2px 0 6px rgba(0,0,0,0.12);
+          }
+          .ws-table thead .ws-date-row th:first-child {
+            box-shadow: 2px 0 6px rgba(0,0,0,0.08);
+          }
+          .ws-table thead th:not(:first-child) {
+            width: calc((860px - 120px) / 7);
+            font-size: 0.8rem; padding: 9px 6px;
+          }
+          .ws-staff-name-cell {
+            width: 120px; min-width: 120px; max-width: 120px;
+            padding: 8px 8px 8px 10px; font-size: 0.8rem;
+            box-shadow: 2px 0 6px rgba(0,0,0,0.06);
+          }
           .ws-modal { width: 95vw; }
         }
       `}</style>
@@ -1037,34 +1535,65 @@ export default function WeeklySchedulePage() {
             </button>
           </div>
 
-          <button className="ws-btn ws-btn--outline" onClick={goToThisWeek} style={{ fontSize: '0.82rem', padding: '6px 12px' }}>
-            Tuần hiện tại
-          </button>
+          <div className="ws-toolbar-controls" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flex: 1 }}>
+            <button className="ws-btn ws-btn--outline" onClick={goToThisWeek} style={{ fontSize: '0.82rem', padding: '6px 12px' }}>
+              Tuần hiện tại
+            </button>
 
-          <div className="ws-toolbar-sep" />
+            <div className="ws-toolbar-sep" />
 
-          <select className="ws-select" value={selectedDeptId} onChange={e => setSelectedDeptId(Number(e.target.value))}>
-            <option value={0}>Tất cả bộ phận</option>
-            {departments.map(d => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
+            <select className="ws-select" value={selectedDeptId} onChange={e => setSelectedDeptId(Number(e.target.value))}>
+              <option value={0}>Tất cả bộ phận</option>
+              {departments.map(d => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
 
-          <div className="ws-toolbar-sep" />
+            <div className="ws-toolbar-sep" />
 
-          {saving && (
-            <span className="ws-saving-indicator">
-              <i className="fas fa-circle-notch" /> Đang lưu...
-            </span>
-          )}
-          {!saving && !loading && (
-            <span style={{ fontSize: '0.8rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: 5 }}>
-              <i className="fas fa-check-circle" /> Đã lưu
-            </span>
+            {saving && (
+              <span className="ws-saving-indicator">
+                <i className="fas fa-circle-notch" /> Đang lưu...
+              </span>
+            )}
+            {!saving && !loading && (
+              <span style={{ fontSize: '0.8rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600 }}>
+                <i className="fas fa-check-circle" /> Đã lưu
+              </span>
+            )}
+          </div>
+
+          {/* Mobile 3-Mode View Switcher */}
+          {!loading && groups.length > 0 && (
+            <div className="ws-mobile-only" style={{ width: '100%' }}>
+              <div className="ws-view-switcher">
+                <button
+                  type="button"
+                  className={`ws-view-switch-btn ${mobileViewMode === 'day' ? 'active' : ''}`}
+                  onClick={() => handleMobileViewChange('day')}
+                >
+                  <i className="fas fa-calendar-day" /> Theo ngày
+                </button>
+                <button
+                  type="button"
+                  className={`ws-view-switch-btn ${mobileViewMode === 'staff' ? 'active' : ''}`}
+                  onClick={() => handleMobileViewChange('staff')}
+                >
+                  <i className="fas fa-user-clock" /> Theo người
+                </button>
+                <button
+                  type="button"
+                  className={`ws-view-switch-btn ${mobileViewMode === 'table' ? 'active' : ''}`}
+                  onClick={() => handleMobileViewChange('table')}
+                >
+                  <i className="fas fa-table" /> Bảng tuần
+                </button>
+              </div>
+            </div>
           )}
         </div>
 
-        {/* Table */}
+        {/* Schedule Content */}
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><Loading /></div>
         ) : groups.length === 0 ? (
@@ -1080,58 +1609,244 @@ export default function WeeklySchedulePage() {
             )}
           </div>
         ) : (
-          <div className="ws-table-wrap">
-            <table className="ws-table">
-              <thead>
-                <tr>
-                  <th>Họ và tên</th>
-                  {dateHeaders.map((h, i) => <th key={i}>{h.label}</th>)}
-                </tr>
-                <tr className="ws-date-row">
-                  <th></th>
-                  {dateHeaders.map((h, i) => (
-                    <th key={i} style={{ background: '#dce6f1', color: '#1e293b', fontWeight: 600, fontSize: '0.78rem' }}>
-                      {h.date}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
+          <>
+            {/* ── MOBILE MODE 1: XEM THEO NGÀY (DAY VIEW) ── */}
+            {mobileViewMode === 'day' && (
+              <div className="ws-mobile-only ws-mday-wrap">
+                {/* 7-Day Selector Strip */}
+                <div className="ws-day-strip">
+                  {dateHeaders.map((h, idx) => {
+                    const dow = idx + 1;
+                    const hasWork = allStaffInGroups.some(s => {
+                      const c = editState[`${s.staffId}:${dow}`]?.content;
+                      return c && c.trim().length > 0;
+                    });
+                    return (
+                      <button
+                        key={dow}
+                        type="button"
+                        className={`ws-day-pill ${selectedMobileDay === dow ? 'ws-day-pill--active' : ''} ${h.isToday ? 'ws-day-pill--today' : ''}`}
+                        onClick={() => setSelectedMobileDay(dow)}
+                      >
+                        {h.isToday && <span className="ws-day-pill-today-tag" title="Hôm nay" />}
+                        <span className="ws-day-pill-name">{h.shortLabel}</span>
+                        <span className="ws-day-pill-date">{h.dayMonth}</span>
+                        <span className={`ws-day-pill-dot ${hasWork ? 'has-work' : ''}`} />
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Selected Day Banner */}
+                <div className="ws-mday-banner">
+                  <div className="ws-mday-banner-title">
+                    <i className="fas fa-calendar-check" style={{ color: '#1a56db' }} />
+                    <span>
+                      {dateHeaders[selectedMobileDay - 1]?.label} ({dateHeaders[selectedMobileDay - 1]?.date})
+                    </span>
+                    {dateHeaders[selectedMobileDay - 1]?.isToday && (
+                      <span className="ws-today-badge">Hôm nay</span>
+                    )}
+                  </div>
+                  <div className="ws-mday-banner-nav">
+                    <button
+                      type="button"
+                      className="ws-mday-step-btn"
+                      disabled={selectedMobileDay <= 1}
+                      onClick={() => setSelectedMobileDay(d => Math.max(1, d - 1))}
+                      title="Ngày trước"
+                    >
+                      <i className="fas fa-chevron-left" />
+                    </button>
+                    <button
+                      type="button"
+                      className="ws-mday-step-btn"
+                      disabled={selectedMobileDay >= 7}
+                      onClick={() => setSelectedMobileDay(d => Math.min(7, d + 1))}
+                      title="Ngày sau"
+                    >
+                      <i className="fas fa-chevron-right" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Staff Cards for Selected Day */}
                 {groups.map(group => (
-                  <> 
-                    <tr key={`dept-${group.departmentId}`} className="ws-dept-row">
-                      <td colSpan={8}>
-                        <i className="fas fa-users" style={{ marginRight: 8 }} />
-                        {group.departmentName.toUpperCase()}
-                      </td>
-                    </tr>
-                    {group.staff.map(s => (
-                      <tr key={s.staffId} className="ws-staff-row">
-                        <td className="ws-staff-name-cell">{s.staffName}</td>
-                        {Array.from({ length: 7 }, (_, i) => {
-                          const dow = i + 1;
-                          const key = `${s.staffId}:${dow}`;
-                          const cell = editState[key] || { content: '', note: '' };
-                          return (
-                            <td key={dow} className="ws-day-cell">
-                              <CellEditor
-                                staffId={s.staffId}
-                                staffName={s.staffName}
-                                dayIndex={dow}
-                                cell={cell}
-                                pendingTasks={pendingTasksByStaff[s.staffId] || []}
-                                onSave={handleCellSave}
-                              />
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </>
+                  <div key={`mday-dept-${group.departmentId}`} className="ws-mdept-group">
+                    <div className="ws-mdept-header">
+                      <span><i className="fas fa-users" style={{ marginRight: 6 }} />{group.departmentName}</span>
+                      <span className="ws-mdept-count">{group.staff.length} nhân viên</span>
+                    </div>
+                    <div className="ws-mday-list">
+                      {group.staff.map(s => {
+                        const key = `${s.staffId}:${selectedMobileDay}`;
+                        const cell = editState[key] || { content: '', note: '' };
+                        return (
+                          <CellEditor
+                            key={key}
+                            staffId={s.staffId}
+                            staffName={s.staffName}
+                            dayIndex={selectedMobileDay}
+                            cell={cell}
+                            pendingTasks={pendingTasksByStaff[s.staffId] || []}
+                            onSave={handleCellSave}
+                            variant="mobile-day"
+                            dayDateLabel={dateHeaders[selectedMobileDay - 1]?.dayMonth}
+                            isToday={dateHeaders[selectedMobileDay - 1]?.isToday}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            )}
+
+            {/* ── MOBILE MODE 2: XEM THEO NHÂN VIÊN (STAFF VIEW) ── */}
+            {mobileViewMode === 'staff' && (
+              <div className="ws-mobile-only ws-mstaff-wrap">
+                <div className="ws-mstaff-toolbar">
+                  <span><i className="fas fa-user-friends" style={{ color: '#1a56db', marginRight: 6 }} /> Lịch 7 ngày theo từng nhân viên</span>
+                  <button type="button" className="ws-mstaff-toggle-all" onClick={toggleCollapseAll}>
+                    <i className={`fas ${allCollapsed ? 'fa-expand-alt' : 'fa-compress-alt'}`} />
+                    {allCollapsed ? 'Mở tất cả' : 'Thu gọn'}
+                  </button>
+                </div>
+
+                {groups.map(group => (
+                  <div key={`mstaff-dept-${group.departmentId}`} className="ws-mdept-group">
+                    <div className="ws-mdept-header">
+                      <span><i className="fas fa-users" style={{ marginRight: 6 }} />{group.departmentName}</span>
+                      <span className="ws-mdept-count">{group.staff.length} nhân viên</span>
+                    </div>
+
+                    {group.staff.map(s => {
+                      const isCollapsed = collapsedStaffIds.has(s.staffId);
+                      const scheduledDays = Array.from({ length: 7 }, (_, i) => {
+                        const c = editState[`${s.staffId}:${i + 1}`]?.content;
+                        return c && c.trim().length > 0 ? 1 : 0;
+                      }).reduce<number>((a, b) => a + b, 0);
+                      const pendingCount = (pendingTasksByStaff[s.staffId] || []).length;
+
+                      return (
+                        <div key={s.staffId} className="ws-mstaff-card">
+                          <div
+                            className={`ws-mstaff-card-header ${isCollapsed ? 'collapsed' : ''}`}
+                            onClick={() => toggleStaffCollapse(s.staffId)}
+                          >
+                            <div className="ws-mday-staff">
+                              <div className="ws-mday-avatar">{getInitials(s.staffName)}</div>
+                              <div className="ws-mday-staff-info">
+                                <div className="ws-mday-staff-name">{s.staffName}</div>
+                                {pendingCount > 0 && (
+                                  <div className="ws-mday-pending-badge">
+                                    <i className="fas fa-list-check" /> {pendingCount} việc tồn
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="ws-mstaff-header-right">
+                              <span className={`ws-mstaff-count-badge ${scheduledDays === 0 ? 'empty' : ''}`}>
+                                {scheduledDays}/7 ngày
+                              </span>
+                              <i className={`fas fa-chevron-${isCollapsed ? 'down' : 'up'}`} style={{ color: '#64748b', fontSize: '0.8rem' }} />
+                            </div>
+                          </div>
+
+                          {!isCollapsed && (
+                            <div className="ws-mstaff-days-list">
+                              {Array.from({ length: 7 }, (_, i) => {
+                                const dow = i + 1;
+                                const key = `${s.staffId}:${dow}`;
+                                const cell = editState[key] || { content: '', note: '' };
+                                return (
+                                  <CellEditor
+                                    key={key}
+                                    staffId={s.staffId}
+                                    staffName={s.staffName}
+                                    dayIndex={dow}
+                                    cell={cell}
+                                    pendingTasks={pendingTasksByStaff[s.staffId] || []}
+                                    onSave={handleCellSave}
+                                    variant="mobile-staff"
+                                    dayDateLabel={dateHeaders[i]?.dayMonth}
+                                    isToday={dateHeaders[i]?.isToday}
+                                  />
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ── MOBILE MODE 3 HINT + DESKTOP/MOBILE STICKY TABLE ── */}
+            {mobileViewMode === 'table' && (
+              <div className="ws-mobile-only ws-mtable-hint">
+                <i className="fas fa-arrows-alt-h" />
+                <span>Vuốt ngang để xem đủ 7 ngày • Cột Họ và tên đã được ghim cố định</span>
+              </div>
+            )}
+
+            <div className={`ws-table-wrap ${mobileViewMode !== 'table' ? 'ws-desktop-table-hidden' : ''}`}>
+              <table className="ws-table">
+                <thead>
+                  <tr>
+                    <th>Họ và tên</th>
+                    {dateHeaders.map((h, i) => <th key={i}>{h.label}</th>)}
+                  </tr>
+                  <tr className="ws-date-row">
+                    <th></th>
+                    {dateHeaders.map((h, i) => (
+                      <th key={i} style={{ background: '#dce6f1', color: '#1e293b', fontWeight: 600, fontSize: '0.78rem' }}>
+                        {h.date}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {groups.map(group => (
+                    <React.Fragment key={`dept-frag-${group.departmentId}`}>
+                      <tr className="ws-dept-row">
+                        <td colSpan={8}>
+                          <i className="fas fa-users" style={{ marginRight: 8 }} />
+                          {group.departmentName.toUpperCase()}
+                        </td>
+                      </tr>
+                      {group.staff.map(s => (
+                        <tr key={s.staffId} className="ws-staff-row">
+                          <td className="ws-staff-name-cell">{s.staffName}</td>
+                          {Array.from({ length: 7 }, (_, i) => {
+                            const dow = i + 1;
+                            const key = `${s.staffId}:${dow}`;
+                            const cell = editState[key] || { content: '', note: '' };
+                            return (
+                              <td key={dow} className="ws-day-cell">
+                                <CellEditor
+                                  staffId={s.staffId}
+                                  staffName={s.staffName}
+                                  dayIndex={dow}
+                                  cell={cell}
+                                  pendingTasks={pendingTasksByStaff[s.staffId] || []}
+                                  onSave={handleCellSave}
+                                  dayDateLabel={dateHeaders[i]?.dayMonth}
+                                  isToday={dateHeaders[i]?.isToday}
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         {/* Weekly Note Section */}

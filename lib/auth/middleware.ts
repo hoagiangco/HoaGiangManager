@@ -23,12 +23,21 @@ export async function authenticate(
 ): Promise<AuthenticateResult> {
   try {
     const authHeader = request.headers.get('authorization');
+    let token: string | null = null;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    } else {
+      const { searchParams } = new URL(request.url);
+      const queryToken = searchParams.get('token');
+      if (queryToken) {
+        token = queryToken;
+      }
+    }
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!token) {
       return { user: null, error: 'No token provided', statusCode: 401 };
     }
-
-    const token = authHeader.substring(7);
     let payload: JWTPayload;
     try {
       payload = verifyToken(token);
